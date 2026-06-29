@@ -1,0 +1,8 @@
+# Binaries
+/aviator
+/dist/
+*.exe
+
+# Go
+*.test
+*.out
