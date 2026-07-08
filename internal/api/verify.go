@@ -7,7 +7,8 @@ type SubmitVerifyRequest struct {
 	Repository         Repository `json:"repository"`
 	Intent             string     `json:"intent"`
 	AcceptanceCriteria []string   `json:"acceptance_criteria"`
-	BranchName         string     `json:"branch_name,omitempty"`
+	WorkingBranch      string     `json:"working_branch,omitempty"`
+	TargetBranch       string     `json:"target_branch,omitempty"`
 	SpecFile           *SpecFile  `json:"spec_file,omitempty"`
 	AuthorEmail        string     `json:"author_email,omitempty"`
 }
@@ -16,7 +17,8 @@ type SubmitVerifyRequest struct {
 type SubmitVerifyResponse struct {
 	RunbookNumber      int      `json:"runbook_number"`
 	URL                string   `json:"url"`
-	BranchName         string   `json:"branch_name"`
+	WorkingBranch      string   `json:"working_branch"`
+	TargetBranch       string   `json:"target_branch"`
 	AcceptanceCriteria []string `json:"acceptance_criteria"`
 }
 

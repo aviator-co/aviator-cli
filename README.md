@@ -39,12 +39,14 @@ aviator verify \
   --intent "Ensure the feature flag gates the new banner" \
   --criteria "Banner hidden when flag off" \
   --criteria "Banner shown when flag on" \
-  --branch feature/banner \
+  --working-branch feature/banner \
+  --target-branch main \
   --spec ./spec.md
 ```
 
 `--criteria` is repeatable; alternatively pass `--criteria-file` (one criterion
-per line, `#` comments ignored). `--branch` and `--spec` are optional.
+per line, `#` comments ignored). `--working-branch`, `--target-branch`, and
+`--spec` are optional.
 
 ### Create a runbook
 

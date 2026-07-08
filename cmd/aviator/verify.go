@@ -10,21 +10,22 @@ import (
 )
 
 var verifyFlags struct {
-	Repo         string
-	Intent       string
-	Criteria     []string
-	CriteriaFile string
-	Branch       string
-	Spec         string
-	AuthorEmail  string
+	Repo          string
+	Intent        string
+	Criteria      []string
+	CriteriaFile  string
+	WorkingBranch string
+	TargetBranch  string
+	Spec          string
+	AuthorEmail   string
 }
 
 var verifyCmd = &cobra.Command{
 	Use:   "verify",
 	Short: "Submit an intent and acceptance criteria for verification",
 	Long: "Create a verification from an intent and a set of acceptance criteria.\n" +
-		"Pass --branch to tie it to the branch the work lives on so a PR opened\n" +
-		"from that branch is verified against these criteria.",
+		"Pass --working-branch to tie it to the branch the work lives on so a PR\n" +
+		"opened from that branch is verified against these criteria.",
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
@@ -61,7 +62,8 @@ var verifyCmd = &cobra.Command{
 			Repository:         repo,
 			Intent:             verifyFlags.Intent,
 			AcceptanceCriteria: criteria,
-			BranchName:         verifyFlags.Branch,
+			WorkingBranch:      verifyFlags.WorkingBranch,
+			TargetBranch:       verifyFlags.TargetBranch,
 			SpecFile:           spec,
 			AuthorEmail:        verifyFlags.AuthorEmail,
 		})
@@ -71,8 +73,11 @@ var verifyCmd = &cobra.Command{
 
 		fmt.Printf("%s Verify submission created: %s\n", colors.Success("✓"), resp.URL)
 		fmt.Printf("  Runbook #%d\n", resp.RunbookNumber)
-		if resp.BranchName != "" {
-			fmt.Printf("  Branch:   %s\n", resp.BranchName)
+		if resp.WorkingBranch != "" {
+			fmt.Printf("  Working branch: %s\n", resp.WorkingBranch)
+		}
+		if resp.TargetBranch != "" {
+			fmt.Printf("  Target branch:  %s\n", resp.TargetBranch)
 		}
 		fmt.Printf("  Criteria: %d\n", len(resp.AcceptanceCriteria))
 		return nil
@@ -85,7 +90,8 @@ func init() {
 	f.StringVar(&verifyFlags.Intent, "intent", "", "short description of the change to verify")
 	f.StringArrayVar(&verifyFlags.Criteria, "criteria", nil, "acceptance criterion (repeatable)")
 	f.StringVar(&verifyFlags.CriteriaFile, "criteria-file", "", "file with one acceptance criterion per line")
-	f.StringVar(&verifyFlags.Branch, "branch", "", "branch the work lives on (optional)")
+	f.StringVar(&verifyFlags.WorkingBranch, "working-branch", "", "branch the work lives on (optional)")
+	f.StringVar(&verifyFlags.TargetBranch, "target-branch", "", "base branch to verify against (defaults to the repo default)")
 	f.StringVar(&verifyFlags.Spec, "spec", "", "path to an optional spec file")
 	f.StringVar(&verifyFlags.AuthorEmail, "author-email", "", "attribute the submission to this user")
 	_ = verifyCmd.MarkFlagRequired("repo")
