@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/config"
@@ -33,13 +34,14 @@ func NewClient() (*Client, error) {
 	return &Client{
 		host:  strings.TrimRight(config.Av.Aviator.APIHost, "/"),
 		token: config.Av.Aviator.APIToken,
-		http:  http.DefaultClient,
+		http:  &http.Client{Timeout: 30 * time.Second},
 	}, nil
 }
 
 type apiError struct {
-	Err     string `json:"error"`
-	Message string `json:"message"`
+	Err     string   `json:"error"`
+	Message string   `json:"message"`
+	Issues  []string `json:"issues,omitempty"`
 }
 
 // postJSON sends body as JSON to path and decodes a successful response into
@@ -76,7 +78,13 @@ func (c *Client) postJSON(ctx context.Context, path string, body, out any) error
 		_ = json.Unmarshal(data, &ae)
 		msg := ae.Message
 		if msg == "" {
+			msg = ae.Err
+		}
+		if msg == "" {
 			msg = strings.TrimSpace(string(data))
+		}
+		if len(ae.Issues) > 0 {
+			msg += ": " + strings.Join(ae.Issues, "; ")
 		}
 		return errors.Errorf("aviator API error (%d): %s", resp.StatusCode, msg)
 	}

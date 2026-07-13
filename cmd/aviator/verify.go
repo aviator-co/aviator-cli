@@ -37,6 +37,9 @@ var verifyCmd = &cobra.Command{
 		if verifyFlags.Intent == "" {
 			return errors.New("--intent is required")
 		}
+		if len(verifyFlags.Criteria) > 0 && verifyFlags.CriteriaFile != "" {
+			return errors.New("--criteria and --criteria-file cannot be set together")
+		}
 		criteria, err := collectCriteria(verifyFlags.Criteria, verifyFlags.CriteriaFile)
 		if err != nil {
 			return err

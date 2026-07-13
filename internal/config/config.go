@@ -56,16 +56,20 @@ func loadFromFile(repoConfigDir string) error {
 	}
 
 	// Merge a per-repo config file (e.g. .git/av/config.yaml) when present so
-	// it can override the global config, mirroring the av CLI behavior.
-	for _, ext := range viper.SupportedExts {
-		fp := filepath.Join(repoConfigDir, "config."+ext)
-		if stat, err := os.Stat(fp); err == nil && !stat.IsDir() {
-			config.SetConfigFile(fp)
-			config.SetConfigType(ext)
-			if err := config.MergeInConfig(); err != nil {
-				return errors.Wrapf(err, "failed to read %s", fp)
+	// it can override the global config, mirroring the av CLI behavior. Guard
+	// the empty dir, else filepath.Join collapses to a relative "config.yaml"
+	// resolved against the CWD.
+	if repoConfigDir != "" {
+		for _, ext := range viper.SupportedExts {
+			fp := filepath.Join(repoConfigDir, "config."+ext)
+			if stat, err := os.Stat(fp); err == nil && !stat.IsDir() {
+				config.SetConfigFile(fp)
+				config.SetConfigType(ext)
+				if err := config.MergeInConfig(); err != nil {
+					return errors.Wrapf(err, "failed to read %s", fp)
+				}
+				break
 			}
-			break
 		}
 	}
 
