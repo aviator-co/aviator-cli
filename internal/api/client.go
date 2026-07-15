@@ -52,6 +52,12 @@ func (c *Client) postJSON(ctx context.Context, path string, body, out any) error
 	return c.doJSON(ctx, http.MethodPost, path, body, out)
 }
 
+// patchJSON sends body as JSON to path via PATCH and decodes a successful
+// response into out (which may be nil).
+func (c *Client) patchJSON(ctx context.Context, path string, body, out any) error {
+	return c.doJSON(ctx, http.MethodPatch, path, body, out)
+}
+
 // getJSON issues a GET to path with the given query and decodes a successful
 // response into out (which may be nil).
 func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out any) error {

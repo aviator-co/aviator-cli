@@ -50,6 +50,7 @@ func init() {
 		runbookCmd,
 		showCmd,
 		resultsCmd,
+		editCmd,
 		versionCmd,
 	)
 }
