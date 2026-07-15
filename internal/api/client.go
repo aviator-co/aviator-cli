@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -48,18 +49,38 @@ type apiError struct {
 // out (which may be nil). Non-2xx responses are turned into an error using the
 // API's {error, message} envelope when present.
 func (c *Client) postJSON(ctx context.Context, path string, body, out any) error {
-	payload, err := json.Marshal(body)
-	if err != nil {
-		return errors.Wrap(err, "failed to encode request")
+	return c.doJSON(ctx, http.MethodPost, path, body, out)
+}
+
+// getJSON issues a GET to path with the given query and decodes a successful
+// response into out (which may be nil).
+func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out any) error {
+	if len(query) > 0 {
+		path += "?" + query.Encode()
+	}
+	return c.doJSON(ctx, http.MethodGet, path, nil, out)
+}
+
+// doJSON sends body (when non-nil) as JSON to path using method and decodes a
+// successful response into out (which may be nil). Non-2xx responses are turned
+// into an error using the API's {error, message} envelope when present.
+func (c *Client) doJSON(ctx context.Context, method, path string, body, out any) error {
+	var reader io.Reader
+	if body != nil {
+		payload, err := json.Marshal(body)
+		if err != nil {
+			return errors.Wrap(err, "failed to encode request")
+		}
+		reader = bytes.NewReader(payload)
 	}
 
-	req, err := http.NewRequestWithContext(
-		ctx, http.MethodPost, c.host+path, bytes.NewReader(payload),
-	)
+	req, err := http.NewRequestWithContext(ctx, method, c.host+path, reader)
 	if err != nil {
 		return errors.Wrap(err, "failed to build request")
 	}
-	req.Header.Set("Content-Type", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 
 	resp, err := c.http.Do(req)
