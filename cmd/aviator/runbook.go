@@ -15,6 +15,9 @@ var runbookFlags struct {
 	Title        string
 	Oneshot      bool
 	TargetBranch string
+	Spec         string
+	Criteria     []string
+	CriteriaFile string
 	AuthorEmail  string
 }
 
@@ -32,6 +35,21 @@ var runbookCmd = &cobra.Command{
 		if runbookFlags.Prompt == "" {
 			return errors.New("--prompt is required")
 		}
+		if len(runbookFlags.Criteria) > 0 && runbookFlags.CriteriaFile != "" {
+			return errors.New("--criteria and --criteria-file cannot be set together")
+		}
+		criteria, err := collectCriteria(runbookFlags.Criteria, runbookFlags.CriteriaFile)
+		if err != nil {
+			return err
+		}
+
+		var spec *api.SpecFile
+		if runbookFlags.Spec != "" {
+			spec, err = readSpecFile(runbookFlags.Spec)
+			if err != nil {
+				return err
+			}
+		}
 
 		client, err := api.NewClient()
 		if err != nil {
@@ -39,12 +57,14 @@ var runbookCmd = &cobra.Command{
 		}
 
 		resp, err := client.CreateRunbook(ctx, api.CreateRunbookRequest{
-			Repository:   repo,
-			Prompt:       runbookFlags.Prompt,
-			Title:        runbookFlags.Title,
-			Oneshot:      runbookFlags.Oneshot,
-			TargetBranch: runbookFlags.TargetBranch,
-			AuthorEmail:  runbookFlags.AuthorEmail,
+			Repository:         repo,
+			Prompt:             runbookFlags.Prompt,
+			Title:              runbookFlags.Title,
+			Oneshot:            runbookFlags.Oneshot,
+			TargetBranch:       runbookFlags.TargetBranch,
+			SpecFile:           spec,
+			AcceptanceCriteria: criteria,
+			AuthorEmail:        runbookFlags.AuthorEmail,
 		})
 		if err != nil {
 			return err
@@ -54,6 +74,9 @@ var runbookCmd = &cobra.Command{
 		fmt.Printf("  Runbook #%d\n", resp.RunbookNumber)
 		if resp.Status != "" {
 			fmt.Printf("  Status:   %s\n", resp.Status)
+		}
+		if len(criteria) > 0 {
+			fmt.Printf("  Criteria: %d\n", len(criteria))
 		}
 		return nil
 	},
@@ -66,6 +89,9 @@ func init() {
 	f.StringVar(&runbookFlags.Title, "title", "", "optional runbook title")
 	f.BoolVar(&runbookFlags.Oneshot, "oneshot", true, "run the runbook in one-shot mode")
 	f.StringVar(&runbookFlags.TargetBranch, "target-branch", "", "base branch for the runbook (defaults to repo default)")
+	f.StringVar(&runbookFlags.Spec, "spec", "", "path to an optional spec file")
+	f.StringArrayVar(&runbookFlags.Criteria, "criteria", nil, "acceptance criterion (repeatable, optional)")
+	f.StringVar(&runbookFlags.CriteriaFile, "criteria-file", "", "file with one acceptance criterion per line")
 	f.StringVar(&runbookFlags.AuthorEmail, "author-email", "", "attribute the runbook to this user")
 	_ = runbookCmd.MarkFlagRequired("repo")
 	_ = runbookCmd.MarkFlagRequired("prompt")

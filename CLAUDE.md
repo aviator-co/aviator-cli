@@ -72,8 +72,9 @@ The CLI targets endpoints in the `mergeit` backend:
 - `POST /api/v1/verify` — `{repository:{org,name}, intent, acceptance_criteria,
   branch_name?, spec_file?, author_email?}`. Creates a verify-only runbook
   session seeded with the criteria.
-- `POST /api/v1/runbook` — `{repository, prompt, oneshot, ...}`. Creates a
-  runbook from a prompt.
+- `POST /api/v1/runbook` — `{repository, prompt, oneshot, target_branch?,
+  spec_file?, acceptance_criteria?, ...}`. Creates a runbook from a prompt;
+  criteria are optional.
 
 When changing a request/response shape, keep it in sync with the backend
 schemas (`src/api/verify.py`, `src/api/runbook.py` in the mergeit repo).

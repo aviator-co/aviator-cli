@@ -4,12 +4,14 @@ import "context"
 
 // CreateRunbookRequest is the body for POST /api/v1/runbook.
 type CreateRunbookRequest struct {
-	Repository   Repository `json:"repository"`
-	Prompt       string     `json:"prompt"`
-	Title        string     `json:"title,omitempty"`
-	Oneshot      bool       `json:"oneshot"`
-	TargetBranch string     `json:"target_branch,omitempty"`
-	AuthorEmail  string     `json:"author_email,omitempty"`
+	Repository         Repository `json:"repository"`
+	Prompt             string     `json:"prompt"`
+	Title              string     `json:"title,omitempty"`
+	Oneshot            bool       `json:"oneshot"`
+	TargetBranch       string     `json:"target_branch,omitempty"`
+	SpecFile           *SpecFile  `json:"spec_file,omitempty"`
+	AcceptanceCriteria []string   `json:"acceptance_criteria,omitempty"`
+	AuthorEmail        string     `json:"author_email,omitempty"`
 }
 
 // CreateRunbookResponse is the (partial) response from POST /api/v1/runbook.

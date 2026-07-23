@@ -22,6 +22,29 @@ func TestParseRepo(t *testing.T) {
 	}
 }
 
+func TestReadSpecFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "spec.md")
+	if err := os.WriteFile(path, []byte("# spec body"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	spec, err := readSpecFile(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if spec.Filename != "spec.md" {
+		t.Errorf("filename = %q, want spec.md", spec.Filename)
+	}
+	if spec.Content != "# spec body" {
+		t.Errorf("content = %q", spec.Content)
+	}
+
+	if _, err := readSpecFile(filepath.Join(dir, "missing.md")); err == nil {
+		t.Error("expected error for missing spec file")
+	}
+}
+
 func TestCollectCriteria(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "criteria.txt")
