@@ -69,8 +69,8 @@ func TestFormatRunbookDetail(t *testing.T) {
 			WorkingBranch: ptrStr("feature"),
 			TargetBranch:  ptrStr("main"),
 			Steps: []api.RunbookStep{
-				{StepNumber: 1, Title: "one", Status: "completed"},
-				{StepNumber: 2, Title: "two", Status: "in_progress"},
+				{StepNumber: "1", Title: "one", Status: "completed"},
+				{StepNumber: "1.1", Title: "two", Status: "in_progress"},
 			},
 		},
 		AcceptanceCriteria: []api.DetailCriterion{

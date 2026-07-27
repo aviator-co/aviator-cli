@@ -38,7 +38,8 @@ type RunbookState struct {
 
 // RunbookStep is a single step within a runbook's execution.
 type RunbookStep struct {
-	StepNumber int    `json:"step_number"`
+	// Step numbers are hierarchical strings ("1", "1.1"), not ints.
+	StepNumber string `json:"step_number"`
 	Title      string `json:"title"`
 	Status     string `json:"status"`
 	CommitSHA  string `json:"commit_sha,omitempty"`

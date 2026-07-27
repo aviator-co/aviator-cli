@@ -16,8 +16,8 @@ func TestGetRunbookDetail(t *testing.T) {
 			"target_branch": "main",
 			"working_branch": "feature",
 			"steps": [
-				{"step_number": 1, "title": "one", "status": "completed"},
-				{"step_number": 2, "title": "two", "status": "in_progress"}
+				{"step_number": "1", "title": "one", "status": "completed"},
+				{"step_number": "1.1", "title": "two", "status": "in_progress"}
 			]
 		},
 		"acceptance_criteria": [
