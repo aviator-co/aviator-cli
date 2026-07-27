@@ -65,6 +65,7 @@ func TestFormatRunbookDetail(t *testing.T) {
 		RunbookNumber:  123,
 		URL:            "https://app.aviator.co/runbook/123",
 		RunbookVersion: ptrInt(4),
+		Intent:         ptrStr("make the thing doable"),
 		RunbookState: &api.RunbookState{
 			WorkingBranch: ptrStr("feature"),
 			TargetBranch:  ptrStr("main"),
@@ -91,6 +92,7 @@ func TestFormatRunbookDetail(t *testing.T) {
 	out := formatRunbookDetail(detail, false)
 	for _, want := range []string{
 		"Runbook r/123 (version 4)",
+		"Intent: make the thing doable",
 		"Branch: feature -> main",
 		"Steps: 1/2 completed",
 		"1. does the thing",

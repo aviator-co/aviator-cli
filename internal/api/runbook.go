@@ -5,7 +5,7 @@ import "context"
 // CreateRunbookRequest is the body for POST /api/v1/runbook.
 type CreateRunbookRequest struct {
 	Repository         Repository `json:"repository"`
-	Prompt             string     `json:"prompt"`
+	Intent             string     `json:"intent"`
 	Title              string     `json:"title,omitempty"`
 	Oneshot            bool       `json:"oneshot"`
 	TargetBranch       string     `json:"target_branch,omitempty"`
@@ -21,7 +21,7 @@ type CreateRunbookResponse struct {
 	Status        string `json:"status"`
 }
 
-// CreateRunbook starts a runbook from a prompt.
+// CreateRunbook starts a runbook from an intent.
 func (c *Client) CreateRunbook(
 	ctx context.Context, req CreateRunbookRequest,
 ) (*CreateRunbookResponse, error) {

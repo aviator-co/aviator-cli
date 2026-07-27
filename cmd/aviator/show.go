@@ -13,7 +13,7 @@ import (
 )
 
 var knownDetailFields = []string{
-	"steps_markdown", "spec_files", "runbook_state", "acceptance_criteria",
+	"steps_markdown", "spec_files", "runbook_state", "acceptance_criteria", "intent",
 }
 
 var showFlags struct {
@@ -98,6 +98,10 @@ func printJSON(v any) error {
 func formatRunbookDetail(d *api.RunbookDetail, includeStepsMarkdown bool) string {
 	var b strings.Builder
 	b.WriteString(formatDetailHeader(d))
+
+	if d.Intent != nil && *d.Intent != "" {
+		fmt.Fprintf(&b, "  Intent: %s\n", *d.Intent)
+	}
 
 	if s := d.RunbookState; s != nil {
 		fmt.Fprintf(&b, "  Branch: %s -> %s\n",
