@@ -28,7 +28,7 @@ func TestCreateRunbookWithSpecAndCriteria(t *testing.T) {
 
 	resp, err := newTestClient(srv).CreateRunbook(context.Background(), CreateRunbookRequest{
 		Repository:         Repository{Org: "acme", Name: "web"},
-		Prompt:             "do the thing",
+		Intent:             "do the thing",
 		Oneshot:            true,
 		SpecFile:           &SpecFile{Filename: "spec.md", Content: "# spec"},
 		AcceptanceCriteria: []string{"one", "two"},
@@ -66,7 +66,7 @@ func TestCreateRunbookOmitsSpecAndCriteria(t *testing.T) {
 
 	_, err := newTestClient(srv).CreateRunbook(context.Background(), CreateRunbookRequest{
 		Repository: Repository{Org: "acme", Name: "web"},
-		Prompt:     "do the thing",
+		Intent:     "do the thing",
 		Oneshot:    true,
 	})
 	if err != nil {

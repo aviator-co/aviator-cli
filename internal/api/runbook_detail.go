@@ -17,6 +17,7 @@ type RunbookDetail struct {
 	RunbookNumber      int                 `json:"runbook_number"`
 	URL                string              `json:"url"`
 	RunbookVersion     *int                `json:"runbook_version"`
+	Intent             *string             `json:"intent,omitempty"`
 	StepsMarkdown      *string             `json:"steps_markdown,omitempty"`
 	SpecFiles          []DetailSpecFile    `json:"spec_files,omitempty"`
 	RunbookState       *RunbookState       `json:"runbook_state,omitempty"`
