@@ -28,6 +28,23 @@ var Av = struct {
 	},
 }
 
+// TokenOrigin describes where a statically configured API token came from.
+type TokenOrigin string
+
+const (
+	// TokenOriginNone means no static token is configured.
+	TokenOriginNone TokenOrigin = ""
+	// TokenOriginConfigFile means the token came from a config file.
+	TokenOriginConfigFile TokenOrigin = "the aviator.apiToken config setting"
+	// TokenOriginEnv means the token came from the environment.
+	TokenOriginEnv TokenOrigin = "the AVIATOR_API_TOKEN environment variable"
+)
+
+// APITokenOrigin reports where Av.Aviator.APIToken was loaded from. A static
+// token takes precedence over an OAuth session, so commands use it to explain
+// which credential later commands will pick.
+var APITokenOrigin = TokenOriginNone
+
 // Load initializes the configuration values from config files and the
 // environment. An optional repository-local config dir overrides the global
 // config.
@@ -76,12 +93,16 @@ func loadFromFile(repoConfigDir string) error {
 	if err := config.Unmarshal(&Av); err != nil {
 		return errors.Wrap(err, "failed to read aviator config")
 	}
+	if Av.Aviator.APIToken != "" {
+		APITokenOrigin = TokenOriginConfigFile
+	}
 	return nil
 }
 
 func loadFromEnv() {
 	if token := os.Getenv("AVIATOR_API_TOKEN"); token != "" {
 		Av.Aviator.APIToken = token
+		APITokenOrigin = TokenOriginEnv
 	}
 	if host := os.Getenv("AVIATOR_API_HOST"); host != "" {
 		Av.Aviator.APIHost = host
