@@ -24,9 +24,6 @@ var editCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if len(editFlags.Criteria) > 0 && editFlags.CriteriaFile != "" {
-			return errors.New("--criteria and --criteria-file cannot be set together")
-		}
 		criteria, err := collectCriteria(editFlags.Criteria, editFlags.CriteriaFile)
 		if err != nil {
 			return err
@@ -49,11 +46,7 @@ var editCmd = &cobra.Command{
 
 		fmt.Printf("%s Runbook %s criteria updated\n",
 			colors.Success("✓"), formatRunbookID(resp.RunbookNumber))
-		if resp.NewVersion != nil {
-			fmt.Printf("  Version: %d -> %d\n", editFlags.ExpectedVersion, *resp.NewVersion)
-		} else {
-			fmt.Printf("  Version: unchanged (%d)\n", editFlags.ExpectedVersion)
-		}
+		fmt.Printf("  Version: %d -> %d\n", editFlags.ExpectedVersion, resp.NewVersion)
 		fmt.Printf("  Criteria: %d\n", resp.CriteriaCount)
 		if resp.Message != "" {
 			fmt.Printf("  %s\n", resp.Message)
@@ -63,9 +56,8 @@ var editCmd = &cobra.Command{
 }
 
 func init() {
+	registerCriteriaFlags(editCmd, &editFlags.Criteria, &editFlags.CriteriaFile)
 	f := editCmd.Flags()
-	f.StringArrayVar(&editFlags.Criteria, "criteria", nil, "acceptance criterion (repeatable)")
-	f.StringVar(&editFlags.CriteriaFile, "criteria-file", "", "file with one acceptance criterion per line")
 	f.IntVar(&editFlags.ExpectedVersion, "expected-version", 0, "runbook version you expect to be editing (guards against stale edits)")
 	_ = editCmd.MarkFlagRequired("expected-version")
 }

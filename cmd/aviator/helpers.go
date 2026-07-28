@@ -9,6 +9,7 @@ import (
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
+	"github.com/spf13/cobra"
 )
 
 // parseRunbookID resolves a runbook/verify session ID as displayed to users
@@ -51,8 +52,19 @@ func readSpecFile(path string) (*api.SpecFile, error) {
 	return &api.SpecFile{Filename: filepath.Base(path), Content: string(data)}, nil
 }
 
-// collectCriteria merges inline --criteria values with a --criteria-file (one
-// per line, blank lines and # comments ignored), trimming each entry.
+// registerCriteriaFlags registers the --criteria/--criteria-file pair on cmd
+// and marks them mutually exclusive, so every command takes them identically.
+func registerCriteriaFlags(cmd *cobra.Command, criteria *[]string, criteriaFile *string) {
+	f := cmd.Flags()
+	f.StringArrayVar(criteria, "criteria", nil, "acceptance criterion (repeatable)")
+	f.StringVar(criteriaFile, "criteria-file", "", "file with one acceptance criterion per line")
+	cmd.MarkFlagsMutuallyExclusive("criteria", "criteria-file")
+}
+
+// collectCriteria returns the criteria from exactly one source — the inline
+// --criteria values, or a --criteria-file (one per line, blank lines and #
+// comments ignored) — trimming each entry. registerCriteriaFlags guarantees
+// the sources are mutually exclusive.
 func collectCriteria(inline []string, file string) ([]string, error) {
 	var out []string
 	for _, c := range inline {

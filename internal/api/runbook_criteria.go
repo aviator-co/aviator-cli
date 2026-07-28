@@ -12,10 +12,12 @@ type EditRunbookCriteriaRequest struct {
 	AcceptanceCriteria []string `json:"acceptance_criteria"`
 }
 
-// EditRunbookCriteriaResponse is the response from that endpoint.
+// EditRunbookCriteriaResponse is the response from that endpoint. A 200 always
+// carries the concrete new version: the server rejects edits before an active
+// version exists and every accepted edit creates a new one.
 type EditRunbookCriteriaResponse struct {
 	RunbookNumber int    `json:"runbook_number"`
-	NewVersion    *int   `json:"new_version"`
+	NewVersion    int    `json:"new_version"`
 	CriteriaCount int    `json:"criteria_count"`
 	Message       string `json:"message"`
 }

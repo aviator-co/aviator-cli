@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -23,7 +24,7 @@ func TestEditRunbookCriteria(t *testing.T) {
 		if err := json.Unmarshal(data, &req); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
-		if req.ExpectedVersion != 4 || len(req.AcceptanceCriteria) != 2 {
+		if req.ExpectedVersion != 4 || !slices.Equal(req.AcceptanceCriteria, []string{"one", "two"}) {
 			t.Errorf("request = %+v", req)
 		}
 		_, _ = w.Write([]byte(`{"runbook_number":123,"new_version":5,"criteria_count":2,"message":"updated"}`))
@@ -37,7 +38,7 @@ func TestEditRunbookCriteria(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.NewVersion == nil || *resp.NewVersion != 5 {
+	if resp.NewVersion != 5 {
 		t.Errorf("new_version = %v", resp.NewVersion)
 	}
 	if resp.CriteriaCount != 2 {
@@ -67,26 +68,5 @@ func TestEditRunbookCriteriaStaleVersion(t *testing.T) {
 	if got := err.Error(); !strings.Contains(got, "currently at version 6") ||
 		!strings.Contains(got, "409") {
 		t.Fatalf("error = %q, want stale-version message and status", got)
-	}
-}
-
-func TestEditRunbookCriteriaNoOp(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"runbook_number":123,"new_version":null,"criteria_count":2,"message":"Criteria unchanged."}`))
-	}))
-	defer srv.Close()
-
-	resp, err := newTestClient(srv).EditRunbookCriteria(context.Background(), 123, EditRunbookCriteriaRequest{
-		ExpectedVersion:    4,
-		AcceptanceCriteria: []string{"one", "two"},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.NewVersion != nil {
-		t.Errorf("new_version = %v, want nil", resp.NewVersion)
-	}
-	if resp.Message != "Criteria unchanged." {
-		t.Errorf("message = %q", resp.Message)
 	}
 }
