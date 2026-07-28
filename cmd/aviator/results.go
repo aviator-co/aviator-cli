@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
 	"github.com/spf13/cobra"
 )
@@ -11,8 +12,9 @@ var resultsFlags struct {
 	JSON bool
 }
 
-// resultsCmd is sugar for `show` scoped to the latest verification run (which
-// the API attaches to the acceptance_criteria field).
+// resultsCmd is a preset over `show`: it fetches the acceptance_criteria field
+// group (which the server attaches latest_verification to) and renders only
+// the verification outcome.
 var resultsCmd = &cobra.Command{
 	Use:   "results <id>",
 	Short: "Show the latest verification results (e.g. aviator results r/123)",
@@ -26,18 +28,22 @@ var resultsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fields := []string{"acceptance_criteria"}
-		if resultsFlags.JSON {
-			raw, err := client.GetRunbookDetailRaw(cmd.Context(), runbookNumber, fields)
-			if err != nil {
-				return err
-			}
-			return printJSON(raw)
-		}
-		detail, err := client.GetRunbookDetail(cmd.Context(), runbookNumber, fields)
+		raw, detail, err := client.GetRunbookDetail(cmd.Context(), runbookNumber, []string{"acceptance_criteria"})
 		if err != nil {
 			return err
 		}
+		if resultsFlags.JSON {
+			return printJSON(raw)
+		}
+
+		// The server only defines latest_verification as part of the
+		// acceptance_criteria field group. If that contract moves, fail
+		// loudly instead of misreading an absent key as "no runs yet".
+		if !detail.LatestVerificationPresent {
+			return errors.New(
+				"response did not include latest_verification; the server contract may have changed — try 'aviator show' or --json")
+		}
+
 		fmt.Print(formatDetailHeader(detail))
 		if detail.LatestVerification != nil {
 			fmt.Print(formatVerification(detail.LatestVerification))
@@ -49,5 +55,6 @@ var resultsCmd = &cobra.Command{
 }
 
 func init() {
-	resultsCmd.Flags().BoolVar(&resultsFlags.JSON, "json", false, "print the raw response as pretty JSON")
+	resultsCmd.Flags().BoolVar(&resultsFlags.JSON, "json", false,
+		"print the raw response as pretty JSON (the acceptance_criteria fetch the results are attached to)")
 }

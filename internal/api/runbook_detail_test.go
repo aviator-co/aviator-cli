@@ -52,7 +52,7 @@ func TestGetRunbookDetail(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	detail, err := newTestClient(srv).GetRunbookDetail(
+	_, detail, err := newTestClient(srv).GetRunbookDetail(
 		context.Background(), 123, []string{"runbook_state", "acceptance_criteria"},
 	)
 	if err != nil {
@@ -95,7 +95,7 @@ func TestGetRunbookDetailNoFields(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	detail, err := newTestClient(srv).GetRunbookDetail(context.Background(), 7, nil)
+	_, detail, err := newTestClient(srv).GetRunbookDetail(context.Background(), 7, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -104,19 +104,45 @@ func TestGetRunbookDetailNoFields(t *testing.T) {
 	}
 }
 
-func TestGetRunbookDetailRaw(t *testing.T) {
-	// A field the client structs don't model must survive verbatim.
+func TestGetRunbookDetailRawBody(t *testing.T) {
+	// A field the client structs don't model must survive verbatim in the raw
+	// body returned alongside the decoded struct.
 	const body = `{"runbook_number": 5, "url": "u", "runbook_version": 1, "future_field": "kept"}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(body))
 	}))
 	defer srv.Close()
 
-	raw, err := newTestClient(srv).GetRunbookDetailRaw(context.Background(), 5, nil)
+	raw, detail, err := newTestClient(srv).GetRunbookDetail(context.Background(), 5, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if string(raw) != body {
 		t.Errorf("raw = %s", raw)
+	}
+	if detail.LatestVerificationPresent {
+		t.Error("LatestVerificationPresent = true for a response without the key")
+	}
+}
+
+func TestGetRunbookDetailVerificationPresence(t *testing.T) {
+	// An explicit null must register as present (no runs yet), unlike an
+	// absent key.
+	const body = `{"runbook_number": 5, "url": "u", "runbook_version": 1,
+		"acceptance_criteria": null, "latest_verification": null}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	_, detail, err := newTestClient(srv).GetRunbookDetail(context.Background(), 5, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !detail.LatestVerificationPresent {
+		t.Error("LatestVerificationPresent = false for an explicit null")
+	}
+	if detail.LatestVerification != nil {
+		t.Errorf("LatestVerification = %+v, want nil", detail.LatestVerification)
 	}
 }

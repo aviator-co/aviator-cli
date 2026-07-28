@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"emperror.dev/errors"
 )
 
 // RunbookDetail is the response from GET /api/v1/runbook/<n>/detail. The
@@ -20,6 +22,10 @@ type RunbookDetail struct {
 	RunbookState       *RunbookState       `json:"runbook_state,omitempty"`
 	AcceptanceCriteria []DetailCriterion   `json:"acceptance_criteria,omitempty"`
 	LatestVerification *LatestVerification `json:"latest_verification,omitempty"`
+	// LatestVerificationPresent distinguishes a response that carried an
+	// explicit null latest_verification (no runs yet) from one where the
+	// server omitted the key entirely.
+	LatestVerificationPresent bool `json:"-"`
 }
 
 // DetailSpecFile is a spec document attached to a runbook.
@@ -80,32 +86,27 @@ type FailedResult struct {
 	Location    json.RawMessage `json:"location"`
 }
 
-// GetRunbookDetail fetches a runbook's detail. When fields is non-empty, only
-// those sections are requested via the fields query parameter.
+// GetRunbookDetail fetches a runbook's detail, returning both the verbatim
+// response body (which preserves fields this client version doesn't model) and
+// its decoded form. When fields is non-empty, only those sections are
+// requested via the fields query parameter.
 func (c *Client) GetRunbookDetail(
 	ctx context.Context, runbookNumber int, fields []string,
-) (*RunbookDetail, error) {
+) (json.RawMessage, *RunbookDetail, error) {
+	var raw json.RawMessage
+	if err := c.getJSON(
+		ctx, runbookDetailPath(runbookNumber), runbookDetailQuery(fields), &raw,
+	); err != nil {
+		return nil, nil, err
+	}
 	var out RunbookDetail
-	if err := c.getJSON(
-		ctx, runbookDetailPath(runbookNumber), runbookDetailQuery(fields), &out,
-	); err != nil {
-		return nil, err
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, nil, errors.Wrap(err, "failed to decode runbook detail")
 	}
-	return &out, nil
-}
-
-// GetRunbookDetailRaw fetches a runbook's detail and returns the response body
-// verbatim, preserving fields this client version doesn't model.
-func (c *Client) GetRunbookDetailRaw(
-	ctx context.Context, runbookNumber int, fields []string,
-) (json.RawMessage, error) {
-	var out json.RawMessage
-	if err := c.getJSON(
-		ctx, runbookDetailPath(runbookNumber), runbookDetailQuery(fields), &out,
-	); err != nil {
-		return nil, err
-	}
-	return out, nil
+	var keys map[string]json.RawMessage
+	_ = json.Unmarshal(raw, &keys)
+	_, out.LatestVerificationPresent = keys["latest_verification"]
+	return raw, &out, nil
 }
 
 func runbookDetailPath(runbookNumber int) string {

@@ -37,11 +37,8 @@ func TestFormatRunbookID(t *testing.T) {
 	}
 }
 
-func TestValidateDetailFields(t *testing.T) {
-	got, err := validateDetailFields([]string{"steps_markdown", " spec_files ", ""})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+func TestCleanDetailFields(t *testing.T) {
+	got := cleanDetailFields([]string{"steps_markdown", " spec_files ", ""})
 	want := []string{"steps_markdown", "spec_files"}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
@@ -50,10 +47,6 @@ func TestValidateDetailFields(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("got %v, want %v", got, want)
 		}
-	}
-
-	if _, err := validateDetailFields([]string{"bogus"}); err == nil {
-		t.Fatal("expected error for unknown field")
 	}
 }
 

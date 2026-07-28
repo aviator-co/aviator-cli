@@ -12,9 +12,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var knownDetailFields = []string{
-	"steps_markdown", "spec_files", "runbook_state", "acceptance_criteria",
-}
+// detailFieldsHelp names the server's selectable detail fields for flag help.
+// The server validates --fields and its 400 lists the valid names — it is the
+// source of truth, so nothing is validated client-side.
+const detailFieldsHelp = "steps_markdown, spec_files, runbook_state, acceptance_criteria"
 
 var showFlags struct {
 	Fields []string
@@ -31,25 +32,18 @@ var showCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fields, err := validateDetailFields(showFlags.Fields)
-		if err != nil {
-			return err
-		}
+		fields := cleanDetailFields(showFlags.Fields)
 
 		client, err := api.NewClient()
 		if err != nil {
 			return err
 		}
-		if showFlags.JSON {
-			raw, err := client.GetRunbookDetailRaw(cmd.Context(), runbookNumber, fields)
-			if err != nil {
-				return err
-			}
-			return printJSON(raw)
-		}
-		detail, err := client.GetRunbookDetail(cmd.Context(), runbookNumber, fields)
+		raw, detail, err := client.GetRunbookDetail(cmd.Context(), runbookNumber, fields)
 		if err != nil {
 			return err
+		}
+		if showFlags.JSON {
+			return printJSON(raw)
 		}
 		fmt.Print(formatRunbookDetail(detail, slices.Contains(fields, "steps_markdown")))
 		return nil
@@ -59,28 +53,20 @@ var showCmd = &cobra.Command{
 func init() {
 	f := showCmd.Flags()
 	f.StringSliceVar(&showFlags.Fields, "fields", nil,
-		"comma-separated subset of "+strings.Join(knownDetailFields, ", "))
+		"comma-separated subset of "+detailFieldsHelp)
 	f.BoolVar(&showFlags.JSON, "json", false, "print the raw response as pretty JSON")
 }
 
-// validateDetailFields trims and validates requested fields against the known
-// set, returning a helpful error for anything unrecognized.
-func validateDetailFields(fields []string) ([]string, error) {
+// cleanDetailFields trims entries and drops empties; the server rejects
+// unknown names.
+func cleanDetailFields(fields []string) []string {
 	var out []string
 	for _, f := range fields {
-		f = strings.TrimSpace(f)
-		if f == "" {
-			continue
+		if f = strings.TrimSpace(f); f != "" {
+			out = append(out, f)
 		}
-		if !slices.Contains(knownDetailFields, f) {
-			return nil, errors.Errorf(
-				"unknown field %q; valid fields are %s",
-				f, strings.Join(knownDetailFields, ", "),
-			)
-		}
-		out = append(out, f)
 	}
-	return out, nil
+	return out
 }
 
 func printJSON(v any) error {
