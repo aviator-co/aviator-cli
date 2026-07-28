@@ -12,30 +12,27 @@ import (
 	"time"
 
 	"emperror.dev/errors"
+	"github.com/aviator-co/aviator-cli/internal/auth"
 	"github.com/aviator-co/aviator-cli/internal/config"
-)
-
-// ErrNoAPIToken is returned when no API token is configured.
-var ErrNoAPIToken = errors.Sentinel(
-	"no Aviator API token configured; set AVIATOR_API_TOKEN or add aviator.apiToken to your config",
 )
 
 // Client talks to the Aviator REST API.
 type Client struct {
-	host  string
-	token string
-	http  *http.Client
+	host   string
+	tokens TokenSource
+	http   *http.Client
 }
 
 // NewClient builds a Client from the loaded configuration.
 func NewClient() (*Client, error) {
-	if config.Av.Aviator.APIToken == "" {
-		return nil, ErrNoAPIToken
+	tokens, err := resolveTokenSource()
+	if err != nil {
+		return nil, err
 	}
 	return &Client{
-		host:  strings.TrimRight(config.Av.Aviator.APIHost, "/"),
-		token: config.Av.Aviator.APIToken,
-		http:  &http.Client{Timeout: 30 * time.Second},
+		host:   strings.TrimRight(config.Av.Aviator.APIHost, "/"),
+		tokens: tokens,
+		http:   &http.Client{Timeout: 30 * time.Second},
 	}, nil
 }
 
@@ -71,57 +68,106 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out
 // successful response into out (which may be nil). Non-2xx responses are turned
 // into an error using the API's {error, message} envelope when present.
 func (c *Client) doJSON(ctx context.Context, method, path string, body, out any) error {
-	var reader io.Reader
+	var payload []byte
 	if body != nil {
-		payload, err := json.Marshal(body)
-		if err != nil {
+		var err error
+		if payload, err = json.Marshal(body); err != nil {
 			return errors.Wrap(err, "failed to encode request")
 		}
-		reader = bytes.NewReader(payload)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.host+path, reader)
+	token, err := c.tokens.Token(ctx)
 	if err != nil {
-		return errors.Wrap(err, "failed to build request")
+		return err
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-
-	resp, err := c.http.Do(req)
+	status, data, err := c.send(ctx, method, path, payload, token)
 	if err != nil {
-		return errors.Wrap(err, "request failed")
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return errors.Wrap(err, "failed to read response")
+		return err
 	}
 
-	if resp.StatusCode >= 400 {
-		var ae apiError
-		_ = json.Unmarshal(data, &ae)
-		msg := ae.Message
-		if msg == "" {
-			msg = ae.Err
+	// The server can revoke a token before it expires, so a 401 is the first
+	// sign the stored session is stale. Renew it once and retry; a credential
+	// that can't be renewed (a static token) falls through to the error below.
+	if status == http.StatusUnauthorized {
+		if source, ok := c.tokens.(refresher); ok {
+			refreshed, err := source.ForceRefresh(ctx, token)
+			if errors.Is(err, auth.ErrSessionExpired) {
+				return err
+			}
+			if err != nil {
+				return errors.Wrap(err, "could not renew the Aviator session")
+			}
+			if status, data, err = c.send(ctx, method, path, payload, refreshed); err != nil {
+				return err
+			}
 		}
-		if msg == "" {
-			msg = strings.TrimSpace(string(data))
-		}
-		if len(ae.Issues) > 0 {
-			msg += ": " + strings.Join(ae.Issues, "; ")
-		}
-		return errors.Errorf("aviator API error (%d): %s", resp.StatusCode, msg)
 	}
 
+	if status >= 400 {
+		return c.statusError(status, data)
+	}
 	if out != nil {
 		if err := json.Unmarshal(data, out); err != nil {
 			return errors.Wrap(err, "failed to decode response")
 		}
 	}
 	return nil
+}
+
+// send performs one request and reads its whole response.
+func (c *Client) send(
+	ctx context.Context, method, path string, payload []byte, token string,
+) (int, []byte, error) {
+	var reader io.Reader
+	if payload != nil {
+		reader = bytes.NewReader(payload)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.host+path, reader)
+	if err != nil {
+		return 0, nil, errors.Wrap(err, "failed to build request")
+	}
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, nil, errors.Wrap(err, "request failed")
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, errors.Wrap(err, "failed to read response")
+	}
+	return resp.StatusCode, data, nil
+}
+
+func (c *Client) statusError(status int, data []byte) error {
+	var ae apiError
+	_ = json.Unmarshal(data, &ae)
+	msg := ae.Message
+	if msg == "" {
+		msg = ae.Err
+	}
+	if msg == "" {
+		msg = strings.TrimSpace(string(data))
+	}
+	if len(ae.Issues) > 0 {
+		msg += ": " + strings.Join(ae.Issues, "; ")
+	}
+	if status == http.StatusUnauthorized {
+		msg += "; " + c.reauthHint()
+	}
+	return errors.Errorf("aviator API error (%d): %s", status, msg)
+}
+
+func (c *Client) reauthHint() string {
+	if _, ok := c.tokens.(refresher); ok {
+		return "run `aviator login` to sign in again"
+	}
+	return "check the Aviator API token you configured"
 }
 
 // Repository identifies a connected GitHub repository.

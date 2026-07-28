@@ -46,6 +46,8 @@ func init() {
 		&rootFlags.Debug, "debug", false, "enable verbose debug logging",
 	)
 	rootCmd.AddCommand(
+		loginCmd,
+		logoutCmd,
 		verifyCmd,
 		runbookCmd,
 		showCmd,
