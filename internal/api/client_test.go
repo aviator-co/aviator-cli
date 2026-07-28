@@ -12,9 +12,9 @@ import (
 // newTestClient points a Client at the given test server.
 func newTestClient(server *httptest.Server) *Client {
 	return &Client{
-		host:  server.URL,
-		token: "test-token",
-		http:  server.Client(),
+		host:   server.URL,
+		tokens: staticToken("test-token"),
+		http:   server.Client(),
 	}
 }
 

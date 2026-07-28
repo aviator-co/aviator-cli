@@ -16,6 +16,8 @@ Module: `github.com/aviator-co/aviator-cli` · Go 1.26.
 ```
 cmd/aviator/        # CLI entry point + commands (one file per command)
   main.go           # root command, PersistentPreRunE (config load), run()
+  login.go          # `aviator login`   -> browser OAuth flow
+  logout.go         # `aviator logout`  -> drop the stored session
   verify.go         # `aviator verify`  -> POST /api/v1/verify
   runbook.go        # `aviator runbook` -> POST /api/v1/runbook
   version.go        # `aviator version`
@@ -23,6 +25,7 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
 internal/
   config/           # viper config load + version
   api/              # thin REST client (client.go) + per-resource methods
+  auth/             # OAuth login, keychain token store, refreshing TokenSource
   utils/colors/     # terminal color helpers
 ```
 
@@ -59,6 +62,10 @@ Equivalent raw commands: `go build ./...`, `go test --vet=all ./...`,
   own file with a request/response struct pair and a method on `*Client`; reuse
   `Client.postJSON`. Bearer auth + the `{error, message}` error envelope are
   handled centrally.
+- **Credentials**: `internal/auth` owns the OAuth flow and the keychain; the
+  API client only sees a `TokenSource`. Precedence is `AVIATOR_API_TOKEN`, then
+  the config file's `apiToken`, then the keychain session from `aviator login`.
+  Tokens are never written to files.
 - **Output**: use `internal/utils/colors` helpers; keep success output to a
   short confirmation line plus a couple of indented details.
 - Code must be `gofmt`-clean and pass `golangci-lint` (config in
@@ -79,6 +86,13 @@ The CLI targets endpoints in the `mergeit` backend:
 
 When changing a request/response shape, keep it in sync with the backend
 schemas (`src/api/verify.py`, `src/api/runbook.py` in the mergeit repo).
+
+`aviator login` targets the OAuth server in `src/auth/oauth_server.py`:
+RFC 8414 metadata, RFC 7591 dynamic registration (rate limited, so the
+client_id is registered once per host and cached), PKCE S256, and public
+clients only. Redirect URIs are matched by **exact string**, so the CLI
+registers a fixed set of `http://127.0.0.1:<port>/callback` URIs and binds the
+first free one. Refresh tokens rotate and reuse revokes the whole family.
 
 ## Git workflow
 

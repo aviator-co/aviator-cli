@@ -15,27 +15,23 @@ import (
 	"github.com/aviator-co/aviator-cli/internal/config"
 )
 
-// ErrNoAPIToken is returned when no API token is configured.
-var ErrNoAPIToken = errors.Sentinel(
-	"no Aviator API token configured; set AVIATOR_API_TOKEN or add aviator.apiToken to your config",
-)
-
 // Client talks to the Aviator REST API.
 type Client struct {
-	host  string
-	token string
-	http  *http.Client
+	host   string
+	tokens TokenSource
+	http   *http.Client
 }
 
 // NewClient builds a Client from the loaded configuration.
 func NewClient() (*Client, error) {
-	if config.Av.Aviator.APIToken == "" {
-		return nil, ErrNoAPIToken
+	tokens, err := resolveTokenSource()
+	if err != nil {
+		return nil, err
 	}
 	return &Client{
-		host:  strings.TrimRight(config.Av.Aviator.APIHost, "/"),
-		token: config.Av.Aviator.APIToken,
-		http:  &http.Client{Timeout: 30 * time.Second},
+		host:   strings.TrimRight(config.Av.Aviator.APIHost, "/"),
+		tokens: tokens,
+		http:   &http.Client{Timeout: 30 * time.Second},
 	}, nil
 }
 
@@ -80,6 +76,11 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, out any)
 		reader = bytes.NewReader(payload)
 	}
 
+	token, err := c.tokens.Token(ctx)
+	if err != nil {
+		return err
+	}
+
 	req, err := http.NewRequestWithContext(ctx, method, c.host+path, reader)
 	if err != nil {
 		return errors.Wrap(err, "failed to build request")
@@ -87,7 +88,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, out any)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
