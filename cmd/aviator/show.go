@@ -15,7 +15,7 @@ import (
 // detailFieldsHelp names the server's selectable detail fields for flag help.
 // The server validates --fields and its 400 lists the valid names — it is the
 // source of truth, so nothing is validated client-side.
-const detailFieldsHelp = "steps_markdown, spec_files, runbook_state, acceptance_criteria"
+const detailFieldsHelp = "steps_markdown, spec_files, runbook_state, acceptance_criteria, intent"
 
 var showFlags struct {
 	Fields []string
@@ -84,6 +84,10 @@ func printJSON(v any) error {
 func formatRunbookDetail(d *api.RunbookDetail, includeStepsMarkdown bool) string {
 	var b strings.Builder
 	b.WriteString(formatDetailHeader(d))
+
+	if d.Intent != nil && *d.Intent != "" {
+		fmt.Fprintf(&b, "  Intent: %s\n", *d.Intent)
+	}
 
 	if s := d.RunbookState; s != nil {
 		fmt.Fprintf(&b, "  Branch: %s -> %s\n",
