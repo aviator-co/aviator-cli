@@ -37,9 +37,6 @@ var verifyCmd = &cobra.Command{
 		if verifyFlags.Intent == "" {
 			return errors.New("--intent is required")
 		}
-		if len(verifyFlags.Criteria) > 0 && verifyFlags.CriteriaFile != "" {
-			return errors.New("--criteria and --criteria-file cannot be set together")
-		}
 		criteria, err := collectCriteria(verifyFlags.Criteria, verifyFlags.CriteriaFile)
 		if err != nil {
 			return err
@@ -88,11 +85,10 @@ var verifyCmd = &cobra.Command{
 }
 
 func init() {
+	registerCriteriaFlags(verifyCmd, &verifyFlags.Criteria, &verifyFlags.CriteriaFile)
 	f := verifyCmd.Flags()
 	f.StringVar(&verifyFlags.Repo, "repo", "", "GitHub repo as owner/repo")
 	f.StringVar(&verifyFlags.Intent, "intent", "", "short description of the change to verify")
-	f.StringArrayVar(&verifyFlags.Criteria, "criteria", nil, "acceptance criterion (repeatable)")
-	f.StringVar(&verifyFlags.CriteriaFile, "criteria-file", "", "file with one acceptance criterion per line")
 	f.StringVar(&verifyFlags.WorkingBranch, "working-branch", "", "branch the work lives on (optional)")
 	f.StringVar(&verifyFlags.TargetBranch, "target-branch", "", "base branch to verify against (defaults to the repo default)")
 	f.StringVar(&verifyFlags.Spec, "spec", "", "path to an optional spec file")
