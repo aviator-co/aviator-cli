@@ -1,13 +1,37 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
 )
+
+// parseRunbookID resolves a runbook/verify session ID as displayed to users
+// ("r/123"), a bare number ("123"), or a session URL (".../r/123").
+func parseRunbookID(arg string) (int, error) {
+	s := strings.TrimSpace(arg)
+	if strings.Contains(s, "://") {
+		if i := strings.LastIndex(s, "/r/"); i >= 0 {
+			s = strings.TrimSuffix(s[i+len("/r/"):], "/")
+		}
+	}
+	s = strings.TrimPrefix(s, "r/")
+	n, err := strconv.Atoi(s)
+	if err != nil || n <= 0 {
+		return 0, errors.Errorf("invalid runbook ID %q, expected r/<number>", arg)
+	}
+	return n, nil
+}
+
+// formatRunbookID renders a runbook number in the user-facing r/<number> form.
+func formatRunbookID(runbookNumber int) string {
+	return fmt.Sprintf("r/%d", runbookNumber)
+}
 
 // parseRepo splits an "owner/repo" string into a Repository.
 func parseRepo(s string) (api.Repository, error) {

@@ -48,6 +48,8 @@ func init() {
 	rootCmd.AddCommand(
 		verifyCmd,
 		runbookCmd,
+		showCmd,
+		resultsCmd,
 		versionCmd,
 	)
 }
