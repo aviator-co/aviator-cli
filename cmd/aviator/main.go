@@ -52,6 +52,7 @@ func init() {
 		resultsCmd,
 		editCmd,
 		hooksCmd,
+		initCmd,
 		versionCmd,
 	)
 }
