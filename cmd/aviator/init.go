@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/aviator-co/aviator-cli/internal/adapter"
 	"github.com/aviator-co/aviator-cli/internal/config"
 	"github.com/aviator-co/aviator-cli/internal/git"
+	"github.com/aviator-co/aviator-cli/internal/skill"
 	"github.com/aviator-co/aviator-cli/internal/utils/colors"
 	"github.com/charmbracelet/huh"
 	"github.com/mattn/go-isatty"
@@ -71,6 +73,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 		reportChange(a, change)
+		installSkills(cmd.Context(), a, scope, root)
 	}
 
 	if config.Av.Aviator.APIToken == "" {
@@ -78,6 +81,27 @@ func runInit(cmd *cobra.Command, _ []string) error {
 			colors.Warning("!"))
 	}
 	return nil
+}
+
+// installSkills fetches and installs the Verify guidance skills for an agent
+// that wants them. It's best-effort: a GitHub fetch failure is reported as a
+// warning and never fails init, since the hook is already in place.
+func installSkills(ctx context.Context, a adapter.Adapter, scope adapter.Scope, root string) {
+	dir, want := a.SkillsDir(scope, root)
+	if !want {
+		return
+	}
+	changes, err := skill.Sync(ctx, dir)
+	if err != nil {
+		fmt.Printf("  %s %s: couldn't fetch skills from GitHub (%v); hook is installed\n",
+			colors.Warning("!"), a.DisplayName(), err)
+		return
+	}
+	for name, change := range changes {
+		if change != adapter.ChangeNone {
+			fmt.Printf("  %s skill %q installed\n", colors.Success("✓"), name)
+		}
+	}
 }
 
 // resolveInitScope returns the scope from --scope, or prompts for it when

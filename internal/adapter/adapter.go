@@ -59,6 +59,10 @@ type Adapter interface {
 	// EmitReminder reads a native hook payload from stdin and writes the native
 	// hook response to stdout — the callback the installed hook runs.
 	EmitReminder(stdin io.Reader, stdout io.Writer) error
+	// SkillsDir returns the directory this agent loads skills from at scope, and
+	// whether init should install the Verify guidance skills there. It returns
+	// false when another channel already provides them (e.g. the Claude plugin).
+	SkillsDir(scope Scope, repoRoot string) (dir string, install bool)
 }
 
 // registry holds the built-in adapters in a stable order.

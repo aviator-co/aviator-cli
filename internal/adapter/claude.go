@@ -51,6 +51,45 @@ func claudeSettingsPath(scope Scope, repoRoot string) string {
 	return filepath.Join(repoRoot, ".claude", "settings.json")
 }
 
+// SkillsDir returns where Claude Code loads skills for the given scope. Team
+// scope commits them with the repo; self scope keeps them in the user's home so
+// nothing new lands in the repo. It returns install=false when the aviator
+// plugin already ships the guidance skills, to avoid a redundant second copy.
+func (Claude) SkillsDir(scope Scope, repoRoot string) (string, bool) {
+	if claudePluginProvidesSkills() {
+		return "", false
+	}
+	if scope == ScopeRepoLocal {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", false
+		}
+		return filepath.Join(home, ".claude", "skills"), true
+	}
+	return filepath.Join(repoRoot, ".claude", "skills"), true
+}
+
+// claudePluginProvidesSkills best-effort reports whether the aviator Claude
+// plugin already supplies the guidance skills, so init can skip installing a
+// duplicate. It looks for the plugin's acceptance-criteria skill in the known
+// marketplace/cache locations.
+func claudePluginProvidesSkills() bool {
+	dir := claudeUserDir()
+	if dir == "" {
+		return false
+	}
+	patterns := []string{
+		filepath.Join(dir, "plugins", "marketplaces", "*", "aviator", "skills", "acceptance-criteria", "SKILL.md"),
+		filepath.Join(dir, "plugins", "cache", "*", "aviator", "skills", "acceptance-criteria", "SKILL.md"),
+	}
+	for _, p := range patterns {
+		if m, _ := filepath.Glob(p); len(m) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (Claude) Install(scope Scope, repoRoot string) (Change, error) {
 	return installSettingsHook(claudeSettingsPath(scope, repoRoot), claudeMatcher, claudeCommand)
 }
