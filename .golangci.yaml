@@ -54,3 +54,10 @@ linters:
       - third_party$
       - builtin$
       - examples$
+    rules:
+      # The adapter package is a plugin framework: shared hook helpers take
+      # per-agent matcher/command values that look constant until more agents
+      # are registered, which unparam flags as false positives.
+      - path: internal/adapter/
+        linters:
+          - unparam
