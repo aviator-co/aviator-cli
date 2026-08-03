@@ -31,7 +31,7 @@ var rootCmd = &cobra.Command{
 		HiddenDefaultCmd: true,
 	},
 
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 		repoConfigDir := discoverRepoConfigDir(cmd.Context())
 		if err := config.Load(repoConfigDir); err != nil {
 			return errors.Wrap(err, "failed to load configuration")

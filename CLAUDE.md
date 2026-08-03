@@ -36,7 +36,8 @@ A `justfile` wraps the common Go commands:
 ```bash
 just build         # go build -o aviator ./cmd/aviator
 just test          # go test --vet=all ./...
-just lint          # golangci-lint run (must be installed)
+just lint          # format check + golangci-lint run (must be installed)
+just fmt           # gofumpt + goimports, rewriting in place
 just run -- ...     # go run ./cmd/aviator ...
 just tidy          # go mod tidy
 ```
@@ -61,26 +62,30 @@ Equivalent raw commands: `go build ./...`, `go test --vet=all ./...`,
   handled centrally.
 - **Output**: use `internal/utils/colors` helpers; keep success output to a
   short confirmation line plus a couple of indented details.
-- Code must be `gofmt`-clean and pass `golangci-lint` (config in
+- Code must be `gofumpt`-clean and pass `golangci-lint` (config in
   `.golangci.yaml`). CI (`.github/workflows/go.yml`) runs build, test, smoke
   test, and lint on every PR.
+- gofumpt and goimports are `tool` dependencies in `go.mod`, so `just fmt`, the
+  pre-commit hooks, and CI all run the same pinned binaries via `go tool`, and
+  dependabot's gomod group keeps them current. `.golangci.yaml` intentionally has
+  no `formatters` block: golangci-lint bundles its own older copies of both, and
+  two copies grading the same files is how CI deadlocks.
 
 ## CI and releases
 
 - `.github/workflows/go.yml` — build, test, smoke test, golangci-lint on PRs.
-- `.github/workflows/pre-commit.yml` — goimports, gofumpt, end-of-file-fixer,
-  JSON-schema validation of the workflow files, and zizmor (GitHub Actions
-  security audit, configured by `.github/zizmor.yml`). Run the same set locally
-  with `pre-commit run --all-files`.
+- `.github/workflows/pre-commit.yml` — goimports and gofumpt (both via
+  `go tool`), end-of-file-fixer, JSON-schema validation of the workflow files,
+  and zizmor (GitHub Actions security audit, configured by `.github/zizmor.yml`).
+  Run the same set locally with `pre-commit run --all-files`.
 - `.github/workflows/release.yml` — GoReleaser on tag push (or manual dispatch
   from Aviator's deploy tooling). Builds linux/darwin/windows × amd64/arm64,
   attaches archives + deb/rpm to a GitHub release, and pushes the `aviator`
   formula to `aviator-co/homebrew-tap`.
 - `.github/workflows/nightly-release.yml` — prerelease builds tagged
   `v<version>-nightly`, publishing the `aviator-nightly` formula only.
-- The fury.io deb/rpm publisher is configured in `.goreleaser.yaml` but skips
-  itself until the `FURY_PUSH_TOKEN` secret exists. Keep that template gated
-  when editing.
+- Stable releases publish the deb/rpm packages to fury.io via the
+  `FURY_PUSH_TOKEN` secret; nightlies skip packaging entirely.
 - Both release workflows post start/success/failure to Slack through the local
   `.github/actions/notify-deploy` composite action, using the
   `SLACK_WEBHOOK_PROD_DEPLOY_UPDATES` repo variable. It mirrors mergeit's action

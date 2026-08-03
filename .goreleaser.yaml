@@ -89,10 +89,8 @@ brews:
       generate_completions_from_executable(bin/"aviator", "completion", shells: [:bash, :zsh, :fish])
 
 publishers:
-  # Nightlies never publish packages, and stable releases only do once
-  # FURY_TOKEN is set on the repo.
   - name: fury.io
-    disable: '{{ if eq (index .Env "RELEASE_ENV") "nightly" }}true{{ else if index .Env "FURY_TOKEN" }}false{{ else }}true{{ end }}'
+    disable: '{{ if eq (index .Env "RELEASE_ENV") "nightly" }}true{{ else }}false{{ end }}'
     ids:
       - packages
     dir: "{{ dir .ArtifactPath }}"

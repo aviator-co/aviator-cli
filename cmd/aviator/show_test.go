@@ -11,7 +11,7 @@ func TestParseRunbookID(t *testing.T) {
 	good := map[string]int{
 		"123":                           123,
 		"r/123":                         123,
-		" r/45 ":                        45,
+		" r/45 ":                        45, //nolint:gocritic // the padding is what this case asserts gets trimmed
 		"https://app.aviator.co/r/123":  123,
 		"https://app.aviator.co/r/123/": 123,
 		"https://aviator.co/org/r/9":    9,

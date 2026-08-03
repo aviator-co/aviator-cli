@@ -27,7 +27,7 @@ var verifyCmd = &cobra.Command{
 		"Pass --working-branch to tie it to the branch the work lives on so a PR\n" +
 		"opened from that branch is verified against these criteria.",
 	Args: cobra.NoArgs,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		ctx := cmd.Context()
 
 		repo, err := parseRepo(verifyFlags.Repo)

@@ -75,8 +75,6 @@ jobs:
           GORELEASER_CURRENT_TAG: ${{ steps.create_tag.outputs.release_tag || github.ref_name }}
           AVIATOR_CO_HOMEBREW_REPO_SSH_KEY: ${{ secrets.AVIATOR_CO_HOMEBREW_REPO_SSH_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Empty until the secret is configured; goreleaser skips the fury.io
-          # publisher while it is unset.
           FURY_TOKEN: ${{ secrets.FURY_PUSH_TOKEN }}
 
       - name: Notify release success

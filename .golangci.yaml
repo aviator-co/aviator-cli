@@ -13,12 +13,16 @@ linters:
     - dupword
     - durationcheck
     - errchkjson
+    - errname
     - exhaustive
+    - exptostd
     - fatcontext
     - gocheckcompilerdirectives
     - gochecksumtype
+    - gocritic
     - godot
     - goprintffuncname
+    - gosec
     - iface
     - importas
     - intrange
@@ -31,8 +35,10 @@ linters:
     - predeclared
     - reassign
     - recvcheck
+    - revive
     - thelper
     - unconvert
+    - unparam
     - usestdlibvars
     - usetesting
     - wastedassign
@@ -44,17 +50,6 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
-formatters:
-  enable:
-    - gofmt
-    - gofumpt
-    - goimports
-  exclusions:
-    generated: lax
     paths:
       - third_party$
       - builtin$

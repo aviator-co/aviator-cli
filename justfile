@@ -9,9 +9,22 @@ build:
 test:
     go test --vet=all ./...
 
-# Run golangci-lint (must be installed)
+# Check formatting and run golangci-lint (golangci-lint must be installed)
 lint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unformatted="$(go tool gofumpt -l . ; go tool goimports -l .)"
+    if [ -n "$unformatted" ]; then
+        echo "not formatted, run 'just fmt':"
+        echo "$unformatted"
+        exit 1
+    fi
     golangci-lint run
+
+# Format Go code with gofumpt and goimports
+fmt:
+    go tool gofumpt -w .
+    go tool goimports -w .
 
 # Run the CLI: `just run -- verify --help`
 run *ARGS:
