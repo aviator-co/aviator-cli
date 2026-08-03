@@ -1,0 +1,16 @@
+version: 1.0.0
+merge_rules:
+  labels:
+    trigger: mergequeue
+    skip_line: mergequeue-priority
+    merge_failed: blocked
+  publish_status_check: true
+  preconditions:
+    use_github_mergeability: true
+    conversation_resolution_required: false
+  merge_mode:
+    type: default
+  merge_strategy:
+    name: squash
+  base_branches:
+  - master

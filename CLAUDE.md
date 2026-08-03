@@ -65,6 +65,30 @@ Equivalent raw commands: `go build ./...`, `go test --vet=all ./...`,
   `.golangci.yaml`). CI (`.github/workflows/go.yml`) runs build, test, smoke
   test, and lint on every PR.
 
+## CI and releases
+
+- `.github/workflows/go.yml` — build, test, smoke test, golangci-lint on PRs.
+- `.github/workflows/pre-commit.yml` — goimports, gofumpt, end-of-file-fixer,
+  JSON-schema validation of the workflow files, and zizmor (GitHub Actions
+  security audit, configured by `.github/zizmor.yml`). Run the same set locally
+  with `pre-commit run --all-files`.
+- `.github/workflows/release.yml` — GoReleaser on tag push (or manual dispatch
+  from Aviator's deploy tooling). Builds linux/darwin/windows × amd64/arm64,
+  attaches archives + deb/rpm to a GitHub release, and pushes the `aviator`
+  formula to `aviator-co/homebrew-tap`.
+- `.github/workflows/nightly-release.yml` — prerelease builds tagged
+  `v<version>-nightly`, publishing the `aviator-nightly` formula only.
+- The fury.io deb/rpm publisher is configured in `.goreleaser.yaml` but skips
+  itself until the `FURY_PUSH_TOKEN` secret exists. Keep that template gated
+  when editing.
+- Both release workflows post start/success/failure to Slack through the local
+  `.github/actions/notify-deploy` composite action, using the
+  `SLACK_WEBHOOK_PROD_DEPLOY_UPDATES` repo variable. It mirrors mergeit's action
+  of the same name but is deliberately a separate copy, since mergeit does not
+  share its actions outside that repo.
+- Actions must stay ref-pinned (`actions/checkout@v7`) or hash-pinned with a
+  matching version comment, or zizmor fails the build.
+
 ## Backend contract
 
 The CLI targets endpoints in the `mergeit` backend:

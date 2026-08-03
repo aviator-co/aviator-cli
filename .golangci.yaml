@@ -1,9 +1,61 @@
 version: "2"
 linters:
   enable:
+    - asasalint
+    - asciicheck
+    - bidichk
     - bodyclose
+    - canonicalheader
+    - containedctx
+    - contextcheck
+    - copyloopvar
+    - decorder
+    - dupword
+    - durationcheck
+    - errchkjson
+    - exhaustive
+    - fatcontext
+    - gocheckcompilerdirectives
+    - gochecksumtype
+    - godot
+    - goprintffuncname
+    - iface
+    - importas
+    - intrange
+    - makezero
+    - mirror
     - misspell
+    - noctx
+    - nolintlint
+    - nosprintfhostport
+    - predeclared
+    - reassign
+    - recvcheck
+    - thelper
+    - unconvert
     - usestdlibvars
+    - usetesting
+    - wastedassign
     - whitespace
   exclusions:
     generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

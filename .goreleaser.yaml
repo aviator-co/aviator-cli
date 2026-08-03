@@ -1,0 +1,113 @@
+version: 2
+
+project_name: aviator-cli
+
+git:
+  ignore_tags:
+    - "*-nightly"
+
+builds:
+  - binary: "aviator"
+    dir: "./cmd/aviator"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - "-X 'github.com/aviator-co/aviator-cli/internal/config.Version=v{{ .Version }}'"
+
+# Create a GitHub release on the aviator-cli repo
+release: {}
+
+archives:
+  - name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - "LICENSE"
+      - "README.md"
+
+nfpms:
+  - id: packages
+    vendor: "Aviator"
+    homepage: "https://aviator.co"
+    maintainer: "Ofer Goldstein <ofer@aviator.co>"
+    description: "CLI tool to submit verifications and create runbooks on Aviator."
+    license: "MIT"
+    section: "utils"
+    formats: ["deb", "rpm"]
+    dependencies: ["git"]
+    deb:
+      lintian_overrides:
+        - "statically-linked-binary"
+        - "changelog-file-missing-in-native-package"
+
+# Push to the homebrew tap
+brews:
+  - name: aviator
+    description: "CLI tool to submit verifications and create runbooks on Aviator."
+    skip_upload: '{{ if eq (index .Env "RELEASE_ENV") "nightly" }}true{{ else }}false{{ end }}'
+    repository:
+      owner: "aviator-co"
+      name: "homebrew-tap"
+      git:
+        url: "git@github.com:aviator-co/homebrew-tap.git"
+        private_key: "{{ .Env.AVIATOR_CO_HOMEBREW_REPO_SSH_KEY }}"
+    commit_author:
+      name: "aviator-bot"
+      email: "105820887+aviator-bot@users.noreply.github.com"
+    homepage: "https://aviator.co"
+    license: "MIT"
+    install: |
+      bin.install "aviator"
+      generate_completions_from_executable(bin/"aviator", "completion", shells: [:bash, :zsh, :fish])
+
+  - name: aviator-nightly
+    description: "CLI tool to submit verifications and create runbooks on Aviator (nightly build)."
+    skip_upload: '{{ if eq (index .Env "RELEASE_ENV") "nightly" }}false{{ else }}true{{ end }}'
+    repository:
+      owner: "aviator-co"
+      name: "homebrew-tap"
+      git:
+        url: "git@github.com:aviator-co/homebrew-tap.git"
+        private_key: "{{ .Env.AVIATOR_CO_HOMEBREW_REPO_SSH_KEY }}"
+    commit_author:
+      name: "aviator-bot"
+      email: "105820887+aviator-bot@users.noreply.github.com"
+    homepage: "https://aviator.co"
+    license: "MIT"
+    install: |
+      bin.install "aviator"
+      generate_completions_from_executable(bin/"aviator", "completion", shells: [:bash, :zsh, :fish])
+
+publishers:
+  # Nightlies never publish packages, and stable releases only do once
+  # FURY_TOKEN is set on the repo.
+  - name: fury.io
+    disable: '{{ if eq (index .Env "RELEASE_ENV") "nightly" }}true{{ else if index .Env "FURY_TOKEN" }}false{{ else }}true{{ end }}'
+    ids:
+      - packages
+    dir: "{{ dir .ArtifactPath }}"
+    cmd: curl -F package=@{{ .ArtifactName }} https://{{ .Env.FURY_TOKEN }}@push.fury.io/aviator/
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev-{{ .ShortCommit }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
