@@ -2,7 +2,12 @@
 /aviator
 /dist/
 *.exe
+cmd/aviator/aviator
 
 # Go
 *.test
 *.out
+
+# IDE setups
+.idea/
+.claude/

@@ -1,0 +1,35 @@
+repos:
+  - repo: local
+    hooks:
+      # Versions come from the tool directive in go.mod, so these are the same
+      # binaries `just fmt` and `just lint` use. golangci-lint deliberately has
+      # no formatters block; a second copy there would drift from these.
+      - id: goimports
+        name: goimports
+        files: ".+.go$"
+        language: system
+        entry: sh -c 'go tool goimports -w .'
+      - id: gofumpt
+        name: gofumpt
+        files: ".+.go$"
+        language: system
+        entry: sh -c 'go tool gofumpt -l -w .'
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: no-commit-to-branch
+        args: ['--branch', 'master']
+
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.37.4
+    hooks:
+      - id: check-dependabot
+      - id: check-github-actions
+      - id: check-github-workflows
+
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.29.0
+    hooks:
+      - id: zizmor

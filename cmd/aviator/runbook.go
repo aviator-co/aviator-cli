@@ -25,7 +25,7 @@ var runbookCmd = &cobra.Command{
 	Use:   "runbook",
 	Short: "Create a runbook from an intent and an optional spec",
 	Args:  cobra.NoArgs,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		ctx := cmd.Context()
 
 		repo, err := parseRepo(runbookFlags.Repo)

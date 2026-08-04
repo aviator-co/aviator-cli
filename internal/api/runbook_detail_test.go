@@ -108,7 +108,7 @@ func TestGetRunbookDetailRawBody(t *testing.T) {
 	// A field the client structs don't model must survive verbatim in the raw
 	// body returned alongside the decoded struct.
 	const body = `{"runbook_number": 5, "url": "u", "runbook_version": 1, "future_field": "kept"}`
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(body))
 	}))
 	defer srv.Close()
@@ -130,7 +130,7 @@ func TestGetRunbookDetailVerificationPresence(t *testing.T) {
 	// absent key.
 	const body = `{"runbook_number": 5, "url": "u", "runbook_version": 1,
 		"acceptance_criteria": null, "latest_verification": null}`
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(body))
 	}))
 	defer srv.Close()

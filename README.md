@@ -5,9 +5,20 @@ over the Aviator REST API.
 
 ## Install
 
+With Homebrew:
+
+```bash
+brew install aviator-co/tap/aviator
+```
+
+With Go:
+
 ```bash
 go install github.com/aviator-co/aviator-cli/cmd/aviator@latest
 ```
+
+Binaries for Linux, macOS, and Windows are also attached to every
+[release](https://github.com/aviator-co/aviator-cli/releases).
 
 ## Configuration
 
@@ -56,3 +67,11 @@ aviator runbook \
   --prompt "Migrate the settings page to the new design system" \
   --oneshot
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for development and release setup.
+
+## License
+
+[MIT](./LICENSE)
