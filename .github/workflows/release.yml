@@ -26,6 +26,15 @@ jobs:
     permissions:
       contents: "write"
     steps:
+      # Checkout has to come first: the notify-deploy steps below are a local
+      # action, so anything failing before this point reports nothing to Slack.
+      # fetch-depth 0 also brings tags, which goreleaser needs.
+      - name: checkout
+        uses: actions/checkout@v7
+        with:
+          ref: "${{ inputs.aviator_release_cut_commit_hash || github.ref }}"
+          fetch-depth: 0
+          persist-credentials: false
       - uses: fjogeleit/http-request-action@551353b829c3646756b2ec2b3694f819d7957495 # v2.0.0
         if: github.event_name == 'workflow_dispatch' && inputs.aviator_deployment_id != ''
         with:
@@ -33,14 +42,6 @@ jobs:
           method: 'POST'
           bearerToken: ${{ secrets.AVIATOR_API_TOKEN }}
           data: '{"deployment_id": "${{ inputs.aviator_deployment_id }}", "workflow_run_id": "${{ github.run_id }}"}'
-      - name: checkout
-        uses: actions/checkout@v7
-        with:
-          ref: "${{ inputs.aviator_release_cut_commit_hash || github.ref }}"
-          fetch-depth: 0
-          persist-credentials: false
-      - name: fetch tags
-        run: git fetch --force --tags
       - name: create release tag
         id: create_tag
         if: github.event_name == 'workflow_dispatch' && inputs.aviator_release_candidate_version != ''
