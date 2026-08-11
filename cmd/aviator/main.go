@@ -51,6 +51,8 @@ func init() {
 		showCmd,
 		resultsCmd,
 		editCmd,
+		hooksCmd,
+		initCmd,
 		versionCmd,
 	)
 }
