@@ -18,9 +18,17 @@ func TestIsPRCommand(t *testing.T) {
 		{"gh -R owner/repo pr create", true},
 		{"av pr", true},
 		{"av pr --force", true},
+		{"av pr --all", true},
 		{"cd sub && gh pr create", true},
 		{"GH_TOKEN=x gh pr create", true},
 		{"git push && av pr && echo done", true},
+
+		// Stacks aren't av-specific, so Graphite's submit family counts too.
+		{"gt submit", true},
+		{"gt submit --stack", true},
+		{"gt ss", true},
+		{"gt stack submit", true},
+		{"gt branch submit", true},
 
 		{"gh pr list", false},
 		{"gh pr view 12", false},
@@ -28,6 +36,13 @@ func TestIsPRCommand(t *testing.T) {
 		{"av prune", false},
 		{"nav prod", false},
 		{"git push", false},
+
+		// Pushes and syncs move commits without opening a PR; reminding there
+		// would fire on most of a stacked workflow.
+		{"av sync", false},
+		{"gt sync", false},
+		{"gt ssh-thing", false},
+		{"gt log", false},
 	}
 	for _, tt := range tests {
 		if got := isPRCommand(tt.cmd); got != tt.want {
@@ -75,6 +90,31 @@ func TestSessionStartCarriesTheStandingInstruction(t *testing.T) {
 	}
 	if !strings.Contains(text, "run /plugin install aviator") {
 		t.Errorf("instruction does not carry the agent's install hint: %q", text)
+	}
+}
+
+// Agents kept submitting one session for a whole stack, which the backend
+// refuses, so the standing instruction has to spell out the one-per-PR rule.
+func TestSessionStartStatesOneSessionPerPR(t *testing.T) {
+	var out bytes.Buffer
+	if err := emitSessionStart(&out, "run /plugin install aviator"); err != nil {
+		t.Fatal(err)
+	}
+	_, text := contextOf(t, out.String())
+	for _, want := range []string{"exactly one PR", "3 submissions"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("instruction missing %q: %q", want, text)
+		}
+	}
+}
+
+// Resubmitting on a branch that already has a session leaves two sessions
+// claiming it, which breaks auto-linking, so the reminder points at edit.
+func TestReminderPointsAtEditForAnExistingSession(t *testing.T) {
+	for _, want := range []string{"aviator edit", "auto-linking"} {
+		if !strings.Contains(reminderText, want) {
+			t.Errorf("reminder missing %q: %q", want, reminderText)
+		}
 	}
 }
 
