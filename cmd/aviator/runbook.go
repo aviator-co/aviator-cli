@@ -19,12 +19,18 @@ var runbookFlags struct {
 	Criteria     []string
 	CriteriaFile string
 	AuthorEmail  string
+	JSON         bool
 }
 
 var runbookCmd = &cobra.Command{
 	Use:   "runbook",
 	Short: "Create a runbook from an intent and an optional spec",
-	Args:  cobra.NoArgs,
+	Long: "Create a runbook from an intent and an optional spec. Aviator's agent\n" +
+		"implements the spec and opens its own pull request with the result.\n" +
+		"\n" +
+		"This is not the command for code you wrote yourself. To have your own PR\n" +
+		"checked against acceptance criteria, use `aviator verify` instead.",
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		ctx := cmd.Context()
 
@@ -67,6 +73,10 @@ var runbookCmd = &cobra.Command{
 			return err
 		}
 
+		if runbookFlags.JSON {
+			return printJSON(newRunbookCreateJSON(resp, len(criteria)))
+		}
+
 		fmt.Printf("%s Runbook created: %s\n", colors.Success("✓"), resp.URL)
 		fmt.Printf("  Runbook #%d\n", resp.RunbookNumber)
 		if resp.Status != "" {
@@ -89,6 +99,28 @@ func init() {
 	f.StringVar(&runbookFlags.TargetBranch, "target-branch", "", "base branch for the runbook (defaults to repo default)")
 	f.StringVar(&runbookFlags.Spec, "spec", "", "path to an optional spec file")
 	f.StringVar(&runbookFlags.AuthorEmail, "author-email", "", "attribute the runbook to this user")
+	f.BoolVar(&runbookFlags.JSON, "json", false, "print the new runbook as a single JSON object instead of the human summary")
 	_ = runbookCmd.MarkFlagRequired("repo")
 	_ = runbookCmd.MarkFlagRequired("intent")
+}
+
+// runbookCreateJSON is the --json shape of a new runbook. It is its own struct
+// rather than the raw response so the keys callers parse stay put as the
+// response grows.
+type runbookCreateJSON struct {
+	RunbookNumber int    `json:"runbook_number"`
+	RunbookID     string `json:"runbook_id"`
+	URL           string `json:"url"`
+	Status        string `json:"status"`
+	CriteriaCount int    `json:"criteria_count"`
+}
+
+func newRunbookCreateJSON(resp *api.CreateRunbookResponse, criteriaCount int) runbookCreateJSON {
+	return runbookCreateJSON{
+		RunbookNumber: resp.RunbookNumber,
+		RunbookID:     formatRunbookID(resp.RunbookNumber),
+		URL:           resp.URL,
+		Status:        resp.Status,
+		CriteriaCount: criteriaCount,
+	}
 }

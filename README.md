@@ -42,6 +42,13 @@ Environment variables override the config file:
 
 ## Usage
 
+Two commands, two different jobs:
+
+- `aviator verify`: you wrote the code, Aviator verifies the PR against your
+  acceptance criteria.
+- `aviator runbook`: Aviator's agent writes the code from your spec and opens
+  its own PR.
+
 ### Submit for verification
 
 ```bash
@@ -57,15 +64,43 @@ aviator verify \
 
 `--criteria` is repeatable; alternatively pass `--criteria-file` (one criterion
 per line, `#` comments ignored). `--working-branch`, `--target-branch`, and
-`--spec` are optional.
+`--spec` are optional, though without `--working-branch` the session can only
+bind to a PR through a `Runbook: <url>` line in the PR body.
+
+One verify session tracks exactly one PR. Stacked or multi-PR work needs one
+submission per PR, each with its own `--working-branch`, intent, and criteria.
+To update the criteria on a session that already exists, use `aviator edit`
+rather than submitting the branch again.
+
+Pass `--json` to print the submission as a single JSON object
+(`runbook_number`, `runbook_id`, `url`, `working_branch`, `target_branch`,
+`criteria_count`) instead of the human summary.
 
 ### Create a runbook
+
+Aviator's agent implements the spec and opens its own PR. For code you wrote
+yourself, use `aviator verify` instead.
 
 ```bash
 aviator runbook \
   --repo acme/web \
-  --prompt "Migrate the settings page to the new design system" \
-  --oneshot
+  --intent "Migrate the settings page to the new design system" \
+  --spec ./spec.md \
+  --criteria "Settings page renders with the new components" \
+  --target-branch main
+```
+
+`--intent` is required; `--title`, `--spec`, `--criteria`/`--criteria-file`,
+`--target-branch`, and `--author-email` are optional. `--oneshot` is on by
+default. `--json` prints `runbook_number`, `runbook_id`, `url`, `status`, and
+`criteria_count` as a single JSON object.
+
+### Inspect a session
+
+```bash
+aviator show r/123            # session summary
+aviator results r/123         # latest verification results
+aviator edit r/123 --expected-version 4 --criteria "..."
 ```
 
 ## Contributing
