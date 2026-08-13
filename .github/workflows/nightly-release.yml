@@ -19,6 +19,7 @@ on:
 jobs:
   nightly:
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: "write"
     steps:
@@ -50,7 +51,7 @@ jobs:
       - name: Notify release start
         uses: ./.github/actions/notify-deploy
         with:
-          webhook_url: ${{ vars.SLACK_WEBHOOK_PROD_DEPLOY_UPDATES }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_PROD_DEPLOY_UPDATES }}
           state: start
           subject: "aviator CLI nightly release"
           version: "v${{ inputs.aviator_release_candidate_version }}-nightly"
@@ -75,7 +76,7 @@ jobs:
       - name: Notify release success
         uses: ./.github/actions/notify-deploy
         with:
-          webhook_url: ${{ vars.SLACK_WEBHOOK_PROD_DEPLOY_UPDATES }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_PROD_DEPLOY_UPDATES }}
           state: success
           subject: "aviator CLI nightly release"
           version: "v${{ inputs.aviator_release_candidate_version }}-nightly"
@@ -84,7 +85,7 @@ jobs:
         if: ${{ !success() }}
         uses: ./.github/actions/notify-deploy
         with:
-          webhook_url: ${{ vars.SLACK_WEBHOOK_PROD_DEPLOY_UPDATES }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_PROD_DEPLOY_UPDATES }}
           state: failure
           subject: "aviator CLI nightly release"
           version: "v${{ inputs.aviator_release_candidate_version }}-nightly"
