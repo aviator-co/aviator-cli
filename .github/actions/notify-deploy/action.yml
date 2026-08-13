@@ -21,7 +21,7 @@ inputs:
     required: false
     default: "false"
   webhook_url:
-    description: "Slack incoming-webhook URL. Pass the vars.SLACK_WEBHOOK_PROD_DEPLOY_UPDATES expression from the caller."
+    description: "Slack incoming-webhook URL. Pass the secrets.SLACK_WEBHOOK_PROD_DEPLOY_UPDATES expression from the caller."
     required: true
 
 runs:
@@ -83,6 +83,10 @@ runs:
           blocks: [{ type: "section", text: { type: "mrkdwn", text: $body } }]
         }')
 
-        curl -sS -X POST -H 'Content-type: application/json' \
+        if ! curl --fail --silent --show-error \
+          --connect-timeout 5 --max-time 15 \
+          -X POST -H 'Content-type: application/json' \
           --data-binary "$PAYLOAD" \
-          "$WEBHOOK_URL"
+          "$WEBHOOK_URL"; then
+          echo "::warning::Slack notification failed"
+        fi
