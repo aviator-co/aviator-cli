@@ -39,6 +39,21 @@ var hooksSessionStartCmd = &cobra.Command{
 	},
 }
 
+var hooksPostToolUseCmd = &cobra.Command{
+	Use:               "post-tool-use",
+	Short:             "Emit the post-commit Verify directive (invoked by the installed hook)",
+	Hidden:            true,
+	Args:              cobra.NoArgs,
+	PersistentPreRunE: noSetup,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		a, err := resolveAgent()
+		if err != nil {
+			return err
+		}
+		return a.EmitPostToolUse(cmd.InOrStdin(), cmd.OutOrStdout())
+	},
+}
+
 var hooksPreToolUseCmd = &cobra.Command{
 	Use:               "pre-tool-use",
 	Short:             "Emit the pre-PR reminder for an agent (invoked by the installed hook)",
@@ -128,10 +143,10 @@ func parseScope(s string) (adapter.Scope, error) {
 }
 
 func init() {
-	for _, c := range []*cobra.Command{hooksSessionStartCmd, hooksPreToolUseCmd} {
+	for _, c := range []*cobra.Command{hooksSessionStartCmd, hooksPostToolUseCmd, hooksPreToolUseCmd} {
 		c.Flags().StringVar(&hooksFlags.Agent, "agent", "", "agent id (e.g. claude)")
 	}
 	hooksUninstallCmd.Flags().StringVar(&hooksFlags.Scope, "scope", "",
 		"team or self; both are cleared if omitted")
-	hooksCmd.AddCommand(hooksSessionStartCmd, hooksPreToolUseCmd, hooksUninstallCmd)
+	hooksCmd.AddCommand(hooksSessionStartCmd, hooksPostToolUseCmd, hooksPreToolUseCmd, hooksUninstallCmd)
 }

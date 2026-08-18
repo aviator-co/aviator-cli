@@ -51,6 +51,46 @@ func TestIsPRCommand(t *testing.T) {
 	}
 }
 
+func TestIsCommitCommand(t *testing.T) {
+	tests := []struct {
+		cmd  string
+		want bool
+	}{
+		{"git commit -m 'x'", true},
+		{"git commit --amend --no-edit", true},
+		{"git -C /repo commit -m x", true},
+		{"git add -A && git commit -m x", true},
+		{"av commit -m x", true},
+		{"av commit --amend", true},
+		{"gt create -m x", true},
+		{"gt modify", true},
+		{"gt c", true},
+		{"gt m", true},
+		{"gt commit create -m x", true},
+		{"gt commit amend", true},
+		{"gt branch create x", true},
+		{"gt cc -m x", true},
+		{"gt ca", true},
+		{"gt bc x", true},
+		{"gt absorb", true},
+		{"gt ab", true},
+
+		{"git log --oneline", false},
+		{"git push", false},
+		{"gh pr create", false},
+		{"av sync", false},
+		{"git status; echo commit", false},
+		{"gt config", false},
+		{"gt checkout main", false},
+		{"gt branch delete x", false},
+	}
+	for _, tt := range tests {
+		if got := isCommitCommand(tt.cmd); got != tt.want {
+			t.Errorf("isCommitCommand(%q) = %v, want %v", tt.cmd, got, tt.want)
+		}
+	}
+}
+
 func contextOf(t *testing.T, out string) (event, text string) {
 	t.Helper()
 	var resp struct {
@@ -72,6 +112,19 @@ func emitPre(t *testing.T, payload string) string {
 		t.Fatal(err)
 	}
 	return out.String()
+}
+
+func emitPost(t *testing.T, payload string) string {
+	t.Helper()
+	var out bytes.Buffer
+	if err := emitPostToolUse(strings.NewReader(payload), &out); err != nil {
+		t.Fatal(err)
+	}
+	return out.String()
+}
+
+func commitPayload(command string) string {
+	return `{"tool_name":"Bash","tool_input":{"command":"` + command + `"}}`
 }
 
 // SessionStart is the only point we reach the agent before a PR command, since
@@ -108,13 +161,64 @@ func TestSessionStartStatesOneSessionPerPR(t *testing.T) {
 	}
 }
 
-// Resubmitting on a branch that already has a session leaves two sessions
-// claiming it, which breaks auto-linking, so the reminder points at edit.
-func TestReminderPointsAtEditForAnExistingSession(t *testing.T) {
-	for _, want := range []string{"aviator edit", "auto-linking"} {
+// Agents kept opening the PR first, so the ask moved to the commit, and asks
+// for a task item because that outlives the turn it is read in.
+func TestCommitAsksForATaskItem(t *testing.T) {
+	event, text := contextOf(t, emitPost(t, commitPayload("git commit -m x")))
+	if event != "PostToolUse" {
+		t.Errorf("hookEventName = %q, want PostToolUse", event)
+	}
+	for _, want := range []string{
+		"task list",
+		`"run /verify-submit before opening a PR"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("directive missing %q: %q", want, text)
+		}
+	}
+}
+
+// It follows every commit, so a branch that already has a session has to be
+// able to stop at the first sentence rather than submit a second time.
+func TestCommitTextExcusesAnExistingSession(t *testing.T) {
+	first, _, _ := strings.Cut(commitText, ".")
+	for _, want := range []string{"already has a Verify session", "nothing to do"} {
+		if !strings.Contains(first, want) {
+			t.Errorf("first sentence missing %q: %q", want, first)
+		}
+	}
+}
+
+// Anything else must produce no output, or the hook would inject noise after
+// every shell command an agent runs.
+func TestPostToolUseStaysSilent(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+	}{
+		{"unrelated command", commitPayload("go test ./...")},
+		{"non-shell tool", `{"tool_name":"Read","tool_input":{"command":"git commit"}}`},
+		{"missing tool_input", `{"tool_name":"Bash"}`},
+		{"unparseable", `not json`},
+		{"empty", ``},
+	}
+	for _, tt := range tests {
+		if got := emitPost(t, tt.payload); got != "" {
+			t.Errorf("%s: emitted %q, want no output", tt.name, got)
+		}
+	}
+}
+
+// By the PR call the agent has usually submitted, so an unconditional "submit
+// now" here is what puts two sessions on one branch.
+func TestReminderIsConditionalRemediation(t *testing.T) {
+	for _, want := range []string{"Runbook:", "/verify-submit", "refreshes its criteria"} {
 		if !strings.Contains(reminderText, want) {
 			t.Errorf("reminder missing %q: %q", want, reminderText)
 		}
+	}
+	if strings.Contains(reminderText, "aviator edit") {
+		t.Errorf("reminder points at an edit the agent can't perform: %q", reminderText)
 	}
 }
 

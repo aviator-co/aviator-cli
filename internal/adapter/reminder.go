@@ -32,15 +32,25 @@ var prCommands = []*regexp.Regexp{
 // mcpPRTool matches the GitHub MCP server's PR call, whatever the server is named.
 var mcpPRTool = regexp.MustCompile(`^mcp__.*__create_pull_request$`)
 
-// reminderText backs up the session instruction at the PR call. Claude and Codex
-// deliver PreToolUse context next to the tool result, so by the time this is read
-// the PR command has run; the wording holds either way.
-const reminderText = "This PR needs its intent and acceptance criteria in Aviator Verify. " +
-	"Run /verify-submit now, while the context of the change is still live. " +
-	"One verify session tracks exactly one PR. If this branch already has a session, refresh " +
-	"its acceptance criteria with `aviator edit` instead of submitting again: a second " +
-	"submission for the same branch creates a duplicate session and breaks PR auto-linking " +
-	"for that branch."
+var commitCommands = []*regexp.Regexp{
+	regexp.MustCompile(`\bgit\b[^;&|]*\bcommit\b`),
+	regexp.MustCompile(`\bav\s+commit\b`),
+	regexp.MustCompile(`\bgt\s+(create|modify|absorb|cc|ca|bc|ab|c|m)\b`),
+	regexp.MustCompile(`\bgt\s+(commit|branch)\s+(create|amend)\b`),
+}
+
+const commitText = "If this branch already has a Verify session, there is nothing to do here; " +
+	"keep its criteria current as the work moves. Otherwise add \"run /verify-submit before " +
+	"opening a PR\" to your task list now: the intent and acceptance criteria have to be " +
+	"written while the reasoning is live, and the `Runbook:` URL it returns belongs in the " +
+	"PR body at creation, not as a later edit."
+
+// reminderText is delivered beside the tool result, once the PR command has
+// already run, so it asks for a repair rather than for the submission.
+const reminderText = "If this PR's body does not open with a `Runbook:` line, it is not linked " +
+	"to an Aviator Verify session. Run /verify-submit now and put the line in the body; the " +
+	"linking webhook fires on that edit, not on pushes. If the branch already has a session, " +
+	"the same command refreshes its criteria rather than creating a second one."
 
 // sessionText is the standing instruction. SessionStart delivers it before the
 // first prompt, which is the only point we can reach the agent ahead of a PR.
@@ -56,7 +66,15 @@ func sessionText(howToInstall string) string {
 }
 
 func isPRCommand(cmd string) bool {
-	for _, re := range prCommands {
+	return matchesAny(prCommands, cmd)
+}
+
+func isCommitCommand(cmd string) bool {
+	return matchesAny(commitCommands, cmd)
+}
+
+func matchesAny(res []*regexp.Regexp, cmd string) bool {
+	for _, re := range res {
 		if re.MatchString(cmd) {
 			return true
 		}
@@ -70,27 +88,50 @@ func emitSessionStart(stdout io.Writer, howToInstall string) error {
 	return emitContext(stdout, "SessionStart", sessionText(howToInstall))
 }
 
+type hookInput struct {
+	ToolName  string `json:"tool_name"`
+	ToolInput struct {
+		Command string `json:"command"`
+	} `json:"tool_input"`
+}
+
+// readPayload returns the zero value for an unparseable payload, whose empty
+// tool name matches nothing, so callers turn it into silence themselves.
+func readPayload(stdin io.Reader) (hookInput, error) {
+	data, err := io.ReadAll(stdin)
+	if err != nil {
+		return hookInput{}, err
+	}
+	var in hookInput
+	if err := json.Unmarshal(data, &in); err != nil {
+		return hookInput{}, nil
+	}
+	return in, nil
+}
+
 // emitPreToolUse injects the reminder when the call opens a PR. It fails open:
 // anything unparseable or unrelated produces no output, so the tool proceeds.
 func emitPreToolUse(stdin io.Reader, stdout io.Writer) error {
-	data, err := io.ReadAll(stdin)
+	in, err := readPayload(stdin)
 	if err != nil {
 		return err
-	}
-	var in struct {
-		ToolName  string `json:"tool_name"`
-		ToolInput struct {
-			Command string `json:"command"`
-		} `json:"tool_input"`
-	}
-	if err := json.Unmarshal(data, &in); err != nil {
-		return nil
 	}
 	shellPR := in.ToolName == shellToolName && isPRCommand(in.ToolInput.Command)
 	if !shellPR && !mcpPRTool.MatchString(in.ToolName) {
 		return nil
 	}
 	return emitContext(stdout, "PreToolUse", reminderText)
+}
+
+func emitPostToolUse(stdin io.Reader, stdout io.Writer) error {
+	in, err := readPayload(stdin)
+	if err != nil {
+		return err
+	}
+	if in.ToolName != shellToolName || !isCommitCommand(in.ToolInput.Command) {
+		return nil
+	}
+	return emitContext(stdout, "PostToolUse", commitText)
 }
 
 func emitContext(stdout io.Writer, event, text string) error {
