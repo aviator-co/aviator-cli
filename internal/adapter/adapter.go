@@ -36,6 +36,9 @@ type Adapter interface {
 	// EmitSessionStart writes the standing instruction, tailored to how this
 	// agent gets /verify-submit.
 	EmitSessionStart(stdout io.Writer) error
+	// EmitPostToolUse reads a native hook payload from stdin and writes the
+	// native response to stdout when the call lands a commit.
+	EmitPostToolUse(stdin io.Reader, stdout io.Writer) error
 	// EmitPreToolUse reads a native hook payload from stdin and writes the
 	// native response to stdout when the call opens a PR.
 	EmitPreToolUse(stdin io.Reader, stdout io.Writer) error

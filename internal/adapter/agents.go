@@ -90,6 +90,10 @@ func (a settingsAgent) EmitSessionStart(stdout io.Writer) error {
 	return emitSessionStart(stdout, a.install)
 }
 
+func (a settingsAgent) EmitPostToolUse(stdin io.Reader, stdout io.Writer) error {
+	return emitPostToolUse(stdin, stdout)
+}
+
 func (a settingsAgent) EmitPreToolUse(stdin io.Reader, stdout io.Writer) error {
 	return emitPreToolUse(stdin, stdout)
 }

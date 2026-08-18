@@ -14,11 +14,12 @@ import (
 // callback decides which commands actually open a PR.
 const toolMatcher = `Bash|mcp__.*__create_pull_request`
 
-// hookEvents are the events we install into. SessionStart delivers the standing
-// instruction before the first prompt; PreToolUse catches the PR call itself.
-// Each gets its own subcommand so the settings file says what it does.
+// hookEvents are the events we install into, in the order an agent meets them:
+// the standing instruction, then a commit, then the PR call itself. Each gets
+// its own subcommand so the settings file says what it does.
 var hookEvents = []hookEvent{
 	{name: "SessionStart", subcommand: "session-start"},
+	{name: "PostToolUse", matcher: shellToolName, subcommand: "post-tool-use"},
 	{name: "PreToolUse", matcher: toolMatcher, subcommand: "pre-tool-use"},
 }
 
