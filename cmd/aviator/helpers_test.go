@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/aviator-co/aviator-cli/internal/config"
 )
 
 func TestParseRepo(t *testing.T) {
@@ -65,5 +67,32 @@ func TestCollectCriteria(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("got %v, want %v", got, want)
 		}
+	}
+}
+
+// TestStaticTokenDescription covers the warning that names the credential which
+// would shadow a fresh sign-in, which has to tell the two sources apart.
+func TestStaticTokenDescription(t *testing.T) {
+	previous := config.Av.Aviator
+	t.Cleanup(func() { config.Av.Aviator = previous })
+
+	tests := []struct {
+		name    string
+		value   string
+		fromEnv bool
+		want    string
+	}{
+		{"no static token", "", false, ""},
+		{"config file", "abc", false, "the aviator.apiToken setting in your config file"},
+		{"environment", "abc", true, "the AVIATOR_API_TOKEN environment variable"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config.Av.Aviator.APIToken = tt.value
+			config.Av.Aviator.APITokenFromEnv = tt.fromEnv
+			if got := staticTokenDescription(); got != tt.want {
+				t.Fatalf("staticTokenDescription() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

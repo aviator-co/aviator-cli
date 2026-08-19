@@ -20,6 +20,30 @@ go install github.com/aviator-co/aviator-cli/cmd/aviator@latest
 Binaries for Linux, macOS, and Windows are also attached to every
 [release](https://github.com/aviator-co/aviator-cli/releases).
 
+## Authentication
+
+Sign in through your browser:
+
+```bash
+aviator login
+```
+
+This runs an OAuth authorization-code flow with PKCE, briefly listening on a
+loopback port for the browser to be redirected back to, and stores the session
+in your OS keychain, refreshing it automatically. `aviator logout` removes the
+stored session; Aviator has no token revocation endpoint, so a token that was
+already issued stays valid until it expires.
+
+For CI and other headless environments, set a static API token instead:
+
+```bash
+export AVIATOR_API_TOKEN=<your-api-token>
+```
+
+Credentials are used in this order: `AVIATOR_API_TOKEN`, then
+`aviator.apiToken` from the config file, then the keychain session from
+`aviator login`.
+
 ## Configuration
 
 The CLI reads configuration from (first match wins):
@@ -32,7 +56,7 @@ The CLI reads configuration from (first match wins):
 ```yaml
 aviator:
   apiHost: https://api.aviator.co   # override for on-prem
-  apiToken: <your-api-token>
+  apiToken: <your-api-token>        # optional; prefer `aviator login`
 ```
 
 Environment variables override the config file:

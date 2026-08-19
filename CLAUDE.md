@@ -16,13 +16,20 @@ Module: `github.com/aviator-co/aviator-cli` · Go 1.26.
 ```
 cmd/aviator/        # CLI entry point + commands (one file per command)
   main.go           # root command, PersistentPreRunE (config load), run()
+  login.go          # `aviator login`   -> browser OAuth flow
+  logout.go         # `aviator logout`  -> drop the stored session
   verify.go         # `aviator verify`  -> POST /api/v1/verify
   runbook.go        # `aviator runbook` -> POST /api/v1/runbook
+  show.go           # `aviator show`    -> runbook detail
+  results.go        # `aviator results` -> runbook step results
+  edit.go           # `aviator edit`    -> PATCH acceptance criteria
   version.go        # `aviator version`
   helpers.go        # parseRepo, readSpecFile, collectCriteria
 internal/
   config/           # viper config load + version
   api/              # thin REST client (client.go) + per-resource methods
+    credentials.go  # token source resolution (static token vs OAuth session)
+  auth/             # OAuth login, keychain token store, refreshing TokenSource
   utils/colors/     # terminal color helpers
 ```
 
@@ -60,6 +67,10 @@ Equivalent raw commands: `go build ./...`, `go test --vet=all ./...`,
   own file with a request/response struct pair and a method on `*Client`; reuse
   `Client.postJSON`. Bearer auth + the `{error, message}` error envelope are
   handled centrally.
+- **Credentials**: `internal/auth` owns the OAuth flow and the keychain; the
+  API client only sees a `TokenSource`. Precedence is `AVIATOR_API_TOKEN`, then
+  the config file's `apiToken`, then the keychain session from `aviator login`.
+  Tokens are never written to files.
 - **Output**: use `internal/utils/colors` helpers; keep success output to a
   short confirmation line plus a couple of indented details.
 - Code must be `gofumpt`-clean and pass `golangci-lint` (config in
@@ -108,6 +119,21 @@ The CLI targets endpoints in the `mergeit` backend:
 
 When changing a request/response shape, keep it in sync with the backend
 schemas (`src/api/verify.py`, `src/api/runbook.py` in the mergeit repo).
+
+`aviator login` runs an RFC 8414 discovery and an
+authorization-code-with-PKCE-S256 flow against the Aviator OAuth server. The
+CLI is a first-party public client: its `client_id` is the constant `clientID`
+in `internal/auth/session.go`, it holds no client secret, and it registers
+nothing at runtime. The callback listens on an ephemeral loopback port and the
+redirect URI is built from it, which the server matches per RFC 8252 — it must
+be `http://`, the literal `127.0.0.1`, path exactly `/callback`, and carry no
+query or fragment.
+
+Sessions live in the OS keychain, keyed per API host, and are never written to
+disk. The access token is refreshed once it expires. Refresh tokens rotate and
+the server revokes the whole family if one is reused, so refreshes are
+serialized across concurrent invocations with a file lock
+(`internal/auth/lock.go`).
 
 ## Git workflow
 
