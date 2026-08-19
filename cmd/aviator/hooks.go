@@ -11,8 +11,9 @@ import (
 )
 
 var hooksFlags struct {
-	Agent string
-	Scope string
+	Agent  string
+	Agents string
+	Scope  string
 }
 
 var hooksCmd = &cobra.Command{
@@ -66,6 +67,42 @@ var hooksPreToolUseCmd = &cobra.Command{
 			return err
 		}
 		return a.EmitPreToolUse(cmd.InOrStdin(), cmd.OutOrStdout())
+	},
+}
+
+// hooksInstallCmd is `aviator init` without the questions.
+var hooksInstallCmd = &cobra.Command{
+	Use:   "install",
+	Short: "Install the pre-PR reminder hooks",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		root, err := git.RepoRoot(cmd.Context())
+		if err != nil {
+			return err
+		}
+		if hooksFlags.Scope == "" {
+			return errors.New("pass --scope team|self")
+		}
+		scope, err := parseScope(hooksFlags.Scope)
+		if err != nil {
+			return err
+		}
+		agents := defaultAgents(scope)
+		if hooksFlags.Agents != "" {
+			if agents, err = agentsFromFlag(hooksFlags.Agents); err != nil {
+				return err
+			}
+		}
+		if len(agents) == 0 {
+			fmt.Println("No agents to set up.")
+			return nil
+		}
+		written, err := installAgents(agents, scope, root)
+		if err != nil {
+			return err
+		}
+		printScopeNote(scope, written)
+		return nil
 	},
 }
 
@@ -146,7 +183,12 @@ func init() {
 	for _, c := range []*cobra.Command{hooksSessionStartCmd, hooksPostToolUseCmd, hooksPreToolUseCmd} {
 		c.Flags().StringVar(&hooksFlags.Agent, "agent", "", "agent id (e.g. claude)")
 	}
+	hooksInstallCmd.Flags().StringVar(&hooksFlags.Scope, "scope", "",
+		"team (committed to this repo) or self (your config, every repo)")
+	hooksInstallCmd.Flags().StringVar(&hooksFlags.Agents, "agents", "",
+		"comma-separated agent ids (default: all supported for team, detected for self)")
 	hooksUninstallCmd.Flags().StringVar(&hooksFlags.Scope, "scope", "",
 		"team or self; both are cleared if omitted")
-	hooksCmd.AddCommand(hooksSessionStartCmd, hooksPostToolUseCmd, hooksPreToolUseCmd, hooksUninstallCmd)
+	hooksCmd.AddCommand(hooksSessionStartCmd, hooksPostToolUseCmd, hooksPreToolUseCmd,
+		hooksInstallCmd, hooksUninstallCmd)
 }

@@ -59,6 +59,19 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	}
 
 	fmt.Println()
+	written, err := installAgents(agents, scope, root)
+	if err != nil {
+		return err
+	}
+
+	printScopeNote(scope, written)
+	printPluginNote()
+	printAuthNote()
+	return nil
+}
+
+// installAgents writes each agent's hook and reports the files it touched.
+func installAgents(agents []adapter.Adapter, scope adapter.Scope, root string) ([]string, error) {
 	var written []string
 	for _, a := range agents {
 		path := a.HookFile(scope, root)
@@ -69,7 +82,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		}
 		change, err := a.Install(scope, root)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		written = append(written, displayPath(root, path))
 		fmt.Printf("%s %s hook — %s%s\n",
@@ -78,11 +91,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 			fmt.Printf("  %s %s\n", colors.Faint("·"), note)
 		}
 	}
-
-	printScopeNote(scope, written)
-	printPluginNote()
-	printAuthNote()
-	return nil
+	return written, nil
 }
 
 // gatherChoices resolves scope and agents. Supplied flags win; the form only
@@ -107,7 +116,7 @@ func gatherChoices() ([]adapter.Adapter, adapter.Scope, error) {
 	}
 
 	if initFlags.Agents != "" {
-		agents, err := agentsFromFlag()
+		agents, err := agentsFromFlag(initFlags.Agents)
 		return agents, scope, err
 	}
 	if !ask {
@@ -199,9 +208,9 @@ func defaultAgents(scope adapter.Scope) []adapter.Adapter {
 	return adapter.Detected()
 }
 
-func agentsFromFlag() ([]adapter.Adapter, error) {
+func agentsFromFlag(list string) ([]adapter.Adapter, error) {
 	var out []adapter.Adapter
-	for id := range strings.SplitSeq(initFlags.Agents, ",") {
+	for id := range strings.SplitSeq(list, ",") {
 		a := adapter.Find(strings.TrimSpace(id))
 		if a == nil {
 			return nil, errors.Errorf("unknown agent %q", id)
