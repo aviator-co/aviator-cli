@@ -215,6 +215,104 @@ func TestOwnershipStopsAtTheAgentID(t *testing.T) {
 	}
 }
 
+// Ownership is the mark on the command, not the events we install into today.
+func TestUninstallRemovesAHookFromARetiredEvent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	stale := `{"hooks": {"Stop": [{"hooks": [
+	  {"type": "command", "command": "aviator hooks legacy-thing --agent=claude"}
+	]}]}}`
+	if err := os.WriteFile(path, []byte(stale), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	change, err := uninstallSettingsHook(path, "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if change != ChangeRemoved {
+		t.Fatalf("change = %v, want ChangeRemoved", change)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		data, _ := os.ReadFile(path)
+		t.Errorf("the retired hook outlived uninstall: %s", data)
+	}
+}
+
+// A hand-edit or a merge leaves a second copy, and the one left behind fires.
+func TestUninstallRemovesEveryCopy(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	twice := `{"hooks": {"PostToolUse": [
+	  {"matcher": "Bash", "hooks": [{"type": "command", "command": "` +
+		callbackCommand("claude", "post-tool-use") + `"}]},
+	  {"matcher": "Bash|Write", "hooks": [
+	    {"type": "command", "command": "mylint"},
+	    {"type": "command", "command": "` + callbackCommand("claude", "post-tool-use") + `"}
+	  ]}
+	]}}`
+	if err := os.WriteFile(path, []byte(twice), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := uninstallSettingsHook(path, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	groups := groupsFor(t, path, "PostToolUse")
+	if len(groups) != 1 {
+		t.Fatalf("got %d groups, want 1 (the user's mylint group alone)", len(groups))
+	}
+	hooks := hooksOf(groups[0])
+	if len(hooks) != 1 || commandOf(hooks[0]) != "mylint" {
+		t.Errorf("uninstall left %v", hooks)
+	}
+}
+
+func TestInstallDropsADuplicate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	twice := `{"hooks": {"PostToolUse": [
+	  {"matcher": "Bash", "hooks": [{"type": "command", "command": "` +
+		callbackCommand("claude", "post-tool-use") + `"}]},
+	  {"matcher": "Edit", "hooks": [{"type": "command", "command": "` +
+		callbackCommand("claude", "post-tool-use") + `"}]}
+	]}}`
+	if err := os.WriteFile(path, []byte(twice), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	change, err := installSettingsHook(path, "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if change != ChangeUpdated {
+		t.Fatalf("change = %v, want ChangeUpdated", change)
+	}
+	groups := groupsFor(t, path, "PostToolUse")
+	if len(groups) != 1 {
+		t.Fatalf("got %d PostToolUse groups, want 1", len(groups))
+	}
+	if m := groups[0].(map[string]any)["matcher"]; m != shellToolName {
+		t.Errorf("the surviving copy sits under matcher %v, want %q", m, shellToolName)
+	}
+}
+
+// An event we can't read is one we never wrote to, so it holds nothing of ours.
+func TestInstallToleratesAnUnreadableForeignEvent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	odd := `{"hooks": {"Notification": "beep"}}`
+	if err := os.WriteFile(path, []byte(odd), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := installSettingsHook(path, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	if got := readJSON(t, path)["hooks"].(map[string]any)["Notification"]; got != "beep" {
+		t.Errorf("Notification = %v, want it passed through untouched", got)
+	}
+	if len(groupsFor(t, path, "PostToolUse")) != 1 {
+		t.Error("install skipped an event it owns")
+	}
+}
+
 func TestUninstallRemovesAFileItEmptied(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	if _, err := installSettingsHook(path, "claude"); err != nil {

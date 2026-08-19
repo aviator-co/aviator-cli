@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"emperror.dev/errors"
@@ -47,18 +48,28 @@ func callbackCommand(agent, subcommand string) string {
 		" --agent=" + agent + " || true"
 }
 
-// ownsCommand reports whether cmd is one of our callbacks for agentID. The id
-// must end at a boundary, or --agent=claude would claim --agent=claude-custom.
-func ownsCommand(cmd, agentID string) bool {
-	if !strings.Contains(cmd, "aviator hooks ") {
-		return false
-	}
-	marker := "--agent=" + agentID
-	_, rest, found := strings.Cut(cmd, marker)
+// ourCommand reports whether cmd is one of our callbacks for agentID, and which
+// subcommand it calls. The id must end at a boundary, or --agent=claude would
+// claim --agent=claude-custom.
+func ourCommand(cmd, agentID string) (subcommand string, ours bool) {
+	_, rest, found := strings.Cut(cmd, "aviator hooks ")
 	if !found {
-		return false
+		return "", false
 	}
-	return rest == "" || !isAgentIDChar(rest[0])
+	_, after, found := strings.Cut(rest, "--agent="+agentID)
+	if !found || (after != "" && isAgentIDChar(after[0])) {
+		return "", false
+	}
+	sub, _, _ := strings.Cut(rest, " ")
+	if strings.HasPrefix(sub, "-") {
+		return "", true
+	}
+	return sub, true
+}
+
+func ownsCommand(cmd, agentID string) bool {
+	_, ours := ourCommand(cmd, agentID)
+	return ours
 }
 
 func isAgentIDChar(b byte) bool {
@@ -84,35 +95,62 @@ func marshalNoHTML(v any) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
-// installSettingsHook writes our hook into every event in hookEvents, leaving
-// every other key, event, group, and hook untouched.
+type ourHook struct {
+	event      string
+	group, idx int
+	matcher    string
+	subcommand string
+	command    string
+}
+
+// installSettingsHook mends the entries of ours already in place, drops every
+// other entry of ours, and appends what is missing. Nothing outside our own
+// entries is added, changed, or removed.
 func installSettingsHook(path, agentID string) (Change, error) {
 	top, events, err := readSettings(path)
 	if err != nil {
 		return ChangeNone, err
 	}
+	found, err := ourHooks(events, agentID)
+	if err != nil {
+		return ChangeNone, err
+	}
 
-	had, changed := false, false
+	claimed := make([]bool, len(found))
+	missing := make([]hookEvent, 0, len(hookEvents))
+	changed := false
 	for _, ev := range hookEvents {
-		groups, err := eventGroups(events, ev.name)
-		if err != nil {
-			return ChangeNone, err
-		}
-		gi, hi, err := ownedHook(groups, agentID)
-		if err != nil {
-			return ChangeNone, err
-		}
-		if gi >= 0 {
-			had = true
-		}
-		next, c, err := reconcile(groups, gi, hi, ev, agentID)
-		if err != nil {
-			return ChangeNone, err
-		}
-		if c == ChangeNone {
+		i := claimFor(found, claimed, ev)
+		if i < 0 {
+			missing = append(missing, ev)
 			continue
 		}
-		if err := setEventGroups(events, ev.name, next); err != nil {
+		claimed[i] = true
+		desired := callbackCommand(agentID, ev.subcommand)
+		if found[i].command == desired {
+			continue
+		}
+		if err := setHookCommand(events, found[i], desired); err != nil {
+			return ChangeNone, err
+		}
+		changed = true
+	}
+
+	var stale []ourHook
+	for i, h := range found {
+		if !claimed[i] {
+			stale = append(stale, h)
+		}
+	}
+	if len(stale) > 0 {
+		if err := removeAll(events, stale); err != nil {
+			return ChangeNone, err
+		}
+		changed = true
+	}
+
+	for _, ev := range missing {
+		if err := appendGroup(events, ev, agentID); err != nil {
 			return ChangeNone, err
 		}
 		changed = true
@@ -121,54 +159,11 @@ func installSettingsHook(path, agentID string) (Change, error) {
 	switch {
 	case !changed:
 		return ChangeNone, nil
-	case had:
+	case len(found) > 0:
 		return ChangeUpdated, writeSettings(path, top, events)
 	default:
 		return ChangeAdded, writeSettings(path, top, events)
 	}
-}
-
-// reconcile brings one event's groups in line with what we'd write now.
-func reconcile(groups []json.RawMessage, gi, hi int, ev hookEvent, agentID string) ([]json.RawMessage, Change, error) {
-	// A hook under the wrong matcher can never fire, so lift it out and let the
-	// append below put it where it does.
-	moved := false
-	if gi >= 0 && groupMatcher(groups[gi]) != ev.matcher {
-		var err error
-		if groups, err = removeHook(groups, gi, hi); err != nil {
-			return nil, ChangeNone, err
-		}
-		gi, moved = -1, true
-	}
-
-	if gi < 0 {
-		group, err := marshalNoHTML(desiredGroup(ev, agentID))
-		if err != nil {
-			return nil, ChangeNone, err
-		}
-		change := ChangeAdded
-		if moved {
-			change = ChangeUpdated
-		}
-		return append(groups, group), change, nil
-	}
-
-	hooks, err := groupHooks(groups[gi])
-	if err != nil {
-		return nil, ChangeNone, err
-	}
-	desired, err := marshalNoHTML(cmdHook{Type: "command", Command: callbackCommand(agentID, ev.subcommand)})
-	if err != nil {
-		return nil, ChangeNone, err
-	}
-	if bytes.Equal(canonical(hooks[hi]), canonical(desired)) {
-		return groups, ChangeNone, nil
-	}
-	hooks[hi] = desired
-	if groups[gi], err = setGroupHooks(groups[gi], hooks); err != nil {
-		return nil, ChangeNone, err
-	}
-	return groups, ChangeUpdated, nil
 }
 
 func uninstallSettingsHook(path, agentID string) (Change, error) {
@@ -176,54 +171,155 @@ func uninstallSettingsHook(path, agentID string) (Change, error) {
 	if err != nil {
 		return ChangeNone, err
 	}
-
-	removed := false
-	for _, ev := range hookEvents {
-		groups, err := eventGroups(events, ev.name)
-		if err != nil {
-			return ChangeNone, err
-		}
-		gi, hi, err := ownedHook(groups, agentID)
-		if err != nil {
-			return ChangeNone, err
-		}
-		if gi < 0 {
-			continue
-		}
-		if groups, err = removeHook(groups, gi, hi); err != nil {
-			return ChangeNone, err
-		}
-		if err := setEventGroups(events, ev.name, groups); err != nil {
-			return ChangeNone, err
-		}
-		removed = true
+	found, err := ourHooks(events, agentID)
+	if err != nil {
+		return ChangeNone, err
 	}
-	if !removed {
+	if len(found) == 0 {
 		return ChangeNone, nil
+	}
+	if err := removeAll(events, found); err != nil {
+		return ChangeNone, err
 	}
 	return ChangeRemoved, writeSettings(path, top, events)
 }
 
-// ownedHook locates our entry as (group index, index within that group's hooks),
-// or -1, -1. We own a single cmdHook, never the group it sits in — a user may
-// have put their own hooks alongside ours.
-func ownedHook(groups []json.RawMessage, agentID string) (int, int, error) {
-	for gi, raw := range groups {
-		hooks, err := groupHooks(raw)
+// claimFor picks the entry already serving ev, so install leaves a hook in
+// whatever group the user filed it in. A hook under the wrong event or matcher
+// can never fire, so it goes unclaimed and install replaces it.
+func claimFor(found []ourHook, claimed []bool, ev hookEvent) int {
+	for i, h := range found {
+		if claimed[i] {
+			continue
+		}
+		if h.event == ev.name && h.matcher == ev.matcher && h.subcommand == ev.subcommand {
+			return i
+		}
+	}
+	return -1
+}
+
+// ourHooks walks the whole hooks section rather than hookEvents, so a hook left
+// behind by a version that installed somewhere we no longer do is still found.
+func ourHooks(events map[string]json.RawMessage, agentID string) ([]ourHook, error) {
+	names := make([]string, 0, len(events))
+	for name := range events {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var found []ourHook
+	for _, name := range names {
+		hooks, err := scanEvent(events, name, agentID)
 		if err != nil {
-			return 0, 0, err
+			// An event we write into has to be readable; an unreadable one we
+			// never touch holds nothing of ours anyway.
+			if !installsInto(name) {
+				continue
+			}
+			return nil, err
+		}
+		found = append(found, hooks...)
+	}
+	return found, nil
+}
+
+func scanEvent(events map[string]json.RawMessage, name, agentID string) ([]ourHook, error) {
+	groups, err := eventGroups(events, name)
+	if err != nil {
+		return nil, err
+	}
+	var found []ourHook
+	for gi, group := range groups {
+		hooks, err := groupHooks(group)
+		if err != nil {
+			return nil, err
 		}
 		for hi, raw := range hooks {
 			var h cmdHook
 			if err := json.Unmarshal(raw, &h); err != nil {
-				return 0, 0, errors.Wrap(err, "malformed hook entry")
+				return nil, errors.Wrap(err, "malformed hook entry")
 			}
-			if ownsCommand(h.Command, agentID) {
-				return gi, hi, nil
+			sub, ours := ourCommand(h.Command, agentID)
+			if !ours {
+				continue
 			}
+			found = append(found, ourHook{
+				event: name, group: gi, idx: hi,
+				matcher: groupMatcher(group), subcommand: sub, command: h.Command,
+			})
 		}
 	}
-	return -1, -1, nil
+	return found, nil
+}
+
+func installsInto(event string) bool {
+	for _, ev := range hookEvents {
+		if ev.name == event {
+			return true
+		}
+	}
+	return false
+}
+
+func setHookCommand(events map[string]json.RawMessage, h ourHook, command string) error {
+	groups, err := eventGroups(events, h.event)
+	if err != nil {
+		return err
+	}
+	hooks, err := groupHooks(groups[h.group])
+	if err != nil {
+		return err
+	}
+	if hooks[h.idx], err = marshalNoHTML(cmdHook{Type: "command", Command: command}); err != nil {
+		return err
+	}
+	if groups[h.group], err = setGroupHooks(groups[h.group], hooks); err != nil {
+		return err
+	}
+	return setEventGroups(events, h.event, groups)
+}
+
+func appendGroup(events map[string]json.RawMessage, ev hookEvent, agentID string) error {
+	groups, err := eventGroups(events, ev.name)
+	if err != nil {
+		return err
+	}
+	group, err := marshalNoHTML(desiredGroup(ev, agentID))
+	if err != nil {
+		return err
+	}
+	return setEventGroups(events, ev.name, append(groups, group))
+}
+
+// removeAll works backwards through each event so the indices recorded for the
+// earlier entries survive the lists shrinking.
+func removeAll(events map[string]json.RawMessage, hooks []ourHook) error {
+	byEvent := map[string][]ourHook{}
+	for _, h := range hooks {
+		byEvent[h.event] = append(byEvent[h.event], h)
+	}
+	for name, list := range byEvent {
+		groups, err := eventGroups(events, name)
+		if err != nil {
+			return err
+		}
+		sort.Slice(list, func(i, j int) bool {
+			if list[i].group != list[j].group {
+				return list[i].group > list[j].group
+			}
+			return list[i].idx > list[j].idx
+		})
+		for _, h := range list {
+			if groups, err = removeHook(groups, h.group, h.idx); err != nil {
+				return err
+			}
+		}
+		if err := setEventGroups(events, name, groups); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // removeHook drops one hook from a group, dropping the group once it empties.
@@ -396,17 +492,4 @@ func writeFileAtomic(path string, data []byte) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
-}
-
-// canonical normalises key order and whitespace before comparing.
-func canonical(raw json.RawMessage) []byte {
-	var v any
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return raw
-	}
-	out, err := json.Marshal(v)
-	if err != nil {
-		return raw
-	}
-	return out
 }
