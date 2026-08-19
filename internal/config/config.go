@@ -17,6 +17,10 @@ type Aviator struct {
 	APIHost string
 	// APIToken authenticates to the Aviator API.
 	APIToken string
+	// APITokenFromEnv reports that APIToken came from AVIATOR_API_TOKEN rather
+	// than from a config file. A static token takes precedence over an OAuth
+	// session, so commands use this to name the credential that wins.
+	APITokenFromEnv bool `mapstructure:"-"`
 }
 
 // Aviator is the loaded global configuration.
@@ -82,6 +86,7 @@ func loadFromFile(repoConfigDir string) error {
 func loadFromEnv() {
 	if token := os.Getenv("AVIATOR_API_TOKEN"); token != "" {
 		Av.Aviator.APIToken = token
+		Av.Aviator.APITokenFromEnv = true
 	}
 	if host := os.Getenv("AVIATOR_API_HOST"); host != "" {
 		Av.Aviator.APIHost = host
