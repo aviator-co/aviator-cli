@@ -11,17 +11,18 @@ import (
 )
 
 var verifyFlags struct {
-	Repo          string
-	Intent        string
-	Criteria      []string
-	CriteriaFile  string
-	WorkingBranch string
-	TargetBranch  string
-	Spec          string
-	AuthorEmail   string
-	EvaluatorOnly bool
-	Force         bool
-	JSON          bool
+	Repo           string
+	Intent         string
+	Criteria       []string
+	CriteriaFile   string
+	WorkingBranch  string
+	TargetBranch   string
+	Spec           string
+	AuthorEmail    string
+	EvaluatorOnly  bool
+	Force          bool
+	RegenScenarios bool
+	JSON           bool
 }
 
 // verifySubmitOnlyFlags are meaningless when triggering a run on an existing
@@ -31,7 +32,7 @@ var verifySubmitOnlyFlags = []string{
 	"working-branch", "target-branch", "spec", "author-email",
 }
 
-var verifyTriggerOnlyFlags = []string{"evaluator-only", "force"}
+var verifyTriggerOnlyFlags = []string{"evaluator-only", "force", "regen-scenarios"}
 
 // noWorkingBranchWarning covers the one thing a submission gives up without
 // --working-branch: with no branch to match on, the session can only reach a PR
@@ -60,7 +61,14 @@ var verifyCmd = &cobra.Command{
 		"or --evaluator-only to re-judge the evidence an earlier run already\n" +
 		"collected instead of collecting it again — the cheap path after a\n" +
 		"criteria edit; it falls back to a full run when there is nothing to\n" +
-		"re-judge.",
+		"re-judge.\n" +
+		"\n" +
+		"The browser interaction scenarios are planned once per session, from the\n" +
+		"criteria as they stood at the first run. If you have edited the criteria\n" +
+		"to demand interactions that frozen plan never performs, pass\n" +
+		"--regen-scenarios to re-plan them from the current criteria before\n" +
+		"collecting; it implies a fresh full run and bypasses deduplication like\n" +
+		"--force.",
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 1 {
@@ -154,6 +162,11 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 		}
 	}
 
+	if verifyFlags.RegenScenarios && verifyFlags.EvaluatorOnly {
+		return errors.New(
+			"--regen-scenarios collects fresh evidence, so it cannot be combined with --evaluator-only")
+	}
+
 	runbookNumber, err := parseRunbookID(arg)
 	if err != nil {
 		return err
@@ -163,8 +176,9 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 		return err
 	}
 	resp, err := client.TriggerVerifyRun(cmd.Context(), runbookNumber, api.TriggerVerifyRunRequest{
-		EvaluatorOnly: verifyFlags.EvaluatorOnly,
-		Force:         verifyFlags.Force,
+		EvaluatorOnly:       verifyFlags.EvaluatorOnly,
+		Force:               verifyFlags.Force,
+		RegenerateScenarios: verifyFlags.RegenScenarios,
 	})
 	if err != nil {
 		return err
@@ -202,6 +216,8 @@ func init() {
 		"re-judge the evidence an earlier run collected instead of collecting it again (trigger mode only)")
 	f.BoolVar(&verifyFlags.Force, "force", false,
 		"start a fresh full run even if an equivalent run already exists (trigger mode only)")
+	f.BoolVar(&verifyFlags.RegenScenarios, "regen-scenarios", false,
+		"re-plan the browser interaction scenarios from the current criteria before collecting; implies a fresh full run (trigger mode only)")
 	f.BoolVar(&verifyFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 }
 
