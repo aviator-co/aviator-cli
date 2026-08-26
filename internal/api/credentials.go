@@ -30,6 +30,12 @@ type staticToken string
 
 func (t staticToken) Token(context.Context) (string, error) { return string(t), nil }
 
+// HasCredentials reports whether any Aviator credentials are available.
+func HasCredentials() bool {
+	_, err := resolveTokenSource()
+	return err == nil
+}
+
 // resolveTokenSource picks credentials in precedence order: a statically
 // configured token (environment or config file) first, then the stored OAuth
 // session.

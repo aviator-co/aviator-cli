@@ -5,6 +5,7 @@ import (
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/adapter"
+	"github.com/aviator-co/aviator-cli/internal/api"
 	"github.com/aviator-co/aviator-cli/internal/git"
 	"github.com/aviator-co/aviator-cli/internal/utils/colors"
 	"github.com/spf13/cobra"
@@ -21,22 +22,23 @@ var hooksCmd = &cobra.Command{
 	Short: "Manage the Aviator Verify pre-PR reminder hooks for AI agents",
 }
 
-// Both callbacks run inside an agent's loop and need neither config nor the
-// repo, so they skip the root command's loading.
+// The tool-use callbacks run inside an agent's loop and need neither config nor
+// the repo, so they skip the root command's loading. session-start keeps it: it
+// reports whether the user is signed in, which needs the configured host and
+// any statically configured token.
 var noSetup = func(*cobra.Command, []string) error { return nil }
 
 var hooksSessionStartCmd = &cobra.Command{
-	Use:               "session-start",
-	Short:             "Emit the standing Verify instruction (invoked by the installed hook)",
-	Hidden:            true,
-	Args:              cobra.NoArgs,
-	PersistentPreRunE: noSetup,
+	Use:    "session-start",
+	Short:  "Emit the standing Verify instruction (invoked by the installed hook)",
+	Hidden: true,
+	Args:   cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		a, err := resolveAgent()
 		if err != nil {
 			return err
 		}
-		return a.EmitSessionStart(cmd.OutOrStdout())
+		return a.EmitSessionStart(cmd.OutOrStdout(), api.HasCredentials())
 	},
 }
 
@@ -101,7 +103,7 @@ var hooksInstallCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		printScopeNote(scope, written)
+		printScopeNote(scope, written, agents)
 		return nil
 	},
 }

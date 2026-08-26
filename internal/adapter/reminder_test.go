@@ -131,7 +131,7 @@ func commitPayload(command string) string {
 // PreToolUse context is delivered next to the tool result.
 func TestSessionStartCarriesTheStandingInstruction(t *testing.T) {
 	var out bytes.Buffer
-	if err := emitSessionStart(&out, "run /plugin install aviator"); err != nil {
+	if err := emitSessionStart(&out, "run /plugin install aviator", true); err != nil {
 		t.Fatal(err)
 	}
 	event, text := contextOf(t, out.String())
@@ -150,7 +150,7 @@ func TestSessionStartCarriesTheStandingInstruction(t *testing.T) {
 // refuses, so the standing instruction has to spell out the one-per-PR rule.
 func TestSessionStartStatesOneSessionPerPR(t *testing.T) {
 	var out bytes.Buffer
-	if err := emitSessionStart(&out, "run /plugin install aviator"); err != nil {
+	if err := emitSessionStart(&out, "run /plugin install aviator", true); err != nil {
 		t.Fatal(err)
 	}
 	_, text := contextOf(t, out.String())
@@ -228,7 +228,7 @@ func TestSessionStartIsAgentSpecific(t *testing.T) {
 	texts := map[string]string{}
 	for _, a := range All() {
 		var out bytes.Buffer
-		if err := a.EmitSessionStart(&out); err != nil {
+		if err := a.EmitSessionStart(&out, true); err != nil {
 			t.Fatal(err)
 		}
 		_, text := contextOf(t, out.String())

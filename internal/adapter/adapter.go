@@ -34,8 +34,8 @@ type Adapter interface {
 	// Uninstall removes only our hook entry, leaving other config intact.
 	Uninstall(scope Scope, repoRoot string) (Change, error)
 	// EmitSessionStart writes the standing instruction, tailored to how this
-	// agent gets /verify-submit.
-	EmitSessionStart(stdout io.Writer) error
+	// agent gets /verify-submit, and asks for a sign-in when signedIn is false.
+	EmitSessionStart(stdout io.Writer, signedIn bool) error
 	// EmitPostToolUse reads a native hook payload from stdin and writes the
 	// native response to stdout when the call lands a commit.
 	EmitPostToolUse(stdin io.Reader, stdout io.Writer) error
