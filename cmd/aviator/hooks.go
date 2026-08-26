@@ -101,7 +101,7 @@ var hooksInstallCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		printScopeNote(scope, written)
+		printScopeNote(scope, written, agents)
 		return nil
 	},
 }

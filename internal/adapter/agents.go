@@ -35,7 +35,7 @@ var registry = []Adapter{
 		userEnv: "CODEX_HOME", userDir: ".codex",
 		repoFile: ".codex/hooks.json",
 		userFile: "hooks.json",
-		note:     "run /hooks in Codex and trust it — Codex won't fire an untrusted hook",
+		note:     "run /hooks and trust it — Codex won't fire an untrusted hook",
 		install: "install the verify-submit skill from " +
 			"https://github.com/aviator-co/agent-plugins into your Codex skills directory.",
 	},

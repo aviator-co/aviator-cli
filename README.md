@@ -8,6 +8,7 @@ over the Aviator REST API.
 With Homebrew:
 
 ```bash
+brew trust aviator-co/tap  # Homebrew 6+ only loads trusted third-party taps
 brew install aviator-co/tap/aviator
 ```
 
