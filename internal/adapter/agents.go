@@ -86,8 +86,8 @@ func (a settingsAgent) Uninstall(scope Scope, repoRoot string) (Change, error) {
 	return uninstallSettingsHook(a.HookFile(scope, repoRoot), a.id)
 }
 
-func (a settingsAgent) EmitSessionStart(stdout io.Writer) error {
-	return emitSessionStart(stdout, a.install)
+func (a settingsAgent) EmitSessionStart(stdout io.Writer, signedIn bool) error {
+	return emitSessionStart(stdout, a.install, signedIn)
 }
 
 func (a settingsAgent) EmitPostToolUse(stdin io.Reader, stdout io.Writer) error {
