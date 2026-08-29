@@ -18,7 +18,6 @@ var verifyFlags struct {
 	WorkingBranch string
 	TargetBranch  string
 	Spec          string
-	AuthorEmail   string
 	JSON          bool
 }
 
@@ -78,7 +77,6 @@ var verifyCmd = &cobra.Command{
 			WorkingBranch:      verifyFlags.WorkingBranch,
 			TargetBranch:       verifyFlags.TargetBranch,
 			SpecFile:           spec,
-			AuthorEmail:        verifyFlags.AuthorEmail,
 		})
 		if err != nil {
 			return err
@@ -113,7 +111,6 @@ func init() {
 	f.StringVar(&verifyFlags.WorkingBranch, "working-branch", "", "branch the work lives on (optional)")
 	f.StringVar(&verifyFlags.TargetBranch, "target-branch", "", "base branch to verify against (defaults to the repo default)")
 	f.StringVar(&verifyFlags.Spec, "spec", "", "path to an optional spec file")
-	f.StringVar(&verifyFlags.AuthorEmail, "author-email", "", "attribute the submission to this user")
 	f.BoolVar(&verifyFlags.JSON, "json", false, "print the submission as a single JSON object instead of the human summary")
 	_ = verifyCmd.MarkFlagRequired("repo")
 	_ = verifyCmd.MarkFlagRequired("intent")

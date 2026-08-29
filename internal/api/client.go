@@ -160,6 +160,11 @@ func (c *Client) statusError(status int, data []byte) error {
 	if status == http.StatusUnauthorized {
 		msg += "; " + c.reauthHint()
 	}
+	// Account-scoped tokens have no owner, so endpoints that act as the caller
+	// reject them. That is a configured credential, not an expired one.
+	if _, ok := c.tokens.(refresher); status == http.StatusForbidden && !ok {
+		msg += "; run `aviator login` to act as yourself"
+	}
 	return errors.Errorf("aviator API error (%d): %s", status, msg)
 }
 

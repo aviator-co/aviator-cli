@@ -12,10 +12,9 @@ const shellToolName = "Bash"
 // stays readable and a new tool is one line rather than another alternation.
 //
 // Matching is deliberately loose. A false positive costs one reminder the agent
-// ignores; a missed PR is the failure the hook exists to prevent. What it must
-// not do is fire often: pushes and syncs (git push, av sync, gt sync) precede a
-// PR but recur throughout a stacked workflow, and a reminder on every one of
-// them burns tokens and trains the agent to skim past the text.
+// ignores; a missed PR is the failure the hook exists to prevent. Pushes stay
+// out: they precede a PR without opening one, so they belong to the criteria
+// reminder below rather than to the one about the PR body.
 //
 // The word boundaries carry the weight: they are what keeps `av prune` and
 // `gt ssh` out, which plain substring search would let through.
@@ -32,25 +31,29 @@ var prCommands = []*regexp.Regexp{
 // mcpPRTool matches the GitHub MCP server's PR call, whatever the server is named.
 var mcpPRTool = regexp.MustCompile(`^mcp__.*__create_pull_request$`)
 
-var commitCommands = []*regexp.Regexp{
+// commitOrPushCommands matches commits and pushes, after which criteria
+// written earlier may no longer match the code.
+var commitOrPushCommands = []*regexp.Regexp{
 	regexp.MustCompile(`\bgit\b[^;&|]*\bcommit\b`),
-	regexp.MustCompile(`\bav\s+commit\b`),
+	regexp.MustCompile(`\bgit\b[^;&|]*\bpush\b`),
+	regexp.MustCompile(`\bav\s+(commit|sync)\b`),
 	regexp.MustCompile(`\bgt\s+(create|modify|absorb|cc|ca|bc|ab|c|m)\b`),
 	regexp.MustCompile(`\bgt\s+(commit|branch)\s+(create|amend)\b`),
 }
 
-const commitText = "If this branch already has a Verify session, there is nothing to do here; " +
-	"keep its criteria current as the work moves. Otherwise add \"run /verify-submit before " +
-	"opening a PR\" to your task list now: the intent and acceptance criteria have to be " +
-	"written while the reasoning is live, and the `Runbook:` URL it returns belongs in the " +
-	"PR body at creation, not as a later edit."
+// commitOrPushText follows every commit and push, so it stays short and has
+// the agent look the session up instead of guessing at one.
+const commitOrPushText = "Verify: does this branch have a session? Check with " +
+	"`aviator sessions --repo <owner/repo> --branch <branch>`. If it has one, update its " +
+	"criteria to match the code. If it doesn't, add \"run /verify-submit before opening a " +
+	"PR\" to your task list."
 
 // reminderText is delivered beside the tool result, once the PR command has
 // already run, so it asks for a repair rather than for the submission.
-const reminderText = "If this PR's body does not open with a `Runbook:` line, it is not linked " +
-	"to an Aviator Verify session. Run /verify-submit now and put the line in the body; the " +
-	"linking webhook fires on that edit, not on pushes. If the branch already has a session, " +
-	"the same command refreshes its criteria rather than creating a second one."
+const reminderText = "Verify: a PR links to its session by a `Runbook: <url>` line at the top " +
+	"of the body, not by pushing the branch. Find the session with " +
+	"`aviator sessions --repo <owner/repo> --branch <branch>`, or run /verify-submit if the " +
+	"branch doesn't have one yet."
 
 // signInText is appended when the machine has no Aviator credentials, since an
 // agent that reaches /verify-submit without them only finds out when the
@@ -83,8 +86,8 @@ func isPRCommand(cmd string) bool {
 	return matchesAny(prCommands, cmd)
 }
 
-func isCommitCommand(cmd string) bool {
-	return matchesAny(commitCommands, cmd)
+func isCommitOrPushCommand(cmd string) bool {
+	return matchesAny(commitOrPushCommands, cmd)
 }
 
 func matchesAny(res []*regexp.Regexp, cmd string) bool {
@@ -146,10 +149,10 @@ func emitPostToolUse(stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if in.ToolName != shellToolName || !isCommitCommand(in.ToolInput.Command) {
+	if in.ToolName != shellToolName || !isCommitOrPushCommand(in.ToolInput.Command) {
 		return nil
 	}
-	return emitContext(stdout, "PostToolUse", commitText)
+	return emitContext(stdout, "PostToolUse", commitOrPushText)
 }
 
 func emitContext(stdout io.Writer, event, text string) error {
