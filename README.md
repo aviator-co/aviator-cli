@@ -95,7 +95,8 @@ bind to a PR through a `Runbook: <url>` line in the PR body.
 One verify session tracks exactly one PR. Stacked or multi-PR work needs one
 submission per PR, each with its own `--working-branch`, intent, and criteria.
 To update the criteria on a session that already exists, use `aviator edit`
-rather than submitting the branch again.
+rather than submitting the branch again. `aviator sessions` says whether a
+branch already has one.
 
 Pass `--json` to print the submission as a single JSON object
 (`runbook_number`, `runbook_id`, `url`, `working_branch`, `target_branch`,
@@ -119,6 +120,30 @@ aviator runbook \
 `--target-branch`, and `--author-email` are optional. `--oneshot` is on by
 default. `--json` prints `runbook_number`, `runbook_id`, `url`, `status`, and
 `criteria_count` as a single JSON object.
+
+### Find a session
+
+```bash
+aviator sessions --repo acme/web                            # active sessions, newest first
+aviator sessions --repo acme/web --branch feature/banner    # sessions on one branch
+aviator sessions --repo acme/web --pr 1201                  # sessions linked to one PR
+```
+
+```
+ID    BRANCH          PRS
+r/42  feature/banner  #1201
+```
+
+Run it before `aviator verify` to see whether a branch already has a session.
+Submitting the same branch again creates a second session instead of updating
+the first, and a PR opened from that branch then links to neither. For what a
+session contains, use `aviator show r/42`.
+
+`--status` (default `active`) chooses what to list, `--limit` (default 20) sets
+the page size, and `--page` steps through the pages. `--json` prints
+`{"sessions": [...], "has_more": bool}`, with `id`, `url`, `working_branch`,
+`pull_requests`, and the `runbook_version` that `aviator edit
+--expected-version` takes.
 
 ### Inspect a session
 
