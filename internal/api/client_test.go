@@ -153,6 +153,29 @@ func TestUnauthorizedReportsHowToReauthenticate(t *testing.T) {
 	})
 }
 
+// A 403 means the token has no owner, so the fix is `aviator login` rather
+// than a new token. Only a static credential can cause it, and a session that
+// is already signed in shouldn't be told to sign in again.
+func TestForbiddenPointsAStaticTokenAtLogin(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"forbidden","message":"needs a user access token"}`))
+	}))
+	defer srv.Close()
+
+	err := newTestClient(srv).getJSON(context.Background(), "/thing", nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "aviator login") {
+		t.Fatalf("error = %v, want it to point at `aviator login`", err)
+	}
+
+	client := newTestClient(srv)
+	client.tokens = &renewableToken{current: "token-1"}
+	err = client.getJSON(context.Background(), "/thing", nil, nil)
+	if err == nil || strings.Contains(err.Error(), "aviator login") {
+		t.Fatalf("error = %v, want no sign-in hint for a session that is already signed in", err)
+	}
+}
+
 func TestGetJSONErrorEnvelope(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

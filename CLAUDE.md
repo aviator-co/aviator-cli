@@ -21,6 +21,7 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   verify.go         # `aviator verify`  -> POST /api/v1/verify
   runbook.go        # `aviator runbook` -> POST /api/v1/runbook
   show.go           # `aviator show`    -> runbook detail
+  sessions.go       # `aviator sessions`-> list/lookup sessions by branch or PR
   results.go        # `aviator results` -> runbook step results
   edit.go           # `aviator edit`    -> PATCH acceptance criteria
   version.go        # `aviator version`
@@ -110,12 +111,20 @@ Equivalent raw commands: `go build ./...`, `go test --vet=all ./...`,
 The CLI targets endpoints in the `mergeit` backend:
 
 - `POST /api/v1/verify` — `{repository:{org,name}, intent, acceptance_criteria,
-  branch_name?, spec_file?, author_email?}`. Creates a verify-only runbook
-  session seeded with the criteria.
+  working_branch?, target_branch?, spec_file?}`. Creates a verify-only runbook
+  session, owned by the caller, seeded with the criteria.
 - `POST /api/v1/runbook` — `{repository, intent, oneshot, target_branch?,
   spec_file?, acceptance_criteria?, ...}`. Creates a runbook from an intent
   (`prompt` is a deprecated backend alias; the CLI sends `intent`); criteria
   are optional.
+- `GET /api/v1/runbook/` — `?org=&repo=&working_branch=&status=&page=&per_page=`.
+  Lists the caller's sessions in a repo, newest first, for `aviator sessions`.
+  `working_branch` is the only filter, so `--pr` matches client-side over the
+  `pull_requests` each summary carries.
+
+`/api/v1/verify` and the listing are gated on `role="user"`: an account-scoped
+API token resolves to no role and gets a 403, so both need a user token or an
+`aviator login` session.
 
 When changing a request/response shape, keep it in sync with the backend
 schemas (`src/api/verify.py`, `src/api/runbook.py` in the mergeit repo).
