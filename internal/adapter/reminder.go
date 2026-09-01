@@ -52,6 +52,20 @@ const reminderText = "If this PR's body does not open with a `Runbook:` line, it
 	"linking webhook fires on that edit, not on pushes. If the branch already has a session, " +
 	"the same command refreshes its criteria rather than creating a second one."
 
+// signInText is appended when the machine has no Aviator credentials, since an
+// agent that reaches /verify-submit without them only finds out when the
+// submission fails.
+const signInText = "No Aviator credentials were found, so this session can't submit " +
+	"anything to Aviator. Tell the user to sign in with `aviator login`."
+
+// missingCLIText is delivered by the hook itself when aviator is not on PATH.
+// Unlike the texts the CLI emits, it is frozen into every hook file already
+// installed, so it stays clear of anything we might rename: the CLI and its
+// install are safe, a skill name is not.
+const missingCLIText = "This repository uses Aviator Verify, but the aviator CLI isn't " +
+	"installed, so this session can't submit anything to it. Tell the user to install " +
+	"it with `brew install aviator-co/tap/aviator`, then sign in with `aviator login`."
+
 // sessionText is the standing instruction. SessionStart delivers it before the
 // first prompt, which is the only point we can reach the agent ahead of a PR.
 // howToInstall is agent-specific, since /verify-submit arrives differently.
@@ -84,8 +98,12 @@ func matchesAny(res []*regexp.Regexp, cmd string) bool {
 
 // emitSessionStart writes the standing instruction. It takes no input — the
 // event carries nothing we need.
-func emitSessionStart(stdout io.Writer, howToInstall string) error {
-	return emitContext(stdout, "SessionStart", sessionText(howToInstall))
+func emitSessionStart(stdout io.Writer, howToInstall string, signedIn bool) error {
+	text := sessionText(howToInstall)
+	if !signedIn {
+		text += " " + signInText
+	}
+	return emitContext(stdout, "SessionStart", text)
 }
 
 type hookInput struct {

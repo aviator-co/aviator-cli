@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,7 +9,7 @@ import (
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/adapter"
-	"github.com/aviator-co/aviator-cli/internal/config"
+	"github.com/aviator-co/aviator-cli/internal/api"
 	"github.com/aviator-co/aviator-cli/internal/git"
 	"github.com/aviator-co/aviator-cli/internal/utils/colors"
 	"github.com/charmbracelet/huh"
@@ -19,6 +20,11 @@ import (
 // pluginRepo is where /verify-submit comes from. init never checks whether it's
 // installed; it just says where to get it.
 const pluginRepo = "https://github.com/aviator-co/agent-plugins"
+
+const setupBranch = "aviator-setup"
+
+var errNotInRepo = errors.Sentinel(
+	"`aviator init` sets up a git repository, so run it from inside one")
 
 var initFlags struct {
 	Scope  string
@@ -31,21 +37,26 @@ var initCmd = &cobra.Command{
 	Short: "Set up your AI agents to capture intent for Aviator Verify before a PR",
 	Long: "Set up AI coding agents to capture a change's intent and acceptance\n" +
 		"criteria for Aviator Verify as you open a PR.\n\n" +
-		"--scope team writes config into this repository for everyone to commit.\n" +
-		"--scope self writes your own agent config, covering every repository on\n" +
-		"this machine and leaving the working tree untouched.\n\n" +
+		"The agent config is written into this repository, so committing it sets\n" +
+		"up your team too. --scope self writes your own agent config instead,\n" +
+		"covering every repository on this machine and leaving the working tree\n" +
+		"untouched.\n\n" +
 		"Re-run any time to add agents, update, or reconcile.",
 	Args: cobra.NoArgs,
 	RunE: runInit,
 }
 
 func runInit(cmd *cobra.Command, _ []string) error {
-	root, err := git.RepoRoot(cmd.Context())
+	scope, err := parseScope(initFlags.Scope)
 	if err != nil {
 		return err
 	}
+	root, err := git.RepoRoot(cmd.Context())
+	if err != nil && scope != adapter.ScopeSelf {
+		return errNotInRepo
+	}
 
-	agents, scope, err := gatherChoices()
+	agents, err := gatherChoices(cmd.Context(), scope)
 	if err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			fmt.Println("Cancelled — nothing changed.")
@@ -64,13 +75,17 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	printScopeNote(scope, written)
+	if scope == adapter.ScopeSelf {
+		printScopeNote(scope, written, agents)
+	} else {
+		printCommitSteps(written, agents)
+	}
 	printPluginNote()
 	printAuthNote()
 	return nil
 }
 
-// installAgents writes each agent's hook and reports the files it touched.
+// installAgents writes each agent's hook and reports the files it changed.
 func installAgents(agents []adapter.Adapter, scope adapter.Scope, root string) ([]string, error) {
 	var written []string
 	for _, a := range agents {
@@ -84,7 +99,9 @@ func installAgents(agents []adapter.Adapter, scope adapter.Scope, root string) (
 		if err != nil {
 			return nil, err
 		}
-		written = append(written, displayPath(root, path))
+		if change != adapter.ChangeNone {
+			written = append(written, displayPath(root, path))
+		}
 		fmt.Printf("%s %s hook — %s%s\n",
 			colors.Success("✓"), a.DisplayName(), displayPath(root, path), changeNote(change))
 		if note := a.SetupNote(); note != "" {
@@ -94,61 +111,48 @@ func installAgents(agents []adapter.Adapter, scope adapter.Scope, root string) (
 	return written, nil
 }
 
-// gatherChoices resolves scope and agents. Supplied flags win; the form only
-// asks what a flag hasn't already answered.
-func gatherChoices() ([]adapter.Adapter, adapter.Scope, error) {
+// gatherChoices signs the user in and resolves which agents to set up. Nothing
+// has been written yet, so an abort here costs nothing.
+func gatherChoices(ctx context.Context, scope adapter.Scope) ([]adapter.Adapter, error) {
 	ask := interactive() && !initFlags.Yes
-
-	scope := adapter.ScopeTeam
-	switch {
-	case initFlags.Scope != "":
-		s, err := parseScope(initFlags.Scope)
-		if err != nil {
-			return nil, 0, err
+	if ask {
+		fmt.Println("\nAviator Verify checks that your PRs do what they intend. This sets up your")
+		fmt.Println("coding agents to capture that intent as you open a PR.")
+		if err := offerLogin(ctx); err != nil {
+			return nil, err
 		}
-		scope = s
-	case ask:
-		if err := introAndAskScope(&scope); err != nil {
-			return nil, 0, err
-		}
-	default:
-		return nil, 0, errors.New("pass --scope team|self (nothing to prompt with)")
 	}
 
 	if initFlags.Agents != "" {
-		agents, err := agentsFromFlag(initFlags.Agents)
-		return agents, scope, err
+		return agentsFromFlag(initFlags.Agents)
 	}
 	if !ask {
-		return defaultAgents(scope), scope, nil
+		return defaultAgents(scope), nil
 	}
-	agents, err := askAgents(scope)
-	return agents, scope, err
+	return askAgents(scope)
 }
 
-func introAndAskScope(scope *adapter.Scope) error {
-	fmt.Println("\nAviator Verify checks that your PRs do what they intend. This sets up your")
-	fmt.Println("coding agents to capture that intent as you open a PR.")
-
-	choice := "team"
-	err := huh.NewSelect[string]().
-		Title("Who is this for?").
-		Description("Everyone: config committed to this repo.  Just me: your own agent\n"+
-			"config, covering every repo on this machine.").
-		Options(
-			huh.NewOption("Everyone on this repo", "team"),
-			huh.NewOption("Just me, everywhere on this machine", "self"),
-		).
-		Value(&choice).
+// offerLogin gets credentials in place before anything is written. A failed
+// sign-in only warns, since the setup itself still works.
+func offerLogin(ctx context.Context) error {
+	if api.HasCredentials() {
+		return nil
+	}
+	signIn := true
+	err := huh.NewConfirm().
+		Title("Sign in to Aviator?").
+		Description("Verify needs credentials before your agents can submit anything.").
+		Value(&signIn).
 		Run()
 	if err != nil {
 		return err
 	}
-	s, err := parseScope(choice)
-	if err != nil {
-		return err
+	if !signIn {
+		return nil
 	}
-	*scope = s
+	if err := runLogin(ctx); err != nil {
+		fmt.Printf("%s sign-in failed: %v\n", colors.Warning("!"), err)
+	}
 	return nil
 }
 
@@ -170,9 +174,9 @@ func askAgents(scope adapter.Scope) ([]adapter.Adapter, error) {
 			Selected(scope == adapter.ScopeTeam || here[a.ID()]))
 	}
 
-	desc := "Detected on this machine"
-	if scope == adapter.ScopeTeam {
-		desc = "Your teammates may not use the same agent you do"
+	desc := "This adds hooks to the repository. Select all agents that are used here."
+	if scope == adapter.ScopeSelf {
+		desc = "Detected on this machine"
 	}
 
 	var selected []string
@@ -232,7 +236,7 @@ func changeNote(c adapter.Change) string {
 	return ""
 }
 
-func printScopeNote(scope adapter.Scope, written []string) {
+func printScopeNote(scope adapter.Scope, written []string, agents []adapter.Adapter) {
 	if len(written) == 0 {
 		return
 	}
@@ -243,9 +247,39 @@ func printScopeNote(scope adapter.Scope, written []string) {
 	}
 	fmt.Printf("\nNew files in your repo: %s\n", strings.Join(written, ", "))
 	fmt.Println("Commit them to share the setup with your team.")
-	fmt.Printf("%s Teammates also need the aviator CLI on their PATH — without it the hook\n",
-		colors.Faint("·"))
-	fmt.Printf("  does nothing at all. `brew install aviator-co/tap/aviator`\n")
+	printTeammateNote(agents)
+}
+
+func printCommitSteps(written []string, agents []adapter.Adapter) {
+	if len(written) == 0 {
+		return
+	}
+	fmt.Println("\nCommit these so your team gets the setup:")
+	fmt.Printf("\n  git switch -c %s\n", setupBranch)
+	fmt.Printf("  git add %s\n", strings.Join(written, " "))
+	fmt.Printf("  git commit -m %q\n", "set up aviator verify hooks")
+	fmt.Printf("  git push -u origin %s\n", setupBranch)
+	fmt.Println("\nThen open a PR.")
+	printTeammateNote(agents)
+}
+
+// printTeammateNote covers what each teammate has to do for themselves. A
+// SetupNote is one of those: the agents store hook trust per user, so committing
+// the hook doesn't carry it.
+func printTeammateNote(agents []adapter.Adapter) {
+	fmt.Printf("\n%s Teammates each need the aviator CLI and a sign-in of their own — "+
+		"without\n", colors.Faint("·"))
+	fmt.Printf("  the CLI on their PATH the hook does nothing at all:\n")
+	fmt.Printf("    brew trust aviator-co/tap  # Homebrew 6+\n")
+	fmt.Printf("    brew install aviator-co/tap/aviator\n")
+	fmt.Printf("    aviator login\n")
+	for _, a := range agents {
+		if note := a.SetupNote(); note != "" {
+			fmt.Printf("\n%s Everyone using %s, not just you:\n",
+				colors.Faint("·"), a.DisplayName())
+			fmt.Printf("    %s\n", note)
+		}
+	}
 }
 
 func printPluginNote() {
@@ -255,10 +289,11 @@ func printPluginNote() {
 }
 
 func printAuthNote() {
-	if config.Av.Aviator.APIToken == "" {
-		fmt.Printf("\n%s Verify needs an API token — set AVIATOR_API_TOKEN so `aviator verify` works.\n",
-			colors.Warning("!"))
+	if api.HasCredentials() {
+		return
 	}
+	fmt.Printf("\n%s Verify still needs credentials — run `aviator login`, "+
+		"or set AVIATOR_API_TOKEN.\n", colors.Warning("!"))
 }
 
 func interactive() bool {
@@ -278,8 +313,8 @@ func displayPath(root, path string) string {
 
 func init() {
 	initCmd.Flags().StringVar(&initFlags.Scope, "scope", "",
-		"team (committed to this repo) or self (your config, every repo); prompts if omitted")
+		"team (committed to this repo, the default) or self (your config, every repo)")
 	initCmd.Flags().StringVar(&initFlags.Agents, "agents", "",
 		"comma-separated agent ids (default: all supported for team, detected for self)")
-	initCmd.Flags().BoolVar(&initFlags.Yes, "yes", false, "skip prompts (requires --scope)")
+	initCmd.Flags().BoolVar(&initFlags.Yes, "yes", false, "skip prompts")
 }

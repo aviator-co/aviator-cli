@@ -15,11 +15,13 @@ import (
 // callback decides which commands actually open a PR.
 const toolMatcher = `Bash|mcp__.*__create_pull_request`
 
+const sessionStartEvent = "SessionStart"
+
 // hookEvents are the events we install into, in the order an agent meets them:
 // the standing instruction, then a commit, then the PR call itself. Each gets
 // its own subcommand so the settings file says what it does.
 var hookEvents = []hookEvent{
-	{name: "SessionStart", subcommand: "session-start"},
+	{name: sessionStartEvent, subcommand: "session-start"},
 	{name: "PostToolUse", matcher: shellToolName, subcommand: "post-tool-use"},
 	{name: "PreToolUse", matcher: toolMatcher, subcommand: "pre-tool-use"},
 }
@@ -41,11 +43,31 @@ type matcherGroup struct {
 }
 
 // callbackCommand guards on aviator being installed so a teammate who pulled a
-// committed hook without the CLI gets a no-op, and always exits 0. Its output
-// must stay byte-stable — Codex and Gemini re-prompt for trust when it changes.
+// committed hook without the CLI gets a no-op, apart from session-start, which
+// says so instead. Its output must stay byte-stable — Codex and Gemini re-prompt
+// for trust when it changes.
 func callbackCommand(agent, subcommand string) string {
+	fallback := "true"
+	if subcommand == "session-start" {
+		fallback = missingCLIFallback()
+	}
 	return "command -v aviator >/dev/null 2>&1 && aviator hooks " + subcommand +
-		" --agent=" + agent + " || true"
+		" --agent=" + agent + " || " + fallback
+}
+
+// missingCLIFallback prints the payload the session-start callback would have
+// printed, which is the one thing a missing CLI cannot report about itself.
+func missingCLIFallback() string {
+	var buf bytes.Buffer
+	_ = emitContext(&buf, sessionStartEvent, missingCLIText)
+	return "echo " + shellQuote(strings.TrimSpace(buf.String()))
+}
+
+// shellQuote wraps s for a POSIX shell, closing and reopening the quoted string
+// around each apostrophe, so the message is written as prose rather than to
+// suit the shell.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // ourCommand reports whether cmd is one of our callbacks for agentID, and which
