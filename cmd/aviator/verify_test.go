@@ -71,6 +71,43 @@ func TestVerifySubmitJSONKeepsEmptyFields(t *testing.T) {
 	})
 }
 
+// Same contract as verifySubmitJSON: callers parse these keys.
+func TestVerifyRunJSON(t *testing.T) {
+	got := decodeJSON(t, newVerifyRunJSON(&api.TriggerVerifyRunResponse{
+		RunbookNumber: 42,
+		URL:           "https://app.aviator.co/r/42",
+		RunID:         1234,
+		RunStatus:     "pending",
+		Deduplicated:  false,
+		Message:       "Verification started.",
+	}))
+	assertJSONFields(t, got, map[string]any{
+		"runbook_number": float64(42),
+		"runbook_id":     "r/42",
+		"url":            "https://app.aviator.co/r/42",
+		"run_id":         float64(1234),
+		"run_status":     "pending",
+		"deduplicated":   false,
+		"message":        "Verification started.",
+	})
+}
+
+func TestVerifyRunJSONKeepsEmptyFields(t *testing.T) {
+	got := decodeJSON(t, newVerifyRunJSON(&api.TriggerVerifyRunResponse{
+		RunbookNumber: 7,
+		Deduplicated:  true,
+	}))
+	assertJSONFields(t, got, map[string]any{
+		"runbook_number": float64(7),
+		"runbook_id":     "r/7",
+		"url":            "",
+		"run_id":         float64(0),
+		"run_status":     "",
+		"deduplicated":   true,
+		"message":        "",
+	})
+}
+
 // The warning is the only place a caller learns why an unbound session may
 // never attach to its PR, so it has to name both the flag and the fallback.
 func TestNoWorkingBranchWarning(t *testing.T) {
