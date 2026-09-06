@@ -23,8 +23,10 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   show.go           # `aviator show`    -> runbook detail
   results.go        # `aviator results` -> runbook step results
   edit.go           # `aviator edit`    -> PATCH acceptance criteria
+  invariants.go     # `aviator invariants <list|categories|create|edit|delete|approve|reject|set-status>`
+  invariants_format.go  # text rendering for the invariants commands
   version.go        # `aviator version`
-  helpers.go        # parseRepo, readSpecFile, collectCriteria
+  helpers.go        # parseRepo(s), readSpecFile, collectCriteria, collectBody
 internal/
   config/           # viper config load + version
   api/              # thin REST client (client.go) + per-resource methods
@@ -34,7 +36,9 @@ internal/
 ```
 
 Commands are **flat**: `aviator verify` and `aviator runbook` are the actions
-themselves — there is no second verb (no `submit`/`create` subcommand).
+themselves — there is no second verb (no `submit`/`create` subcommand). The one
+resource group is `aviator invariants`, whose subcommands are the CRUD verbs
+over `/api/v1/invariants`.
 
 ## Commands
 
@@ -117,8 +121,17 @@ The CLI targets endpoints in the `mergeit` backend:
   (`prompt` is a deprecated backend alias; the CLI sends `intent`); criteria
   are optional.
 
+- `/api/v1/invariants` — `GET` (list; `org`+`repo`, `status`, comma-separated
+  `ids` and `source`, `page`, `per_page` query), `GET /categories`, `POST`
+  (create), `PATCH /<id>` (partial update; `repositories` and `conditions`
+  replace wholesale when present, `[]` clears; `enabled` is refused unless the
+  invariant is active), `DELETE /<id>`, and `POST /status`
+  (`{invariant_ids, status}` bulk approve/reject/restore). Reads need any
+  member; writes need a maintainer.
+
 When changing a request/response shape, keep it in sync with the backend
-schemas (`src/api/verify.py`, `src/api/runbook.py` in the mergeit repo).
+schemas (`src/api/verify.py`, `src/api/runbook.py`, `src/api/invariants.py` in
+the mergeit repo).
 
 `aviator login` runs an RFC 8414 discovery and an
 authorization-code-with-PKCE-S256 flow against the Aviator OAuth server. The

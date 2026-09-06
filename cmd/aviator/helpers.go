@@ -10,6 +10,7 @@ import (
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // parseRunbookID resolves a runbook/verify session ID as displayed to users
@@ -43,6 +44,19 @@ func parseRepo(s string) (api.Repository, error) {
 	return api.Repository{Org: parts[0], Name: parts[1]}, nil
 }
 
+// parseRepos parses each owner/repo entry.
+func parseRepos(entries []string) ([]api.Repository, error) {
+	repos := make([]api.Repository, 0, len(entries))
+	for _, entry := range entries {
+		repo, err := parseRepo(entry)
+		if err != nil {
+			return nil, err
+		}
+		repos = append(repos, repo)
+	}
+	return repos, nil
+}
+
 // readSpecFile loads a spec file from disk, keeping its base name.
 func readSpecFile(path string) (*api.SpecFile, error) {
 	data, err := os.ReadFile(path)
@@ -59,6 +73,27 @@ func registerCriteriaFlags(cmd *cobra.Command, criteria *[]string, criteriaFile 
 	f.StringArrayVar(criteria, "criteria", nil, "acceptance criterion (repeatable)")
 	f.StringVar(criteriaFile, "criteria-file", "", "file with one acceptance criterion per line")
 	cmd.MarkFlagsMutuallyExclusive("criteria", "criteria-file")
+}
+
+// registerBodyFlags registers a --body/--body-file pair on fs, the inline-or-
+// file shape registerCriteriaFlags uses for criteria. Callers mark the pair
+// mutually exclusive on their command, since that lives on cobra, not pflag.
+func registerBodyFlags(fs *pflag.FlagSet, body, bodyFile *string, help string) {
+	fs.StringVar(body, "body", "", help)
+	fs.StringVar(bodyFile, "body-file", "", "read the body from a file instead")
+}
+
+// collectBody returns the body from --body or --body-file, trimming
+// surrounding whitespace.
+func collectBody(inline, file string) (string, error) {
+	if file == "" {
+		return strings.TrimSpace(inline), nil
+	}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to read body file %s", file)
+	}
+	return strings.TrimSpace(string(data)), nil
 }
 
 // collectCriteria returns the criteria from exactly one source — the inline

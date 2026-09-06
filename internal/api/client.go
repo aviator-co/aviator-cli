@@ -55,6 +55,12 @@ func (c *Client) patchJSON(ctx context.Context, path string, body, out any) erro
 	return c.doJSON(ctx, http.MethodPatch, path, body, out)
 }
 
+// deleteJSON issues a DELETE to path and decodes a successful response into
+// out (which may be nil).
+func (c *Client) deleteJSON(ctx context.Context, path string, out any) error {
+	return c.doJSON(ctx, http.MethodDelete, path, nil, out)
+}
+
 // getJSON issues a GET to path with the given query and decodes a successful
 // response into out (which may be nil).
 func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out any) error {
