@@ -18,7 +18,6 @@ var verifyFlags struct {
 	WorkingBranch string
 	TargetBranch  string
 	Spec          string
-	AuthorEmail   string
 	EvaluatorOnly bool
 	Force         bool
 	JSON          bool
@@ -28,7 +27,7 @@ var verifyFlags struct {
 // session, so trigger mode rejects them by name.
 var verifySubmitOnlyFlags = []string{
 	"repo", "intent", "criteria", "criteria-file",
-	"working-branch", "target-branch", "spec", "author-email",
+	"working-branch", "target-branch", "spec",
 }
 
 var verifyTriggerOnlyFlags = []string{"evaluator-only", "force"}
@@ -119,7 +118,6 @@ func runVerifySubmit(cmd *cobra.Command) error {
 		WorkingBranch:      verifyFlags.WorkingBranch,
 		TargetBranch:       verifyFlags.TargetBranch,
 		SpecFile:           spec,
-		AuthorEmail:        verifyFlags.AuthorEmail,
 	})
 	if err != nil {
 		return err
@@ -197,7 +195,6 @@ func init() {
 	f.StringVar(&verifyFlags.WorkingBranch, "working-branch", "", "branch the work lives on (optional)")
 	f.StringVar(&verifyFlags.TargetBranch, "target-branch", "", "base branch to verify against (defaults to the repo default)")
 	f.StringVar(&verifyFlags.Spec, "spec", "", "path to an optional spec file")
-	f.StringVar(&verifyFlags.AuthorEmail, "author-email", "", "attribute the submission to this user")
 	f.BoolVar(&verifyFlags.EvaluatorOnly, "evaluator-only", false,
 		"re-judge the evidence an earlier run collected instead of collecting it again (trigger mode only)")
 	f.BoolVar(&verifyFlags.Force, "force", false,
