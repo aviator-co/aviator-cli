@@ -139,8 +139,8 @@ Submitting the same branch again creates a second session instead of updating
 the first, and a PR opened from that branch then links to neither. For what a
 session contains, use `aviator show r/42`.
 
-`--status` (default `active`) chooses what to list, `--limit` (default 20) sets
-the page size, and `--page` steps through the pages. `--json` prints
+`--status` (default `active`) chooses what to list, `--limit` (default 20, max
+100) sets the page size, and `--page` steps through the pages. `--json` prints
 `{"sessions": [...], "has_more": bool}`, with `id`, `url`, `working_branch`,
 `pull_requests`, and the `runbook_version` that `aviator edit
 --expected-version` takes.

@@ -76,7 +76,7 @@ func init() {
 	f.IntVar(&sessionsFlags.PR, "pr", 0, "only sessions linked to this PR number")
 	f.StringVar(&sessionsFlags.Status, "status", "active", "session status to list (active or archived)")
 	f.IntVar(&sessionsFlags.Page, "page", 1, "which page to show")
-	f.IntVar(&sessionsFlags.Limit, "limit", 20, "sessions per page")
+	f.IntVar(&sessionsFlags.Limit, "limit", 20, "sessions per page (max 100)")
 	f.BoolVar(&sessionsFlags.JSON, "json", false, "print the sessions as a single JSON object")
 	sessionsCmd.MarkFlagsMutuallyExclusive("branch", "pr")
 	_ = sessionsCmd.MarkFlagRequired("repo")

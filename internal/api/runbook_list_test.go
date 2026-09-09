@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
-	"strings"
 	"testing"
 )
 
@@ -98,15 +96,16 @@ func TestListSessions(t *testing.T) {
 	}
 }
 
-// A limit that fits in one API page costs one request, whatever page is asked
-// for.
+// A page is one request for the same page number, and a limit past the API's
+// page size is capped rather than walked, so every page stays reachable.
 func TestListSessionsAsksForThePageDirectly(t *testing.T) {
 	requests := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		q := r.URL.Query()
-		if q.Get("page") != "3" || q.Get("per_page") != "20" {
-			t.Errorf("page = %q, per_page = %q, want 3 and 20", q.Get("page"), q.Get("per_page"))
+		if q.Get("page") != "3" || q.Get("per_page") != fmt.Sprint(maxPageSize) {
+			t.Errorf("page = %q, per_page = %q, want 3 and %d",
+				q.Get("page"), q.Get("per_page"), maxPageSize)
 		}
 		_, _ = w.Write([]byte(`{"runbooks":[{"runbook_number":9}],"has_more":false}`))
 	}))
@@ -116,7 +115,7 @@ func TestListSessionsAsksForThePageDirectly(t *testing.T) {
 		context.Background(), ListSessionsParams{
 			Repository: Repository{Org: "acme", Name: "web"},
 			Page:       3,
-			Limit:      20,
+			Limit:      2000,
 		})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -124,52 +123,6 @@ func TestListSessionsAsksForThePageDirectly(t *testing.T) {
 	if requests != 1 || len(sessions) != 1 || hasMore {
 		t.Errorf("requests = %d, sessions = %d, hasMore = %v", requests, len(sessions), hasMore)
 	}
-}
-
-// A limit above the API's own page size makes the requested page start midway
-// through one of its pages.
-func TestListSessionsPagesInUnitsOfTheLimit(t *testing.T) {
-	var requested []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-		requested = append(requested, r.URL.Query().Get("page"))
-		_, _ = w.Write([]byte(sessionPageJSON((page-1)*maxPageSize+1, maxPageSize)))
-	}))
-	defer srv.Close()
-
-	// Page 2 of 150 is sessions 151-300: the API's page 2 from its 51st entry,
-	// plus all of its page 3.
-	sessions, hasMore, err := newTestClient(srv).ListSessions(
-		context.Background(), ListSessionsParams{
-			Repository: Repository{Org: "acme", Name: "web"},
-			Page:       2,
-			Limit:      150,
-		})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(requested) != 2 || requested[0] != "2" || requested[1] != "3" {
-		t.Errorf("pages requested = %v, want 2 then 3", requested)
-	}
-	if len(sessions) != 150 {
-		t.Fatalf("got %d sessions, want 150", len(sessions))
-	}
-	if sessions[0].RunbookNumber != 151 || sessions[149].RunbookNumber != 300 {
-		t.Errorf("returned %d-%d, want 151-300",
-			sessions[0].RunbookNumber, sessions[149].RunbookNumber)
-	}
-	if !hasMore {
-		t.Error("has_more = false, though the API had more")
-	}
-}
-
-// sessionPageJSON is one API page of count sessions numbered from first.
-func sessionPageJSON(first, count int) string {
-	numbers := make([]string, count)
-	for i := range numbers {
-		numbers[i] = fmt.Sprintf(`{"runbook_number":%d}`, first+i)
-	}
-	return `{"runbooks":[` + strings.Join(numbers, ",") + `],"has_more":true}`
 }
 
 // The listing has no PR filter, so the match happens over the pages.

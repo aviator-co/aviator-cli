@@ -36,8 +36,8 @@ func (s SessionSummary) HasPullRequest(number int) bool {
 	return false
 }
 
-// ListSessionsParams are the filters for GET /api/v1/runbook/. Page counts in
-// units of Limit, not in the page size the API itself takes.
+// ListSessionsParams are the filters for GET /api/v1/runbook/. Limit is capped
+// at the API's own page size, so a page here is a page there.
 type ListSessionsParams struct {
 	Repository    Repository
 	WorkingBranch string
@@ -57,36 +57,14 @@ func (c *Client) ListSessions(
 	ctx context.Context, params ListSessionsParams,
 ) ([]SessionSummary, bool, error) {
 	limit := params.Limit
-	if limit <= 0 {
+	if limit <= 0 || limit > maxPageSize {
 		limit = maxPageSize
 	}
-	page := max(params.Page, 1)
-
-	// A limit above the API's own page size spans several of its pages, and
-	// the requested page can then start midway through one of them.
-	pageSize := min(limit, maxPageSize)
-	offset := (page - 1) * limit
-	skip := offset % pageSize
-	want := skip + limit
-
-	var sessions []SessionSummary
-	for i := range maxPageWalks {
-		resp, err := c.listSessionPage(ctx, params, offset/pageSize+1+i, pageSize)
-		if err != nil {
-			return nil, false, err
-		}
-		sessions = append(sessions, resp.Sessions...)
-		if len(sessions) >= want {
-			return sessions[skip:want], len(sessions) > want || resp.HasMore, nil
-		}
-		if !resp.HasMore {
-			if len(sessions) <= skip {
-				return nil, false, nil
-			}
-			return sessions[skip:], false, nil
-		}
+	resp, err := c.listSessionPage(ctx, params, max(params.Page, 1), limit)
+	if err != nil {
+		return nil, false, err
 	}
-	return sessions[skip:], true, nil
+	return resp.Sessions, resp.HasMore, nil
 }
 
 // FindSessionsForPullRequest returns the sessions linked to a PR number. The
