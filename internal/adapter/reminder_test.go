@@ -51,7 +51,7 @@ func TestIsPRCommand(t *testing.T) {
 	}
 }
 
-func TestIsCommitCommand(t *testing.T) {
+func TestIsCommitOrPushCommand(t *testing.T) {
 	tests := []struct {
 		cmd  string
 		want bool
@@ -62,6 +62,13 @@ func TestIsCommitCommand(t *testing.T) {
 		{"git add -A && git commit -m x", true},
 		{"av commit -m x", true},
 		{"av commit --amend", true},
+
+		// A push is the other point the code moves out from under criteria
+		// written earlier, so it asks the same question a commit does.
+		{"git push", true},
+		{"git push --force-with-lease origin HEAD", true},
+		{"git -C /repo push", true},
+		{"av sync", true},
 		{"gt create -m x", true},
 		{"gt modify", true},
 		{"gt c", true},
@@ -76,17 +83,16 @@ func TestIsCommitCommand(t *testing.T) {
 		{"gt ab", true},
 
 		{"git log --oneline", false},
-		{"git push", false},
 		{"gh pr create", false},
-		{"av sync", false},
 		{"git status; echo commit", false},
+		{"git status; echo push", false},
 		{"gt config", false},
 		{"gt checkout main", false},
 		{"gt branch delete x", false},
 	}
 	for _, tt := range tests {
-		if got := isCommitCommand(tt.cmd); got != tt.want {
-			t.Errorf("isCommitCommand(%q) = %v, want %v", tt.cmd, got, tt.want)
+		if got := isCommitOrPushCommand(tt.cmd); got != tt.want {
+			t.Errorf("isCommitOrPushCommand(%q) = %v, want %v", tt.cmd, got, tt.want)
 		}
 	}
 }
@@ -178,14 +184,28 @@ func TestCommitAsksForATaskItem(t *testing.T) {
 	}
 }
 
-// It follows every commit, so a branch that already has a session has to be
-// able to stop at the first sentence rather than submit a second time.
-func TestCommitTextExcusesAnExistingSession(t *testing.T) {
-	first, _, _ := strings.Cut(commitText, ".")
-	for _, want := range []string{"already has a Verify session", "nothing to do"} {
-		if !strings.Contains(first, want) {
-			t.Errorf("first sentence missing %q: %q", want, first)
+// Guessing at whether a branch has a session is what produced duplicate
+// submissions, so both texts hand over the command that settles it.
+func TestTextsNameTheLookup(t *testing.T) {
+	for name, text := range map[string]string{
+		"commit or push": commitOrPushText,
+		"pull request":   reminderText,
+	} {
+		if !strings.Contains(text, "aviator sessions --repo") {
+			t.Errorf("%s text does not name the lookup: %q", name, text)
 		}
+	}
+}
+
+// A push means the code moved; the criteria written before it may no longer
+// describe it.
+func TestPushGetsTheCriteriaQuestion(t *testing.T) {
+	event, text := contextOf(t, emitPost(t, commitPayload("git push")))
+	if event != "PostToolUse" {
+		t.Errorf("hookEventName = %q, want PostToolUse", event)
+	}
+	if text != commitOrPushText {
+		t.Errorf("additionalContext = %q, want the criteria question", text)
 	}
 }
 
@@ -212,7 +232,7 @@ func TestPostToolUseStaysSilent(t *testing.T) {
 // By the PR call the agent has usually submitted, so an unconditional "submit
 // now" here is what puts two sessions on one branch.
 func TestReminderIsConditionalRemediation(t *testing.T) {
-	for _, want := range []string{"Runbook:", "/verify-submit", "refreshes its criteria"} {
+	for _, want := range []string{"Runbook:", "/verify-submit", "if the branch doesn't have one"} {
 		if !strings.Contains(reminderText, want) {
 			t.Errorf("reminder missing %q: %q", want, reminderText)
 		}

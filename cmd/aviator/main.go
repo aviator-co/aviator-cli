@@ -51,6 +51,7 @@ func init() {
 		verifyCmd,
 		runbookCmd,
 		showCmd,
+		sessionsCmd,
 		resultsCmd,
 		editCmd,
 		hooksCmd,
