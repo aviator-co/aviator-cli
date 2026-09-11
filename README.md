@@ -153,6 +153,56 @@ aviator results r/123         # latest verification results
 aviator edit r/123 --expected-version 4 --criteria "..."
 ```
 
+### Manage baseline invariants
+
+Baseline invariants are standing rules every verification checks on top of a
+session's own criteria. Listing works with any API token, account-scoped ones
+included. Creating, editing, deleting, and approving act as the caller, so they
+need a user access token (`aviator login` or a personal token) whose user is a
+maintainer or admin.
+
+```bash
+aviator invariants list                          # newest first, 20 per page (--limit, --page)
+aviator invariants list --repo acme/web          # what applies to one repo
+aviator invariants list --status pending         # waiting on approval
+aviator invariants list --source manual          # only hand-written rules
+aviator invariants list --ids 42,43              # specific rules by id
+aviator invariants categories                    # slugs that --category accepts
+
+aviator invariants create \
+  --title "Webhook handlers verify signatures" \
+  --body "Every new webhook handler must verify the request signature before acting." \
+  --category security \
+  --repo acme/web --repo acme/api \
+  --condition 'file_path_glob=src/webhooks/**' \
+  --condition 'language!=markdown'
+
+aviator invariants edit 42 --title "..." --body-file rule.md
+aviator invariants edit 42 --account-scoped      # applies to every repo
+aviator invariants edit 42 --no-conditions --disable
+aviator invariants approve 42 43                 # pending -> active
+aviator invariants reject 42                     # keeps the record, stops applying
+aviator invariants set-status pending 42         # any status, e.g. restore a rejected one
+aviator invariants delete 42
+```
+
+```
+ID   STATUS   CATEGORY       SOURCE             SCOPE                  TITLE
+#42  active   security       manual             2 repos                Webhook handlers verify signatures
+#41  pending  test_coverage  ai_generated_docs  all repos +conditions  Every package has a test file
+                                                                       reason: CONTRIBUTING.md asks for tests on every package.
+```
+
+The scope column is a summary; the full repo list and conditions are in the
+create/edit output and in `--json`. AI-drafted rules show the reason they were
+proposed, which is what `approve` and `reject` are deciding on. Omit `--repo` on create for an account-wide
+invariant. On edit, `--repo` and `--condition` replace the current set, so
+repeat them for the full new set. `--category` takes one of the account's
+category slugs (see `aviator invariants categories`); an unknown slug is
+rejected with the valid ones listed. `--enable`/`--disable` only apply to
+active invariants; approve a pending one first. `--json` on any subcommand
+prints the server's response verbatim.
+
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for development and release setup.

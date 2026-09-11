@@ -54,6 +54,7 @@ func init() {
 		sessionsCmd,
 		resultsCmd,
 		editCmd,
+		invariantsCmd,
 		hooksCmd,
 		initCmd,
 		versionCmd,
