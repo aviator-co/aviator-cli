@@ -45,13 +45,15 @@ var commitOrPushCommands = []*regexp.Regexp{
 // the agent look the session up instead of guessing at one.
 const commitOrPushText = "Verify: does this branch have a session? Check with " +
 	"`aviator sessions --repo <owner/repo> --branch <branch>`. If it has one, update its " +
-	"criteria to match the code. If it doesn't, add \"run /verify-submit before opening a " +
-	"PR\" to your task list."
+	"criteria to match the code. If not, run /verify-submit before any command that opens " +
+	"a PR."
 
 // reminderText is delivered beside the tool result, once the PR command has
 // already run, so it asks for a repair rather than for the submission.
-const reminderText = "Verify: a PR links to its session by a `Runbook: <url>` line at the top " +
-	"of the body, not by pushing the branch. Find the session with " +
+const reminderText = "Verify: if this branch has no session, this PR is out of order. Tell the " +
+	"user rather than repairing it silently. A PR links to its session by a " +
+	"`Runbook: <url>` line at the top of the body, not by pushing the branch. Find the " +
+	"session with " +
 	"`aviator sessions --repo <owner/repo> --branch <branch>`, or run /verify-submit if the " +
 	"branch doesn't have one yet."
 
@@ -73,10 +75,9 @@ const missingCLIText = "This repository uses Aviator Verify, but the aviator CLI
 // first prompt, which is the only point we can reach the agent ahead of a PR.
 // howToInstall is agent-specific, since /verify-submit arrives differently.
 func sessionText(howToInstall string) string {
-	return "This repository uses Aviator Verify. Before opening a pull request, capture the " +
-		"change's intent and acceptance criteria by running /verify-submit — do it while the " +
-		"reasoning behind the change is still in context, since it can't be reconstructed " +
-		"afterwards. One verify session tracks exactly one PR: every PR gets its own " +
+	return "This repository uses Aviator Verify. Run /verify-submit before opening a PR, and " +
+		"include it in any plan that ends in a pull request. " +
+		"One verify session tracks exactly one PR: every PR gets its own " +
 		"submission with its own intent and acceptance criteria, so a stack of 3 PRs means 3 " +
 		"submissions, not one covering the stack. " +
 		"If /verify-submit isn't available: " + howToInstall
