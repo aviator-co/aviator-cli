@@ -47,7 +47,7 @@ var verifyCmd = &cobra.Command{
 		"work lives on so a PR opened from that branch is verified against these\n" +
 		"criteria.\n" +
 		"\n" +
-		"One verify session tracks exactly one PR. Stacked or multi-PR work needs\n" +
+		"One review tracks exactly one PR. Stacked or multi-PR work needs\n" +
 		"one submission per PR, each with its own --working-branch, intent, and\n" +
 		"acceptance criteria. A single submission cannot cover a stack.\n" +
 		"\n" +

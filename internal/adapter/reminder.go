@@ -77,7 +77,7 @@ const missingCLIText = "This repository uses Aviator Verify, but the aviator CLI
 func sessionText(howToInstall string) string {
 	return "This repository uses Aviator Verify. Run /verify-submit before opening a PR, and " +
 		"include it in any plan that ends in a pull request. " +
-		"One verify session tracks exactly one PR: every PR gets its own " +
+		"One review tracks exactly one PR: every PR gets its own " +
 		"submission with its own intent and acceptance criteria, so a stack of 3 PRs means 3 " +
 		"submissions, not one covering the stack. " +
 		"If /verify-submit isn't available: " + howToInstall

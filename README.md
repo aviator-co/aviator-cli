@@ -92,7 +92,7 @@ per line, `#` comments ignored). `--working-branch`, `--target-branch`, and
 `--spec` are optional, though without `--working-branch` the session can only
 bind to a PR through a `Review: <url>` line in the PR body.
 
-One verify session tracks exactly one PR. Stacked or multi-PR work needs one
+One review tracks exactly one PR. Stacked or multi-PR work needs one
 submission per PR, each with its own `--working-branch`, intent, and criteria.
 To update the criteria on a session that already exists, use `aviator edit`
 rather than submitting the branch again. `aviator sessions` says whether a

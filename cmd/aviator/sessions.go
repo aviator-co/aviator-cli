@@ -21,8 +21,8 @@ var sessionsFlags struct {
 
 var sessionsCmd = &cobra.Command{
 	Use:   "sessions",
-	Short: "List your verify and runbook sessions in a repository",
-	Long: "List your verify and runbook sessions in a repository, newest first.\n" +
+	Short: "List your review and runbook sessions in a repository",
+	Long: "List your review and runbook sessions in a repository, newest first.\n" +
 		"\n" +
 		"Check here before running `aviator verify`. Submitting a branch that\n" +
 		"already has a session creates a second one instead of updating the first,\n" +
