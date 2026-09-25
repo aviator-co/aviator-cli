@@ -102,7 +102,7 @@ func (c *Client) GetRunbookDetail(
 	}
 	var out RunbookDetail
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, nil, errors.Wrap(err, "failed to decode runbook detail")
+		return nil, nil, errors.Wrap(err, "failed to decode session detail")
 	}
 	var keys map[string]json.RawMessage
 	_ = json.Unmarshal(raw, &keys)

@@ -52,7 +52,7 @@ const commitOrPushText = "Verify: does this branch have a session? Check with " 
 // already run, so it asks for a repair rather than for the submission.
 const reminderText = "Verify: if this branch has no session, this PR is out of order. Tell the " +
 	"user rather than repairing it silently. A PR links to its session by a " +
-	"`Runbook: <url>` line at the top of the body, not by pushing the branch. Find the " +
+	"`Review: <url>` line at the top of the body, not by pushing the branch. Find the " +
 	"session with " +
 	"`aviator sessions --repo <owner/repo> --branch <branch>`, or run /verify-submit if the " +
 	"branch doesn't have one yet."

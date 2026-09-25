@@ -248,7 +248,7 @@ func TestPostToolUseStaysSilent(t *testing.T) {
 // now" here is what puts two sessions on one branch.
 func TestReminderIsConditionalRemediation(t *testing.T) {
 	for _, want := range []string{
-		"Runbook:",
+		"Review:",
 		"/verify-submit",
 		"if the branch doesn't have one",
 		"out of order",

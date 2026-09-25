@@ -17,7 +17,7 @@ var editFlags struct {
 
 var editCmd = &cobra.Command{
 	Use:   "edit <id>",
-	Short: "Replace a runbook/verify session's acceptance criteria (e.g. aviator edit r/123)",
+	Short: "Replace a review or runbook session's acceptance criteria (e.g. aviator edit r/123)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		runbookNumber, err := parseRunbookID(args[0])
@@ -44,7 +44,7 @@ var editCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Printf("%s Runbook %s criteria updated\n",
+		fmt.Printf("%s %s criteria updated\n",
 			colors.Success("✓"), formatRunbookID(resp.RunbookNumber))
 		fmt.Printf("  Version: %d -> %d\n", editFlags.ExpectedVersion, resp.NewVersion)
 		fmt.Printf("  Criteria: %d\n", resp.CriteriaCount)
@@ -58,6 +58,6 @@ var editCmd = &cobra.Command{
 func init() {
 	registerCriteriaFlags(editCmd, &editFlags.Criteria, &editFlags.CriteriaFile)
 	f := editCmd.Flags()
-	f.IntVar(&editFlags.ExpectedVersion, "expected-version", 0, "runbook version you expect to be editing (guards against stale edits)")
+	f.IntVar(&editFlags.ExpectedVersion, "expected-version", 0, "session version you expect to be editing (guards against stale edits)")
 	_ = editCmd.MarkFlagRequired("expected-version")
 }
