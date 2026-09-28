@@ -57,7 +57,7 @@ jobs:
           git push origin "v${VERSION}"
           echo "release_tag=v${VERSION}" >> "$GITHUB_OUTPUT"
       - name: Notify release start
-        uses: ./.github/actions/notify-deploy
+        uses: $/.github/actions/notify-deploy
         with:
           webhook_url: ${{ secrets.SLACK_WEBHOOK_PROD_DEPLOY_UPDATES }}
           state: start
@@ -80,7 +80,7 @@ jobs:
           FURY_TOKEN: ${{ secrets.FURY_PUSH_TOKEN }}
 
       - name: Notify release success
-        uses: ./.github/actions/notify-deploy
+        uses: $/.github/actions/notify-deploy
         with:
           webhook_url: ${{ secrets.SLACK_WEBHOOK_PROD_DEPLOY_UPDATES }}
           state: success
@@ -89,7 +89,7 @@ jobs:
       - name: Notify release failure
         # This includes cancellation.
         if: ${{ !success() }}
-        uses: ./.github/actions/notify-deploy
+        uses: $/.github/actions/notify-deploy
         with:
           webhook_url: ${{ secrets.SLACK_WEBHOOK_PROD_DEPLOY_UPDATES }}
           state: failure
