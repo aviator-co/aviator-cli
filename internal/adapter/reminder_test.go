@@ -152,6 +152,20 @@ func TestSessionStartCarriesTheStandingInstruction(t *testing.T) {
 	}
 }
 
+// An agent that never plans the submission opens the PR first and backfills
+// the link, so the standing instruction has to reach the plan and not only the
+// moment before the PR command.
+func TestSessionStartPutsVerifyInThePlan(t *testing.T) {
+	var out bytes.Buffer
+	if err := emitSessionStart(&out, "run /plugin install aviator", true); err != nil {
+		t.Fatal(err)
+	}
+	_, text := contextOf(t, out.String())
+	if !strings.Contains(text, "plan that ends in a pull request") {
+		t.Errorf("instruction does not reach planning: %q", text)
+	}
+}
+
 // Agents kept submitting one session for a whole stack, which the backend
 // refuses, so the standing instruction has to spell out the one-per-PR rule.
 func TestSessionStartStatesOneSessionPerPR(t *testing.T) {
@@ -167,16 +181,17 @@ func TestSessionStartStatesOneSessionPerPR(t *testing.T) {
 	}
 }
 
-// Agents kept opening the PR first, so the ask moved to the commit, and asks
-// for a task item because that outlives the turn it is read in.
-func TestCommitAsksForATaskItem(t *testing.T) {
+// Agents kept opening the PR first, so the ask moved to the commit. Asking for
+// a task item let the agent order that list and put the PR ahead of it, so the
+// text names the next command instead.
+func TestCommitAsksForTheSubmission(t *testing.T) {
 	event, text := contextOf(t, emitPost(t, commitPayload("git commit -m x")))
 	if event != "PostToolUse" {
 		t.Errorf("hookEventName = %q, want PostToolUse", event)
 	}
 	for _, want := range []string{
-		"task list",
-		`"run /verify-submit before opening a PR"`,
+		"run /verify-submit",
+		"before any command that opens a PR",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("directive missing %q: %q", want, text)
@@ -232,7 +247,12 @@ func TestPostToolUseStaysSilent(t *testing.T) {
 // By the PR call the agent has usually submitted, so an unconditional "submit
 // now" here is what puts two sessions on one branch.
 func TestReminderIsConditionalRemediation(t *testing.T) {
-	for _, want := range []string{"Runbook:", "/verify-submit", "if the branch doesn't have one"} {
+	for _, want := range []string{
+		"Runbook:",
+		"/verify-submit",
+		"if the branch doesn't have one",
+		"out of order",
+	} {
 		if !strings.Contains(reminderText, want) {
 			t.Errorf("reminder missing %q: %q", want, reminderText)
 		}
