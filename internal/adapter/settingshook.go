@@ -302,14 +302,13 @@ func setHookCommand(doc *hujson.Value, h ourHook, command string) error {
 
 func appendGroup(doc *hujson.Value, ev hookEvent, agentID string) error {
 	group := desiredGroup(ev, agentID)
-	hooks := doc.Find("/hooks")
-	if hooks == nil {
-		return insert(doc, doc, "hooks", map[string][]matcherGroup{ev.name: {group}})
+	if doc.Find("/hooks") == nil {
+		return insert(doc, pointer(), "hooks", map[string][]matcherGroup{ev.name: {group}})
 	}
-	if groups := doc.Find(pointer("hooks", ev.name)); groups != nil {
-		return insert(doc, groups, "", group)
+	if doc.Find(pointer("hooks", ev.name)) != nil {
+		return insert(doc, pointer("hooks", ev.name), "", group)
 	}
-	return insert(doc, hooks, ev.name, []matcherGroup{group})
+	return insert(doc, pointer("hooks"), ev.name, []matcherGroup{group})
 }
 
 // removeAll works backwards through each event so the indices recorded for the
@@ -328,11 +327,11 @@ func removeAll(doc *hujson.Value, hooks []ourHook) error {
 	})
 	for _, h := range sorted {
 		group := pointer("hooks", h.event, strconv.Itoa(h.group))
-		if err := patch(doc, patchOp{Op: "remove", Path: group + "/hooks/" + strconv.Itoa(h.idx)}); err != nil {
+		if err := remove(doc, group+"/hooks/"+strconv.Itoa(h.idx)); err != nil {
 			return err
 		}
 		if isEmpty(doc.Find(group + "/hooks")) {
-			if err := patch(doc, patchOp{Op: "remove", Path: group}); err != nil {
+			if err := remove(doc, group); err != nil {
 				return err
 			}
 		}
@@ -350,15 +349,42 @@ func prune(doc *hujson.Value, removed []ourHook) error {
 	for _, h := range removed {
 		ptr := pointer("hooks", h.event)
 		if v := doc.Find(ptr); v != nil && isEmpty(v) {
-			if err := patch(doc, patchOp{Op: "remove", Path: ptr}); err != nil {
+			if err := remove(doc, ptr); err != nil {
 				return err
 			}
 		}
 	}
 	if isEmpty(doc.Find("/hooks")) {
-		return patch(doc, patchOp{Op: "remove", Path: "/hooks"})
+		return remove(doc, "/hooks")
 	}
 	return nil
+}
+
+// remove deletes the entry at ptr. Patch hands a comment trailing the entry
+// before it on to the closing bracket, along with the removed entry's
+// indentation, so the bracket gets its own indentation back.
+func remove(doc *hujson.Value, ptr string) error {
+	parent := ptr[:strings.LastIndexByte(ptr, '/')]
+	before := slices.Clone(*closingExtra(doc.Find(parent)))
+	if err := patch(doc, patchOp{Op: "remove", Path: ptr}); err != nil {
+		return err
+	}
+	after := closingExtra(doc.Find(parent))
+	i, j := bytes.LastIndexByte(before, '\n'), bytes.LastIndexByte(*after, '\n')
+	if i >= 0 && j >= 0 {
+		*after = append((*after)[:j:j], before[i:]...)
+	}
+	return nil
+}
+
+func closingExtra(v *hujson.Value) *hujson.Extra {
+	switch c := v.Value.(type) {
+	case *hujson.Object:
+		return &c.AfterExtra
+	case *hujson.Array:
+		return &c.AfterExtra
+	}
+	return new(hujson.Extra)
 }
 
 type patchOp struct {
@@ -398,9 +424,11 @@ func isEmpty(v *hujson.Value) bool {
 	return false
 }
 
-// insert appends value to container, named name when it is an object, laid
-// out like the entries already there.
-func insert(doc, container *hujson.Value, name string, value any) error {
+// insert appends value to the object or array at ptr, named name when it is an
+// object, laid out like the entries already there. Patch moves a comment
+// trailing the previous entry onto the new one, where we only add indentation.
+func insert(doc *hujson.Value, ptr, name string, value any) error {
+	container := doc.Find(ptr)
 	lead, indent, err := entryLayout(doc, container)
 	if err != nil {
 		return err
@@ -414,27 +442,39 @@ func insert(doc, container *hujson.Value, name string, value any) error {
 	if err != nil {
 		return err
 	}
-	v, err := hujson.Parse(raw)
+
+	var colon hujson.Extra
+	path := ptr + "/-"
+	if obj, ok := container.Value.(*hujson.Object); ok {
+		colon = hujson.Extra(" ")
+		if n := len(obj.Members); n > 0 {
+			colon = slices.Clone(obj.Members[n-1].Value.BeforeExtra)
+		}
+		path = ptr + pointer(name)
+	}
+	quoted, err := marshalNoHTML(path)
 	if err != nil {
 		return err
 	}
-
-	switch c := container.Value.(type) {
-	case *hujson.Object:
-		v.BeforeExtra = hujson.Extra(" ")
-		if n := len(c.Members); n > 0 {
-			v.BeforeExtra = slices.Clone(c.Members[n-1].Value.BeforeExtra)
-		}
-		c.Members = append(c.Members, hujson.ObjectMember{
-			Name:  hujson.Value{BeforeExtra: lead, Value: hujson.String(name)},
-			Value: v,
-		})
-	case *hujson.Array:
-		v.BeforeExtra = lead
-		c.Elements = append(c.Elements, v)
-	default:
-		return errors.New("can only insert into an object or array")
+	op := `[{"op": "add", "path": ` + string(quoted) + `, "value": ` + string(raw) + `}]`
+	if err := doc.Patch([]byte(op)); err != nil {
+		return errors.Wrapf(err, "failed to add %s", path)
 	}
+
+	var added *hujson.Value
+	switch c := doc.Find(ptr).Value.(type) {
+	case *hujson.Object:
+		m := &c.Members[len(c.Members)-1]
+		m.Value.BeforeExtra = colon
+		added = &m.Name
+	case *hujson.Array:
+		added = &c.Elements[len(c.Elements)-1]
+	}
+	moved := added.BeforeExtra
+	if bytes.HasSuffix(moved, []byte("\n")) {
+		lead = bytes.TrimPrefix(lead, []byte("\n"))
+	}
+	added.BeforeExtra = append(slices.Clone(moved), lead...)
 	return nil
 }
 

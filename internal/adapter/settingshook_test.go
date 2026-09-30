@@ -400,9 +400,18 @@ func TestInstallThenUninstallRestoresTheFile(t *testing.T) {
     "env": {"A": "1"}
 }
 `,
-		"tabs":     "{\n\t\"model\": \"opus\",\n\n\t\"env\": {\"A\": \"1\"}\n}\n",
-		"one line": `{"model": "opus"}`,
-		"comments": "{\n  // team defaults\n  \"model\": \"opus\"\n}\n",
+		"tabs":                            "{\n\t\"model\": \"opus\",\n\n\t\"env\": {\"A\": \"1\"}\n}\n",
+		"one line":                        `{"model": "opus"}`,
+		"comments":                        "{\n  // team defaults\n  \"model\": \"opus\"\n}\n",
+		"a comment trailing the last key": "{\n  \"model\": \"opus\" // pinned\n}\n",
+		"a comment trailing the last group": `{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Edit", "hooks": []} // mine
+    ]
+  }
+}
+`,
 	}
 	for name, original := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -463,6 +472,20 @@ func TestInstallIndentsLikeTheFile(t *testing.T) {
 			}
 			readJSON(t, path)
 		})
+	}
+}
+
+func TestInstallKeepsATrailingCommentOnItsLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(path, []byte("{\n  \"model\": \"opus\" // pinned\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installSettingsHook(path, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(path)
+	if want := "\"opus\", // pinned\n  \"hooks\": {\n"; !strings.Contains(string(got), want) {
+		t.Errorf("got:\n%s\nwant it to contain:\n%s", got, want)
 	}
 }
 
