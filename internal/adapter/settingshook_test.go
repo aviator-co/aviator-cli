@@ -3,6 +3,7 @@ package adapter
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -210,8 +211,10 @@ func TestOwnershipStopsAtTheAgentID(t *testing.T) {
 	if !ownsCommand("aviator hooks pre-tool-use --agent=claude", "claude") {
 		t.Error("did not recognise our own bare command")
 	}
-	if !ownsCommand(callbackCommand("claude", "pre-tool-use"), "claude") {
-		t.Error("did not recognise our own current command")
+	for _, ev := range hookEvents {
+		if !ownsCommand(callbackCommand("claude", ev.subcommand), "claude") {
+			t.Errorf("did not recognise our own current %s command", ev.subcommand)
+		}
 	}
 }
 
@@ -518,5 +521,62 @@ func TestUninstallFromASharedGroupLeavesTheRestAsWritten(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(path); string(got) != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// The old form's || caught a failing CLI too, and told the user to install it.
+func TestInstallReplacesTheOldSessionStartCommand(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if _, err := installSettingsHook(path, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	current, _ := os.ReadFile(path)
+	oldCmd := "command -v aviator >/dev/null 2>&1 && aviator hooks session-start --agent=claude || " +
+		missingCLIFallback()
+	encode := func(s string) string {
+		b, err := marshalNoHTML(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	newCmd := encode(callbackCommand("claude", "session-start"))
+	old := strings.Replace(string(current), newCmd, encode(oldCmd), 1)
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil { //nolint:gosec // a test temp file
+		t.Fatal(err)
+	}
+
+	change, err := installSettingsHook(path, "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if change != ChangeUpdated {
+		t.Fatalf("change = %v, want ChangeUpdated", change)
+	}
+	if got, _ := os.ReadFile(path); string(got) != string(current) {
+		t.Errorf("got:\n%s\nwant:\n%s", got, current)
+	}
+}
+
+func TestSessionStartReportsAMissingCLIOnly(t *testing.T) {
+	cmd := callbackCommand("claude", "session-start")
+	run := func(path string) string {
+		c := exec.CommandContext(t.Context(), "/bin/sh", "-c", cmd)
+		c.Env = []string{"PATH=" + path}
+		out, _ := c.Output()
+		return string(out)
+	}
+
+	if out := run(t.TempDir()); !strings.Contains(out, "isn't installed") {
+		t.Errorf("no CLI on PATH printed %q, want the not-installed message", out)
+	}
+
+	bin := t.TempDir()
+	stub := "#!/bin/sh\necho failed >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(bin, "aviator"), []byte(stub), 0o755); err != nil { //nolint:gosec // the stub has to be executable
+		t.Fatal(err)
+	}
+	if out := run(bin); strings.Contains(out, "isn't installed") {
+		t.Errorf("a failing CLI was reported as missing: %q", out)
 	}
 }

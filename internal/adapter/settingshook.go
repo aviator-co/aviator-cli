@@ -47,15 +47,16 @@ type matcherGroup struct {
 
 // callbackCommand guards on aviator being installed so a teammate who pulled a
 // committed hook without the CLI gets a no-op, apart from session-start, which
-// says so instead. Its output must stay byte-stable — Codex and Gemini re-prompt
-// for trust when it changes.
+// says so instead — and only when the CLI is missing, not when it fails. Its
+// output must stay byte-stable — Codex and Gemini re-prompt for trust when it
+// changes.
 func callbackCommand(agent, subcommand string) string {
-	fallback := "true"
+	call := "aviator hooks " + subcommand + " --agent=" + agent
 	if subcommand == "session-start" {
-		fallback = missingCLIFallback()
+		return "if command -v aviator >/dev/null 2>&1; then " + call +
+			"; else " + missingCLIFallback() + "; fi"
 	}
-	return "command -v aviator >/dev/null 2>&1 && aviator hooks " + subcommand +
-		" --agent=" + agent + " || " + fallback
+	return "command -v aviator >/dev/null 2>&1 && " + call + " || true"
 }
 
 // missingCLIFallback prints the payload the session-start callback would have
