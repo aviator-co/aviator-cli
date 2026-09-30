@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"emperror.dev/errors"
+	"github.com/tailscale/hujson"
 )
 
 // toolMatcher covers the shell tool and the GitHub MCP server's PR call. The
@@ -127,9 +130,9 @@ type ourHook struct {
 
 // installSettingsHook mends the entries of ours already in place, drops every
 // other entry of ours, and appends what is missing. Nothing outside our own
-// entries is added, changed, or removed.
+// entries is added, changed, or removed, down to the byte.
 func installSettingsHook(path, agentID string) (Change, error) {
-	top, events, err := readSettings(path)
+	doc, events, err := readSettings(path)
 	if err != nil {
 		return ChangeNone, err
 	}
@@ -152,7 +155,7 @@ func installSettingsHook(path, agentID string) (Change, error) {
 		if found[i].command == desired {
 			continue
 		}
-		if err := setHookCommand(events, found[i], desired); err != nil {
+		if err := setHookCommand(doc, found[i], desired); err != nil {
 			return ChangeNone, err
 		}
 		changed = true
@@ -165,31 +168,35 @@ func installSettingsHook(path, agentID string) (Change, error) {
 		}
 	}
 	if len(stale) > 0 {
-		if err := removeAll(events, stale); err != nil {
+		if err := removeAll(doc, stale); err != nil {
 			return ChangeNone, err
 		}
 		changed = true
 	}
 
 	for _, ev := range missing {
-		if err := appendGroup(events, ev, agentID); err != nil {
+		if err := appendGroup(doc, ev, agentID); err != nil {
 			return ChangeNone, err
 		}
 		changed = true
+	}
+
+	if err := prune(doc, stale); err != nil {
+		return ChangeNone, err
 	}
 
 	switch {
 	case !changed:
 		return ChangeNone, nil
 	case len(found) > 0:
-		return ChangeUpdated, writeSettings(path, top, events)
+		return ChangeUpdated, writeSettings(path, doc)
 	default:
-		return ChangeAdded, writeSettings(path, top, events)
+		return ChangeAdded, writeSettings(path, doc)
 	}
 }
 
 func uninstallSettingsHook(path, agentID string) (Change, error) {
-	top, events, err := readSettings(path)
+	doc, events, err := readSettings(path)
 	if err != nil {
 		return ChangeNone, err
 	}
@@ -200,10 +207,13 @@ func uninstallSettingsHook(path, agentID string) (Change, error) {
 	if len(found) == 0 {
 		return ChangeNone, nil
 	}
-	if err := removeAll(events, found); err != nil {
+	if err := removeAll(doc, found); err != nil {
 		return ChangeNone, err
 	}
-	return ChangeRemoved, writeSettings(path, top, events)
+	if err := prune(doc, found); err != nil {
+		return ChangeNone, err
+	}
+	return ChangeRemoved, writeSettings(path, doc)
 }
 
 // claimFor picks the entry already serving ev, so install leaves a hook in
@@ -284,78 +294,219 @@ func installsInto(event string) bool {
 	return false
 }
 
-func setHookCommand(events map[string]json.RawMessage, h ourHook, command string) error {
-	groups, err := eventGroups(events, h.event)
-	if err != nil {
-		return err
-	}
-	hooks, err := groupHooks(groups[h.group])
-	if err != nil {
-		return err
-	}
-	if hooks[h.idx], err = marshalNoHTML(cmdHook{Type: "command", Command: command}); err != nil {
-		return err
-	}
-	if groups[h.group], err = setGroupHooks(groups[h.group], hooks); err != nil {
-		return err
-	}
-	return setEventGroups(events, h.event, groups)
+func setHookCommand(doc *hujson.Value, h ourHook, command string) error {
+	path := pointer("hooks", h.event, strconv.Itoa(h.group), "hooks", strconv.Itoa(h.idx), "command")
+	return patch(doc, patchOp{Op: "replace", Path: path, Value: command})
 }
 
-func appendGroup(events map[string]json.RawMessage, ev hookEvent, agentID string) error {
-	groups, err := eventGroups(events, ev.name)
-	if err != nil {
-		return err
+func appendGroup(doc *hujson.Value, ev hookEvent, agentID string) error {
+	group := desiredGroup(ev, agentID)
+	hooks := doc.Find("/hooks")
+	if hooks == nil {
+		return insert(doc, doc, "hooks", map[string][]matcherGroup{ev.name: {group}})
 	}
-	group, err := marshalNoHTML(desiredGroup(ev, agentID))
-	if err != nil {
-		return err
+	if groups := doc.Find(pointer("hooks", ev.name)); groups != nil {
+		return insert(doc, groups, "", group)
 	}
-	return setEventGroups(events, ev.name, append(groups, group))
+	return insert(doc, hooks, ev.name, []matcherGroup{group})
 }
 
 // removeAll works backwards through each event so the indices recorded for the
-// earlier entries survive the lists shrinking.
-func removeAll(events map[string]json.RawMessage, hooks []ourHook) error {
-	byEvent := map[string][]ourHook{}
-	for _, h := range hooks {
-		byEvent[h.event] = append(byEvent[h.event], h)
-	}
-	for name, list := range byEvent {
-		groups, err := eventGroups(events, name)
-		if err != nil {
+// earlier entries survive the lists shrinking. A group goes once it empties.
+func removeAll(doc *hujson.Value, hooks []ourHook) error {
+	sorted := slices.Clone(hooks)
+	sort.Slice(sorted, func(i, j int) bool {
+		a, b := sorted[i], sorted[j]
+		if a.event != b.event {
+			return a.event < b.event
+		}
+		if a.group != b.group {
+			return a.group > b.group
+		}
+		return a.idx > b.idx
+	})
+	for _, h := range sorted {
+		group := pointer("hooks", h.event, strconv.Itoa(h.group))
+		if err := patch(doc, patchOp{Op: "remove", Path: group + "/hooks/" + strconv.Itoa(h.idx)}); err != nil {
 			return err
 		}
-		sort.Slice(list, func(i, j int) bool {
-			if list[i].group != list[j].group {
-				return list[i].group > list[j].group
-			}
-			return list[i].idx > list[j].idx
-		})
-		for _, h := range list {
-			if groups, err = removeHook(groups, h.group, h.idx); err != nil {
+		if isEmpty(doc.Find(group + "/hooks")) {
+			if err := patch(doc, patchOp{Op: "remove", Path: group}); err != nil {
 				return err
 			}
-		}
-		if err := setEventGroups(events, name, groups); err != nil {
-			return err
 		}
 	}
 	return nil
 }
 
-// removeHook drops one hook from a group, dropping the group once it empties.
-func removeHook(groups []json.RawMessage, gi, hi int) ([]json.RawMessage, error) {
-	hooks, err := groupHooks(groups[gi])
+// prune drops the events that removing our hooks emptied, and the hooks section
+// if that leaves it empty. It runs after any append, so a hook moving between
+// groups of one event leaves the event where it was.
+func prune(doc *hujson.Value, removed []ourHook) error {
+	if len(removed) == 0 {
+		return nil
+	}
+	for _, h := range removed {
+		ptr := pointer("hooks", h.event)
+		if v := doc.Find(ptr); v != nil && isEmpty(v) {
+			if err := patch(doc, patchOp{Op: "remove", Path: ptr}); err != nil {
+				return err
+			}
+		}
+	}
+	if isEmpty(doc.Find("/hooks")) {
+		return patch(doc, patchOp{Op: "remove", Path: "/hooks"})
+	}
+	return nil
+}
+
+type patchOp struct {
+	Op    string `json:"op"`
+	Path  string `json:"path"`
+	Value any    `json:"value,omitempty"`
+}
+
+func patch(doc *hujson.Value, op patchOp) error {
+	raw, err := marshalNoHTML([]patchOp{op})
 	if err != nil {
+		return err
+	}
+	return errors.Wrapf(doc.Patch(raw), "failed to %s %s", op.Op, op.Path)
+}
+
+// pointer builds an RFC 6901 JSON pointer from unescaped segments.
+func pointer(segments ...string) string {
+	var b strings.Builder
+	for _, s := range segments {
+		b.WriteString("/")
+		b.WriteString(strings.NewReplacer("~", "~0", "/", "~1").Replace(s))
+	}
+	return b.String()
+}
+
+func isEmpty(v *hujson.Value) bool {
+	if v == nil {
+		return false
+	}
+	switch c := v.Value.(type) {
+	case *hujson.Object:
+		return len(c.Members) == 0
+	case *hujson.Array:
+		return len(c.Elements) == 0
+	}
+	return false
+}
+
+// insert appends value to container, named name when it is an object, laid
+// out like the entries already there.
+func insert(doc, container *hujson.Value, name string, value any) error {
+	lead, indent, err := entryLayout(doc, container)
+	if err != nil {
+		return err
+	}
+	var raw []byte
+	if indent == nil {
+		raw, err = marshalNoHTML(value)
+	} else {
+		raw, err = marshalIndent(value, *indent, indentUnit(doc))
+	}
+	if err != nil {
+		return err
+	}
+	v, err := hujson.Parse(raw)
+	if err != nil {
+		return err
+	}
+
+	switch c := container.Value.(type) {
+	case *hujson.Object:
+		v.BeforeExtra = hujson.Extra(" ")
+		if n := len(c.Members); n > 0 {
+			v.BeforeExtra = slices.Clone(c.Members[n-1].Value.BeforeExtra)
+		}
+		c.Members = append(c.Members, hujson.ObjectMember{
+			Name:  hujson.Value{BeforeExtra: lead, Value: hujson.String(name)},
+			Value: v,
+		})
+	case *hujson.Array:
+		v.BeforeExtra = lead
+		c.Elements = append(c.Elements, v)
+	default:
+		return errors.New("can only insert into an object or array")
+	}
+	return nil
+}
+
+// entryLayout returns the whitespace to put before a new entry in container,
+// and the indent its lines continue at, or a nil indent when the container is
+// laid out on one line and the entry should be too.
+func entryLayout(doc, container *hujson.Value) (hujson.Extra, *string, error) {
+	var last *hujson.Value
+	var closing *hujson.Extra
+	switch c := container.Value.(type) {
+	case *hujson.Object:
+		if n := len(c.Members); n > 0 {
+			last = &c.Members[n-1].Name
+		}
+		closing = &c.AfterExtra
+	case *hujson.Array:
+		if n := len(c.Elements); n > 0 {
+			last = &c.Elements[n-1]
+		}
+		closing = &c.AfterExtra
+	default:
+		return nil, nil, errors.New("can only insert into an object or array")
+	}
+
+	if last != nil {
+		i := bytes.LastIndexByte(last.BeforeExtra, '\n')
+		if i < 0 {
+			return hujson.Extra(" "), nil, nil
+		}
+		indent := string(last.BeforeExtra[i+1:])
+		return hujson.Extra("\n" + indent), &indent, nil
+	}
+
+	packed := doc.Pack()
+	if !bytes.Contains(bytes.TrimSpace(packed), []byte("\n")) {
+		return nil, nil, nil
+	}
+	doc.UpdateOffsets()
+	packed = doc.Pack()
+	lineStart := bytes.LastIndexByte(packed[:container.StartOffset], '\n') + 1
+	outer := leadingIndent(packed[lineStart:])
+	if len(bytes.TrimSpace(*closing)) == 0 {
+		*closing = hujson.Extra("\n" + outer)
+	}
+	indent := outer + indentUnit(doc)
+	return hujson.Extra("\n" + indent), &indent, nil
+}
+
+// indentUnit is the indent of the file's first top-level key, defaulting to two
+// spaces.
+func indentUnit(doc *hujson.Value) string {
+	if obj, ok := doc.Value.(*hujson.Object); ok && len(obj.Members) > 0 {
+		before := obj.Members[0].Name.BeforeExtra
+		if i := bytes.LastIndexByte(before, '\n'); i >= 0 && i < len(before)-1 {
+			return string(before[i+1:])
+		}
+	}
+	return "  "
+}
+
+func leadingIndent(line []byte) string {
+	return string(line[:len(line)-len(bytes.TrimLeft(line, " \t"))])
+}
+
+func marshalIndent(v any, prefix, indent string) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent(prefix, indent)
+	if err := enc.Encode(v); err != nil {
 		return nil, err
 	}
-	hooks = append(hooks[:hi], hooks[hi+1:]...)
-	if len(hooks) == 0 {
-		return append(groups[:gi], groups[gi+1:]...), nil
-	}
-	groups[gi], err = setGroupHooks(groups[gi], hooks)
-	return groups, err
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
 // groupMatcher returns a group's matcher, or "" when it has none.
@@ -371,8 +522,6 @@ func groupMatcher(group json.RawMessage) string {
 	return m
 }
 
-// groupHooks returns a group's hooks as raw JSON, so sibling hooks keep fields
-// we don't model (timeout, statusMessage) when we rewrite the list.
 func groupHooks(group json.RawMessage) ([]json.RawMessage, error) {
 	obj, err := decodeObject(group, "hook group")
 	if err != nil {
@@ -388,20 +537,6 @@ func groupHooks(group json.RawMessage) ([]json.RawMessage, error) {
 	return hooks, nil
 }
 
-// setGroupHooks replaces a group's hooks list, preserving its other keys.
-func setGroupHooks(group json.RawMessage, hooks []json.RawMessage) (json.RawMessage, error) {
-	obj, err := decodeObject(group, "hook group")
-	if err != nil {
-		return nil, err
-	}
-	raw, err := marshalNoHTML(hooks)
-	if err != nil {
-		return nil, err
-	}
-	obj["hooks"] = raw
-	return marshalNoHTML(obj)
-}
-
 func eventGroups(events map[string]json.RawMessage, name string) ([]json.RawMessage, error) {
 	raw, ok := events[name]
 	if !ok || len(raw) == 0 {
@@ -414,39 +549,38 @@ func eventGroups(events map[string]json.RawMessage, name string) ([]json.RawMess
 	return groups, nil
 }
 
-func setEventGroups(events map[string]json.RawMessage, name string, groups []json.RawMessage) error {
-	if len(groups) == 0 {
-		delete(events, name)
-		return nil
-	}
-	raw, err := marshalNoHTML(groups)
-	if err != nil {
-		return err
-	}
-	events[name] = raw
-	return nil
-}
-
-// readSettings returns the file's top-level object and its hooks section.
-func readSettings(path string) (top, events map[string]json.RawMessage, err error) {
+// readSettings returns the file as written, for editing, and its hooks section
+// as plain JSON, for finding our entries. A missing or blank file reads as an
+// empty object.
+func readSettings(path string) (*hujson.Value, map[string]json.RawMessage, error) {
 	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return map[string]json.RawMessage{}, map[string]json.RawMessage{}, nil
-	}
-	if err != nil {
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		data = []byte("{\n}\n")
+	case err != nil:
 		return nil, nil, errors.Wrapf(err, "failed to read %s", path)
+	case len(bytes.TrimSpace(data)) == 0:
+		data = []byte("{\n}\n")
 	}
-	if top, err = decodeObject(data, path); err != nil {
+	doc, err := hujson.Parse(data)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "%s is not valid JSON", path)
+	}
+	std := doc.Clone()
+	std.Standardize()
+	top, err := decodeObject(std.Pack(), path)
+	if err != nil {
 		return nil, nil, err
 	}
-	if events, err = decodeObject(top["hooks"], path+" hooks section"); err != nil {
+	events, err := decodeObject(top["hooks"], path+" hooks section")
+	if err != nil {
 		return nil, nil, err
 	}
-	return top, events, nil
+	return &doc, events, nil
 }
 
 // decodeObject requires a JSON object. A null or a scalar is an error rather
-// than the nil map json.Unmarshal would otherwise hand back for us to write to.
+// than the nil map json.Unmarshal would otherwise hand back.
 func decodeObject(raw []byte, what string) (map[string]json.RawMessage, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return map[string]json.RawMessage{}, nil
@@ -461,33 +595,15 @@ func decodeObject(raw []byte, what string) (map[string]json.RawMessage, error) {
 	return obj, nil
 }
 
-func writeSettings(path string, top, events map[string]json.RawMessage) error {
-	if len(events) == 0 {
-		delete(top, "hooks")
-	} else {
-		raw, err := marshalNoHTML(events)
-		if err != nil {
-			return err
-		}
-		top["hooks"] = raw
-	}
-
+func writeSettings(path string, doc *hujson.Value) error {
 	// Our hook was the file's only content, so don't leave an empty one behind.
-	if len(top) == 0 {
+	if isEmpty(doc) {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return errors.Wrapf(err, "failed to remove %s", path)
 		}
 		return nil
 	}
-
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(top); err != nil {
-		return err
-	}
-	return writeFileAtomic(path, buf.Bytes())
+	return writeFileAtomic(path, doc.Pack())
 }
 
 // writeFileAtomic renames a completed temp file over path, so an interrupted

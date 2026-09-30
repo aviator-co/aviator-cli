@@ -366,3 +366,157 @@ func TestNullSettingsErrorRatherThanPanic(t *testing.T) {
 		}
 	}
 }
+
+// A settings file is often hand-formatted, and an install is a diff someone
+// reviews, so everything outside our entries must come back byte-for-byte.
+func TestInstallThenUninstallRestoresTheFile(t *testing.T) {
+	cases := map[string]string{
+		"blank lines and key order": `{
+  "permissions": {
+    "allow": [
+      "Bash(go build:*)",
+
+      "Bash(git status)"
+    ]
+  },
+  "model": "opus"
+}
+`,
+		"four spaces around the user's hooks": `{
+    "hooks": {
+        "Stop": [
+            {"hooks": [{"type": "command", "command": "echo done"}]}
+        ],
+        "PreToolUse": [
+            {
+                "matcher": "Edit",
+                "hooks": [{"type": "command", "command": "mylint"}]
+            }
+        ]
+    },
+    "env": {"A": "1"}
+}
+`,
+		"tabs":     "{\n\t\"model\": \"opus\",\n\n\t\"env\": {\"A\": \"1\"}\n}\n",
+		"one line": `{"model": "opus"}`,
+		"comments": "{\n  // team defaults\n  \"model\": \"opus\"\n}\n",
+	}
+	for name, original := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "settings.json")
+			if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := installSettingsHook(path, "claude"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := uninstallSettingsHook(path, "claude"); err != nil {
+				t.Fatal(err)
+			}
+			if got, _ := os.ReadFile(path); string(got) != original {
+				t.Errorf("install then uninstall changed the file:\n%s\nwant:\n%s", got, original)
+			}
+		})
+	}
+}
+
+func TestInstallIndentsLikeTheFile(t *testing.T) {
+	cases := []struct {
+		name, original, want string
+	}{
+		{
+			name:     "four spaces",
+			original: "{\n    \"hooks\": {\n        \"Stop\": []\n    }\n}\n",
+			want:     "\n        \"SessionStart\": [\n            {\n                \"hooks\": [\n",
+		},
+		{
+			name:     "tabs",
+			original: "{\n\t\"model\": \"opus\"\n}\n",
+			want:     "\n\t\"hooks\": {\n\t\t\"SessionStart\": [\n\t\t\t{\n",
+		},
+		{
+			name:     "empty hooks section",
+			original: "{\n  \"hooks\": {}\n}\n",
+			want:     "{\n  \"hooks\": {\n    \"SessionStart\": [\n",
+		},
+		{
+			name:     "after a sibling group",
+			original: "{\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\"matcher\": \"Edit\", \"hooks\": []}\n    ]\n  }\n}\n",
+			want:     "{\"matcher\": \"Edit\", \"hooks\": []},\n      {\n        \"matcher\": \"" + toolMatcher + "\",\n",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "settings.json")
+			if err := os.WriteFile(path, []byte(c.original), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := installSettingsHook(path, "claude"); err != nil {
+				t.Fatal(err)
+			}
+			got, _ := os.ReadFile(path)
+			if !strings.Contains(string(got), c.want) {
+				t.Errorf("got:\n%s\nwant it to contain:\n%s", got, c.want)
+			}
+			readJSON(t, path)
+		})
+	}
+}
+
+func TestInstallKeepsAOneLineSectionOnOneLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	original := "{\n  \"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"s\"}]}]}\n}\n"
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installSettingsHook(path, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(path)
+	if strings.Count(string(got), "\n") != strings.Count(original, "\n") {
+		t.Errorf("install broke a one-line hooks section across lines:\n%s", got)
+	}
+	readJSON(t, path)
+}
+
+// A comment above our hook is about our hook, so it goes with it.
+func TestUninstallFromASharedGroupLeavesTheRestAsWritten(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	original := `{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "command": "my-audit-log"},
+          // aviator
+          {"type": "command", "command": "aviator hooks pre-tool-use --agent=claude"}
+        ]
+      }
+    ]
+  }
+}
+`
+	want := `{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "command": "my-audit-log"}
+        ]
+      }
+    ]
+  }
+}
+`
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := uninstallSettingsHook(path, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(path); string(got) != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
