@@ -34,7 +34,7 @@ func assertJSONFields(t *testing.T, got, want map[string]any) {
 	}
 }
 
-// Callers parse this object rather than scraping "Runbook #123" out of the
+// Callers parse this object rather than scraping "Review r/123" out of the
 // human output, so the keys are the contract.
 func TestVerifySubmitJSON(t *testing.T) {
 	got := decodeJSON(t, newVerifySubmitJSON(&api.SubmitVerifyResponse{
@@ -111,7 +111,7 @@ func TestVerifyRunJSONKeepsEmptyFields(t *testing.T) {
 // The warning is the only place a caller learns why an unbound session may
 // never attach to its PR, so it has to name both the flag and the fallback.
 func TestNoWorkingBranchWarning(t *testing.T) {
-	for _, want := range []string{"--working-branch", "Runbook: <url>"} {
+	for _, want := range []string{"--working-branch", "Review: <url>"} {
 		if !strings.Contains(noWorkingBranchWarning, want) {
 			t.Errorf("warning missing %q: %q", want, noWorkingBranchWarning)
 		}
