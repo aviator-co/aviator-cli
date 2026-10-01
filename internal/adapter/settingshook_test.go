@@ -3,6 +3,7 @@ package adapter
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -210,8 +211,10 @@ func TestOwnershipStopsAtTheAgentID(t *testing.T) {
 	if !ownsCommand("aviator hooks pre-tool-use --agent=claude", "claude") {
 		t.Error("did not recognise our own bare command")
 	}
-	if !ownsCommand(callbackCommand("claude", "pre-tool-use"), "claude") {
-		t.Error("did not recognise our own current command")
+	for _, ev := range hookEvents {
+		if !ownsCommand(callbackCommand("claude", ev.subcommand), "claude") {
+			t.Errorf("did not recognise our own current %s command", ev.subcommand)
+		}
 	}
 }
 
@@ -364,5 +367,239 @@ func TestNullSettingsErrorRatherThanPanic(t *testing.T) {
 		if _, err := installSettingsHook(path, "claude"); err == nil {
 			t.Errorf("install on %s returned no error, want one", content)
 		}
+	}
+}
+
+// A settings file is often hand-formatted, and an install is a diff someone
+// reviews, so everything outside our entries must come back byte-for-byte.
+func TestInstallThenUninstallRestoresTheFile(t *testing.T) {
+	cases := map[string]string{
+		"blank lines and key order": `{
+  "permissions": {
+    "allow": [
+      "Bash(go build:*)",
+
+      "Bash(git status)"
+    ]
+  },
+  "model": "opus"
+}
+`,
+		"four spaces around the user's hooks": `{
+    "hooks": {
+        "Stop": [
+            {"hooks": [{"type": "command", "command": "echo done"}]}
+        ],
+        "PreToolUse": [
+            {
+                "matcher": "Edit",
+                "hooks": [{"type": "command", "command": "mylint"}]
+            }
+        ]
+    },
+    "env": {"A": "1"}
+}
+`,
+		"tabs":                            "{\n\t\"model\": \"opus\",\n\n\t\"env\": {\"A\": \"1\"}\n}\n",
+		"one line":                        `{"model": "opus"}`,
+		"comments":                        "{\n  // team defaults\n  \"model\": \"opus\"\n}\n",
+		"a comment trailing the last key": "{\n  \"model\": \"opus\" // pinned\n}\n",
+		"a comment trailing the last group": `{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Edit", "hooks": []} // mine
+    ]
+  }
+}
+`,
+	}
+	for name, original := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "settings.json")
+			if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := installSettingsHook(path, "claude"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := uninstallSettingsHook(path, "claude"); err != nil {
+				t.Fatal(err)
+			}
+			if got, _ := os.ReadFile(path); string(got) != original {
+				t.Errorf("install then uninstall changed the file:\n%s\nwant:\n%s", got, original)
+			}
+		})
+	}
+}
+
+func TestInstallIndentsLikeTheFile(t *testing.T) {
+	cases := []struct {
+		name, original, want string
+	}{
+		{
+			name:     "four spaces",
+			original: "{\n    \"hooks\": {\n        \"Stop\": []\n    }\n}\n",
+			want:     "\n        \"SessionStart\": [\n            {\n                \"hooks\": [\n",
+		},
+		{
+			name:     "tabs",
+			original: "{\n\t\"model\": \"opus\"\n}\n",
+			want:     "\n\t\"hooks\": {\n\t\t\"SessionStart\": [\n\t\t\t{\n",
+		},
+		{
+			name:     "empty hooks section",
+			original: "{\n  \"hooks\": {}\n}\n",
+			want:     "{\n  \"hooks\": {\n    \"SessionStart\": [\n",
+		},
+		{
+			name:     "after a sibling group",
+			original: "{\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\"matcher\": \"Edit\", \"hooks\": []}\n    ]\n  }\n}\n",
+			want:     "{\"matcher\": \"Edit\", \"hooks\": []},\n      {\n        \"matcher\": \"" + toolMatcher + "\",\n",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "settings.json")
+			if err := os.WriteFile(path, []byte(c.original), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := installSettingsHook(path, "claude"); err != nil {
+				t.Fatal(err)
+			}
+			got, _ := os.ReadFile(path)
+			if !strings.Contains(string(got), c.want) {
+				t.Errorf("got:\n%s\nwant it to contain:\n%s", got, c.want)
+			}
+			readJSON(t, path)
+		})
+	}
+}
+
+func TestInstallKeepsATrailingCommentOnItsLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(path, []byte("{\n  \"model\": \"opus\" // pinned\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installSettingsHook(path, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(path)
+	if want := "\"opus\", // pinned\n  \"hooks\": {\n"; !strings.Contains(string(got), want) {
+		t.Errorf("got:\n%s\nwant it to contain:\n%s", got, want)
+	}
+}
+
+func TestInstallKeepsAOneLineSectionOnOneLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	original := "{\n  \"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"s\"}]}]}\n}\n"
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installSettingsHook(path, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(path)
+	if strings.Count(string(got), "\n") != strings.Count(original, "\n") {
+		t.Errorf("install broke a one-line hooks section across lines:\n%s", got)
+	}
+	readJSON(t, path)
+}
+
+// A comment above our hook is about our hook, so it goes with it.
+func TestUninstallFromASharedGroupLeavesTheRestAsWritten(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	original := `{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "command": "my-audit-log"},
+          // aviator
+          {"type": "command", "command": "aviator hooks pre-tool-use --agent=claude"}
+        ]
+      }
+    ]
+  }
+}
+`
+	want := `{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "command": "my-audit-log"}
+        ]
+      }
+    ]
+  }
+}
+`
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := uninstallSettingsHook(path, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(path); string(got) != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// The old form's || caught a failing CLI too, and told the user to install it.
+func TestInstallReplacesTheOldSessionStartCommand(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if _, err := installSettingsHook(path, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	current, _ := os.ReadFile(path)
+	oldCmd := "command -v aviator >/dev/null 2>&1 && aviator hooks session-start --agent=claude || " +
+		missingCLIFallback()
+	encode := func(s string) string {
+		b, err := marshalNoHTML(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	newCmd := encode(callbackCommand("claude", "session-start"))
+	old := strings.Replace(string(current), newCmd, encode(oldCmd), 1)
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil { //nolint:gosec // a test temp file
+		t.Fatal(err)
+	}
+
+	change, err := installSettingsHook(path, "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if change != ChangeUpdated {
+		t.Fatalf("change = %v, want ChangeUpdated", change)
+	}
+	if got, _ := os.ReadFile(path); string(got) != string(current) {
+		t.Errorf("got:\n%s\nwant:\n%s", got, current)
+	}
+}
+
+func TestSessionStartReportsAMissingCLIOnly(t *testing.T) {
+	cmd := callbackCommand("claude", "session-start")
+	run := func(path string) string {
+		c := exec.CommandContext(t.Context(), "/bin/sh", "-c", cmd)
+		c.Env = []string{"PATH=" + path}
+		out, _ := c.Output()
+		return string(out)
+	}
+
+	if out := run(t.TempDir()); !strings.Contains(out, "isn't installed") {
+		t.Errorf("no CLI on PATH printed %q, want the not-installed message", out)
+	}
+
+	bin := t.TempDir()
+	stub := "#!/bin/sh\necho failed >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(bin, "aviator"), []byte(stub), 0o755); err != nil { //nolint:gosec // the stub has to be executable
+		t.Fatal(err)
+	}
+	if out := run(bin); strings.Contains(out, "isn't installed") {
+		t.Errorf("a failing CLI was reported as missing: %q", out)
 	}
 }

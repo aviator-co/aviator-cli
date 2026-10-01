@@ -49,7 +49,7 @@ jobs:
           git tag "v${VERSION}-nightly" 2>/dev/null || echo "Tag v${VERSION}-nightly already exists"
           git push origin "v${VERSION}-nightly" 2>/dev/null || echo "Tag v${VERSION}-nightly already on remote"
       - name: Notify release start
-        uses: ./.github/actions/notify-deploy
+        uses: $/.github/actions/notify-deploy
         with:
           webhook_url: ${{ secrets.SLACK_WEBHOOK_PROD_DEPLOY_UPDATES }}
           state: start
@@ -74,7 +74,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Notify release success
-        uses: ./.github/actions/notify-deploy
+        uses: $/.github/actions/notify-deploy
         with:
           webhook_url: ${{ secrets.SLACK_WEBHOOK_PROD_DEPLOY_UPDATES }}
           state: success
@@ -83,7 +83,7 @@ jobs:
       - name: Notify release failure
         # This includes cancellation.
         if: ${{ !success() }}
-        uses: ./.github/actions/notify-deploy
+        uses: $/.github/actions/notify-deploy
         with:
           webhook_url: ${{ secrets.SLACK_WEBHOOK_PROD_DEPLOY_UPDATES }}
           state: failure
