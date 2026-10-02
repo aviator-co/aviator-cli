@@ -12,7 +12,7 @@ import (
 )
 
 var dismissFlags struct {
-	Criteria         []string
+	Keys             []string
 	CriteriaJSON     string
 	CriteriaJSONFile string
 	JSON             bool
@@ -30,7 +30,7 @@ var dismissCmd = &cobra.Command{
 		"or\n" +
 		"  {\"baseline_invariant_id\": 42, \"category\": \"accepted_risk\", \"justification\": \"...\"}\n" +
 		"where category is false_positive, doesnt_apply, accepted_risk, or\n" +
-		"fix_in_followup. --criterion <key> is shorthand for a stable_key entry.",
+		"fix_in_followup. --key <key> is shorthand for a stable_key entry.",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		runbookNumber, err := parseRunbookID(args[0])
@@ -38,7 +38,7 @@ var dismissCmd = &cobra.Command{
 			return err
 		}
 		dismissals, err := buildDismissals(
-			dismissFlags.Criteria, dismissFlags.CriteriaJSON, dismissFlags.CriteriaJSONFile,
+			dismissFlags.Keys, dismissFlags.CriteriaJSON, dismissFlags.CriteriaJSONFile,
 		)
 		if err != nil {
 			return err
@@ -85,14 +85,14 @@ func buildDismissals(keys []string, inlineJSON, jsonFile string) ([]api.Dismissa
 		dismissals = append(dismissals, api.Dismissal{StableKey: key})
 	}
 	if len(dismissals) == 0 {
-		return nil, errors.New("pass at least one --criterion or a --criteria-json entry")
+		return nil, errors.New("pass at least one --key or a --criteria-json entry")
 	}
 	return dismissals, nil
 }
 
 func init() {
 	f := dismissCmd.Flags()
-	f.StringArrayVar(&dismissFlags.Criteria, "criterion", nil, "key of a task criterion to delete (repeatable)")
+	f.StringArrayVar(&dismissFlags.Keys, "key", nil, "key of a task criterion to delete (repeatable)")
 	f.StringVar(&dismissFlags.CriteriaJSON, "criteria-json", "", "JSON array of criteria to delete and invariants to waive")
 	f.StringVar(&dismissFlags.CriteriaJSONFile, "criteria-json-file", "", "read the --criteria-json array from a file")
 	dismissCmd.MarkFlagsMutuallyExclusive("criteria-json", "criteria-json-file")
