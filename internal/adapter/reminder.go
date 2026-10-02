@@ -52,7 +52,7 @@ const commitOrPushText = "Verify: does this branch have a session? Check with " 
 // already run, so it asks for a repair rather than for the submission.
 const reminderText = "Verify: if this branch has no session, this PR is out of order. Tell the " +
 	"user rather than repairing it silently. A PR links to its session by a " +
-	"`Runbook: <url>` line at the top of the body, not by pushing the branch. Find the " +
+	"`Review: <url>` line at the top of the body, not by pushing the branch. Find the " +
 	"session with " +
 	"`aviator sessions --repo <owner/repo> --branch <branch>`, or run /verify-submit if the " +
 	"branch doesn't have one yet."
@@ -77,7 +77,7 @@ const missingCLIText = "This repository uses Aviator Verify, but the aviator CLI
 func sessionText(howToInstall string) string {
 	return "This repository uses Aviator Verify. Run /verify-submit before opening a PR, and " +
 		"include it in any plan that ends in a pull request. " +
-		"One verify session tracks exactly one PR: every PR gets its own " +
+		"One review tracks exactly one PR: every PR gets its own " +
 		"submission with its own intent and acceptance criteria, so a stack of 3 PRs means 3 " +
 		"submissions, not one covering the stack. " +
 		"If /verify-submit isn't available: " + howToInstall

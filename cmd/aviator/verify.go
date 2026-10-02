@@ -34,9 +34,9 @@ var verifyTriggerOnlyFlags = []string{"evaluator-only", "force"}
 
 // noWorkingBranchWarning covers the one thing a submission gives up without
 // --working-branch: with no branch to match on, the session can only reach a PR
-// through the "Runbook: <url>" line in the PR body.
+// through the "Review: <url>" line in the PR body.
 const noWorkingBranchWarning = "no --working-branch given, so this session can only bind to a PR " +
-	"through a \"Runbook: <url>\" line in the PR body.\n" +
+	"through a \"Review: <url>\" line in the PR body.\n" +
 	"  Pass --working-branch <branch> to have the PR opened from that branch bind automatically."
 
 var verifyCmd = &cobra.Command{
@@ -47,7 +47,7 @@ var verifyCmd = &cobra.Command{
 		"work lives on so a PR opened from that branch is verified against these\n" +
 		"criteria.\n" +
 		"\n" +
-		"One verify session tracks exactly one PR. Stacked or multi-PR work needs\n" +
+		"One review tracks exactly one PR. Stacked or multi-PR work needs\n" +
 		"one submission per PR, each with its own --working-branch, intent, and\n" +
 		"acceptance criteria. A single submission cannot cover a stack.\n" +
 		"\n" +
@@ -132,7 +132,7 @@ func runVerifySubmit(cmd *cobra.Command) error {
 	}
 
 	fmt.Printf("%s Verify submission created: %s\n", colors.Success("✓"), resp.URL)
-	fmt.Printf("  Runbook #%d\n", resp.RunbookNumber)
+	fmt.Printf("  Review %s\n", formatRunbookID(resp.RunbookNumber))
 	if resp.WorkingBranch != "" {
 		fmt.Printf("  Working branch: %s\n", resp.WorkingBranch)
 	}
