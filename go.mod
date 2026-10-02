@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	emperror.dev/errors v0.8.1
 	github.com/charmbracelet/huh v1.0.0
-	github.com/dustin/go-humanize v1.0.1
+	github.com/dustin/go-humanize v1.1.0
 	github.com/fatih/color v1.19.0
 	github.com/gofrs/flock v0.13.1
 	github.com/mattn/go-isatty v0.0.24
