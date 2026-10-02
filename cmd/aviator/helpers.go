@@ -25,7 +25,7 @@ func parseRunbookID(arg string) (int, error) {
 	s = strings.TrimPrefix(s, "r/")
 	n, err := strconv.Atoi(s)
 	if err != nil || n <= 0 {
-		return 0, errors.Errorf("invalid runbook ID %q, expected r/<number>", arg)
+		return 0, errors.Errorf("invalid session ID %q, expected r/<number>", arg)
 	}
 	return n, nil
 }

@@ -25,7 +25,7 @@ var showFlags struct {
 var showCmd = &cobra.Command{
 	Use:     "show <id>",
 	Aliases: []string{"get"},
-	Short:   "Show a runbook/verify session (e.g. aviator show r/123)",
+	Short:   "Show a review or runbook session (e.g. aviator show r/123)",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		runbookNumber, err := parseRunbookID(args[0])
@@ -137,7 +137,7 @@ func formatDetailHeader(d *api.RunbookDetail) string {
 	if d.RunbookVersion != nil {
 		version = fmt.Sprintf(" (version %d)", *d.RunbookVersion)
 	}
-	return fmt.Sprintf("%s Runbook %s%s — %s\n",
+	return fmt.Sprintf("%s %s%s — %s\n",
 		colors.Success("✓"), formatRunbookID(d.RunbookNumber), version, d.URL)
 }
 

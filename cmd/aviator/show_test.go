@@ -84,7 +84,7 @@ func TestFormatRunbookDetail(t *testing.T) {
 
 	out := formatRunbookDetail(detail, false)
 	for _, want := range []string{
-		"Runbook r/123 (version 4)",
+		"✓ r/123 (version 4)",
 		"Intent: make the thing doable",
 		"Branch: feature -> main",
 		"Steps: 1/2 completed",
