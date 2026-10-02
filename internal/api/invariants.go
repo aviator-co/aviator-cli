@@ -2,13 +2,10 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
-
-	"emperror.dev/errors"
 )
 
 // InvariantCondition narrows when an invariant applies. Type is one of the
@@ -122,27 +119,15 @@ type SetInvariantStatusResponse struct {
 	Invariants []Invariant `json:"invariants"`
 }
 
-// Every method here returns the verbatim response body alongside the decoded
-// value, so --json can print exactly what the server sent: fields this client
-// does not model, and nulls that decode to zero values, survive.
-
 // ListInvariants fetches one page of the account's baseline invariants.
 func (c *Client) ListInvariants(
 	ctx context.Context, q ListInvariantsQuery,
-) (json.RawMessage, *ListInvariantsResponse, error) {
-	var raw json.RawMessage
-	if err := c.getJSON(ctx, "/api/v1/invariants", listInvariantsQuery(q), &raw); err != nil {
-		return nil, nil, err
-	}
+) (*ListInvariantsResponse, error) {
 	var out ListInvariantsResponse
-	return raw, &out, decodeInvariantResponse(raw, &out)
-}
-
-func decodeInvariantResponse(raw json.RawMessage, out any) error {
-	if err := json.Unmarshal(raw, out); err != nil {
-		return errors.Wrap(err, "failed to decode invariant response")
+	if err := c.getJSON(ctx, "/api/v1/invariants", listInvariantsQuery(q), &out); err != nil {
+		return nil, err
 	}
-	return nil
+	return &out, nil
 }
 
 func listInvariantsQuery(q ListInvariantsQuery) url.Values {
@@ -176,63 +161,58 @@ func listInvariantsQuery(q ListInvariantsQuery) url.Values {
 // ListInvariantCategories fetches the account's invariant categories.
 func (c *Client) ListInvariantCategories(
 	ctx context.Context,
-) (json.RawMessage, *ListInvariantCategoriesResponse, error) {
-	var raw json.RawMessage
-	if err := c.getJSON(ctx, "/api/v1/invariants/categories", nil, &raw); err != nil {
-		return nil, nil, err
-	}
+) (*ListInvariantCategoriesResponse, error) {
 	var out ListInvariantCategoriesResponse
-	return raw, &out, decodeInvariantResponse(raw, &out)
+	if err := c.getJSON(ctx, "/api/v1/invariants/categories", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // CreateInvariant creates a baseline invariant. Requires a maintainer's user
 // access token.
 func (c *Client) CreateInvariant(
 	ctx context.Context, req CreateInvariantRequest,
-) (json.RawMessage, *Invariant, error) {
-	var raw json.RawMessage
-	if err := c.postJSON(ctx, "/api/v1/invariants", req, &raw); err != nil {
-		return nil, nil, err
-	}
+) (*Invariant, error) {
 	var out Invariant
-	return raw, &out, decodeInvariantResponse(raw, &out)
+	if err := c.postJSON(ctx, "/api/v1/invariants", req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // UpdateInvariant patches the given fields of an invariant.
 func (c *Client) UpdateInvariant(
 	ctx context.Context, invariantID int, req UpdateInvariantRequest,
-) (json.RawMessage, *Invariant, error) {
-	var raw json.RawMessage
-	if err := c.patchJSON(ctx, invariantPath(invariantID), req, &raw); err != nil {
-		return nil, nil, err
-	}
+) (*Invariant, error) {
 	var out Invariant
-	return raw, &out, decodeInvariantResponse(raw, &out)
+	if err := c.patchJSON(ctx, invariantPath(invariantID), req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // DeleteInvariant removes an invariant and its conditions. To keep the row
 // while taking it out of service, reject it via SetInvariantStatus instead.
 func (c *Client) DeleteInvariant(
 	ctx context.Context, invariantID int,
-) (json.RawMessage, *DeleteInvariantResponse, error) {
-	var raw json.RawMessage
-	if err := c.deleteJSON(ctx, invariantPath(invariantID), &raw); err != nil {
-		return nil, nil, err
-	}
+) (*DeleteInvariantResponse, error) {
 	var out DeleteInvariantResponse
-	return raw, &out, decodeInvariantResponse(raw, &out)
+	if err := c.deleteJSON(ctx, invariantPath(invariantID), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // SetInvariantStatus approves, rejects, or restores invariants in bulk.
 func (c *Client) SetInvariantStatus(
 	ctx context.Context, req SetInvariantStatusRequest,
-) (json.RawMessage, *SetInvariantStatusResponse, error) {
-	var raw json.RawMessage
-	if err := c.postJSON(ctx, "/api/v1/invariants/status", req, &raw); err != nil {
-		return nil, nil, err
-	}
+) (*SetInvariantStatusResponse, error) {
 	var out SetInvariantStatusResponse
-	return raw, &out, decodeInvariantResponse(raw, &out)
+	if err := c.postJSON(ctx, "/api/v1/invariants/status", req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 func invariantPath(invariantID int) string {

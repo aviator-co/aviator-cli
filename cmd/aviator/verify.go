@@ -202,13 +202,8 @@ func init() {
 	f.BoolVar(&verifyFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 }
 
-// verifySubmitJSON is the --json shape of a verify submission. It is its own
-// struct rather than the raw response so the keys callers parse stay put as the
-// response grows.
 type verifySubmitJSON struct {
-	RunbookNumber int    `json:"runbook_number"`
-	RunbookID     string `json:"runbook_id"`
-	URL           string `json:"url"`
+	sessionRef
 	WorkingBranch string `json:"working_branch"`
 	TargetBranch  string `json:"target_branch"`
 	CriteriaCount int    `json:"criteria_count"`
@@ -216,35 +211,25 @@ type verifySubmitJSON struct {
 
 func newVerifySubmitJSON(resp *api.SubmitVerifyResponse) verifySubmitJSON {
 	return verifySubmitJSON{
-		RunbookNumber: resp.RunbookNumber,
-		RunbookID:     formatRunbookID(resp.RunbookNumber),
-		URL:           resp.URL,
+		sessionRef:    newSessionRef(resp.RunbookNumber, resp.URL),
 		WorkingBranch: resp.WorkingBranch,
 		TargetBranch:  resp.TargetBranch,
 		CriteriaCount: len(resp.AcceptanceCriteria),
 	}
 }
 
-// verifyRunJSON is the --json shape of a triggered verification run, its own
-// struct for the same key-stability reason as verifySubmitJSON.
 type verifyRunJSON struct {
-	RunbookNumber int    `json:"runbook_number"`
-	RunbookID     string `json:"runbook_id"`
-	URL           string `json:"url"`
-	RunID         int    `json:"run_id"`
-	RunStatus     string `json:"run_status"`
-	Deduplicated  bool   `json:"deduplicated"`
-	Message       string `json:"message"`
+	sessionRef
+	RunStatus    string `json:"run_status"`
+	Deduplicated bool   `json:"deduplicated"`
+	Message      string `json:"message"`
 }
 
 func newVerifyRunJSON(resp *api.TriggerVerifyRunResponse) verifyRunJSON {
 	return verifyRunJSON{
-		RunbookNumber: resp.RunbookNumber,
-		RunbookID:     formatRunbookID(resp.RunbookNumber),
-		URL:           resp.URL,
-		RunID:         resp.RunID,
-		RunStatus:     resp.RunStatus,
-		Deduplicated:  resp.Deduplicated,
-		Message:       resp.Message,
+		sessionRef:   newSessionRef(resp.RunbookNumber, resp.URL),
+		RunStatus:    resp.RunStatus,
+		Deduplicated: resp.Deduplicated,
+		Message:      resp.Message,
 	}
 }

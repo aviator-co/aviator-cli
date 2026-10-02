@@ -45,8 +45,7 @@ func TestVerifySubmitJSON(t *testing.T) {
 		AcceptanceCriteria: []string{"one", "two"},
 	}))
 	assertJSONFields(t, got, map[string]any{
-		"runbook_number": float64(123),
-		"runbook_id":     "r/123",
+		"id":             "r/123",
 		"url":            "https://app.aviator.co/r/123",
 		"working_branch": "feature",
 		"target_branch":  "main",
@@ -62,8 +61,7 @@ func TestVerifySubmitJSONKeepsEmptyFields(t *testing.T) {
 		URL:           "https://app.aviator.co/r/7",
 	}))
 	assertJSONFields(t, got, map[string]any{
-		"runbook_number": float64(7),
-		"runbook_id":     "r/7",
+		"id":             "r/7",
 		"url":            "https://app.aviator.co/r/7",
 		"working_branch": "",
 		"target_branch":  "",
@@ -82,13 +80,11 @@ func TestVerifyRunJSON(t *testing.T) {
 		Message:       "Verification started.",
 	}))
 	assertJSONFields(t, got, map[string]any{
-		"runbook_number": float64(42),
-		"runbook_id":     "r/42",
-		"url":            "https://app.aviator.co/r/42",
-		"run_id":         float64(1234),
-		"run_status":     "pending",
-		"deduplicated":   false,
-		"message":        "Verification started.",
+		"id":           "r/42",
+		"url":          "https://app.aviator.co/r/42",
+		"run_status":   "pending",
+		"deduplicated": false,
+		"message":      "Verification started.",
 	})
 }
 
@@ -98,13 +94,11 @@ func TestVerifyRunJSONKeepsEmptyFields(t *testing.T) {
 		Deduplicated:  true,
 	}))
 	assertJSONFields(t, got, map[string]any{
-		"runbook_number": float64(7),
-		"runbook_id":     "r/7",
-		"url":            "",
-		"run_id":         float64(0),
-		"run_status":     "",
-		"deduplicated":   true,
-		"message":        "",
+		"id":           "r/7",
+		"url":          "",
+		"run_status":   "",
+		"deduplicated": true,
+		"message":      "",
 	})
 }
 

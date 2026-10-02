@@ -37,31 +37,15 @@ func TestFormatRunbookID(t *testing.T) {
 	}
 }
 
-func TestCleanDetailFields(t *testing.T) {
-	got := cleanDetailFields([]string{"steps_markdown", " spec_files ", ""})
-	want := []string{"steps_markdown", "spec_files"}
-	if len(got) != len(want) {
-		t.Fatalf("got %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("got %v, want %v", got, want)
-		}
-	}
-}
-
 func TestFormatRunbookDetail(t *testing.T) {
-	ptrInt := func(i int) *int { return &i }
-	ptrStr := func(s string) *string { return &s }
-
 	detail := &api.RunbookDetail{
 		RunbookNumber:  123,
 		URL:            "https://app.aviator.co/runbook/123",
-		RunbookVersion: ptrInt(4),
-		Intent:         ptrStr("make the thing doable"),
+		RunbookVersion: ptr(4),
+		Intent:         ptr("make the thing doable"),
 		RunbookState: &api.RunbookState{
-			WorkingBranch: ptrStr("feature"),
-			TargetBranch:  ptrStr("main"),
+			WorkingBranch: ptr("feature"),
+			TargetBranch:  ptr("main"),
 			Steps: []api.RunbookStep{
 				{StepNumber: "1", Title: "one", Status: "completed"},
 				{StepNumber: "1.1", Title: "two", Status: "in_progress"},
@@ -72,17 +56,17 @@ func TestFormatRunbookDetail(t *testing.T) {
 		},
 		LatestVerification: &api.LatestVerification{
 			Status:         "failed",
-			CommitSHA:      ptrStr("abcdef1234567890"),
+			CommitSHA:      ptr("abcdef1234567890"),
 			CriteriaTotal:  2,
 			CriteriaPassed: 1,
 			CriteriaFailed: 1,
 			FailedResults: []api.FailedResult{
-				{Criterion: "does the thing", Reason: ptrStr("nope")},
+				{Criterion: "does the thing", Reason: ptr("nope")},
 			},
 		},
 	}
 
-	out := formatRunbookDetail(detail, false)
+	out := formatRunbookDetail(detail)
 	for _, want := range []string{
 		"✓ r/123 (version 4)",
 		"Intent: make the thing doable",
@@ -98,21 +82,6 @@ func TestFormatRunbookDetail(t *testing.T) {
 	}
 }
 
-func TestFormatRunbookDetailStepsMarkdown(t *testing.T) {
-	md := "## Step 1\ndo the thing"
-	detail := &api.RunbookDetail{
-		RunbookNumber: 9,
-		URL:           "https://app.aviator.co/runbook/9",
-		StepsMarkdown: &md,
-	}
-	if out := formatRunbookDetail(detail, true); !strings.Contains(out, "## Step 1") {
-		t.Errorf("expected steps markdown in output, got:\n%s", out)
-	}
-	if out := formatRunbookDetail(detail, false); strings.Contains(out, "## Step 1") {
-		t.Errorf("expected steps markdown omitted, got:\n%s", out)
-	}
-}
-
 func TestFormatRunbookDetailNoVerificationYet(t *testing.T) {
 	detail := &api.RunbookDetail{
 		RunbookNumber: 7,
@@ -121,7 +90,7 @@ func TestFormatRunbookDetailNoVerificationYet(t *testing.T) {
 			{Ordinal: 1, RawText: "criterion"},
 		},
 	}
-	out := formatRunbookDetail(detail, false)
+	out := formatRunbookDetail(detail)
 	if !strings.Contains(out, "Latest verification: none yet") {
 		t.Errorf("expected 'none yet', got:\n%s", out)
 	}
@@ -135,5 +104,70 @@ func TestFormatVerificationError(t *testing.T) {
 	})
 	if !strings.Contains(out, "Error: sandbox timed out") {
 		t.Errorf("expected error message in output, got:\n%s", out)
+	}
+}
+
+func TestShowJSON(t *testing.T) {
+	got := decodeJSON(t, newShowJSON(&api.RunbookDetail{
+		RunbookNumber:  123,
+		URL:            "https://app.aviator.co/r/123",
+		RunbookVersion: ptr(4),
+		Intent:         ptr("gate the banner"),
+		RunbookState:   &api.RunbookState{WorkingBranch: ptr("feature"), TargetBranch: ptr("main")},
+		PullRequests:   []api.LinkedPullRequest{{Number: 1201, URL: "https://github.com/acme/web/pull/1201"}},
+		SpecFiles:      []api.DetailSpecFile{{Filename: "spec.md", Content: "..."}},
+		AcceptanceCriteria: []api.DetailCriterion{
+			{Ordinal: 1, RawText: "does the thing"},
+		},
+	}))
+	for key, want := range map[string]any{
+		"id":                  "r/123",
+		"url":                 "https://app.aviator.co/r/123",
+		"version":             float64(4),
+		"runbook_version":     float64(4),
+		"intent":              "gate the banner",
+		"working_branch":      "feature",
+		"target_branch":       "main",
+		"latest_verification": nil,
+	} {
+		if got[key] != want {
+			t.Errorf("%s = %v, want %v", key, got[key], want)
+		}
+	}
+	if specs := got["spec_files"].([]any); len(specs) != 1 || specs[0] != "spec.md" {
+		t.Errorf("spec_files = %v", specs)
+	}
+	if c := got["criteria"].([]any); len(c) != 1 || c[0].(map[string]any)["text"] != "does the thing" {
+		t.Errorf("criteria = %v", c)
+	}
+	if pr := got["pull_requests"].([]any); len(pr) != 1 || pr[0].(map[string]any)["number"] != float64(1201) {
+		t.Errorf("pull_requests = %v", pr)
+	}
+}
+
+func TestResultsJSON(t *testing.T) {
+	got := decodeJSON(t, newResultsJSON(&api.RunbookDetail{
+		RunbookNumber:  123,
+		URL:            "https://app.aviator.co/r/123",
+		RunbookVersion: ptr(4),
+		LatestVerification: &api.LatestVerification{
+			Status:         "failed",
+			RunbookVersion: ptr(4),
+			CriteriaTotal:  2,
+			CriteriaPassed: 1,
+			CriteriaFailed: 1,
+			FailedResults:  []api.FailedResult{{Criterion: "does the thing", Status: "fail", Reason: ptr("nope")}},
+		},
+	}))
+	if got["id"] != "r/123" || got["version"] != float64(4) {
+		t.Errorf("top level = %v", got)
+	}
+	v := got["latest_verification"].(map[string]any)
+	if v["status"] != "failed" || v["total"] != float64(2) || v["failed"] != float64(1) {
+		t.Errorf("latest_verification = %v", v)
+	}
+	f := v["failures"].([]any)[0].(map[string]any)
+	if f["criterion"] != "does the thing" || f["reason"] != "nope" || f["evidence"] != nil {
+		t.Errorf("failure = %v", f)
 	}
 }

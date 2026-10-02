@@ -7,8 +7,6 @@ import (
 	"github.com/aviator-co/aviator-cli/internal/api"
 )
 
-func intPtr(n int) *int { return &n }
-
 func TestFormatSessions(t *testing.T) {
 	out := formatSessions([]api.SessionSummary{
 		{
@@ -59,7 +57,7 @@ func TestNewSessionsJSON(t *testing.T) {
 		RunbookNumber:  42,
 		URL:            "https://app.aviator.co/r/42",
 		WorkingBranch:  "feature/banner",
-		RunbookVersion: intPtr(3),
+		RunbookVersion: ptr(3),
 		PullRequests:   []api.LinkedPullRequest{{Number: 1201}},
 	}}, true)
 
@@ -73,9 +71,9 @@ func TestNewSessionsJSON(t *testing.T) {
 	if len(got.PullRequests) != 1 || got.PullRequests[0] != 1201 {
 		t.Errorf("pull_requests = %v", got.PullRequests)
 	}
-	// `aviator edit` takes this one.
-	if got.RunbookVersion == nil || *got.RunbookVersion != 3 {
-		t.Errorf("runbook_version = %v", got.RunbookVersion)
+	// `aviator edit --expected-version` takes this one.
+	if got.Version == nil || *got.Version != 3 || got.RunbookVersion == nil || *got.RunbookVersion != 3 {
+		t.Errorf("version = %v, runbook_version = %v", got.Version, got.RunbookVersion)
 	}
 }
 

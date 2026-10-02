@@ -104,22 +104,15 @@ func init() {
 	_ = runbookCmd.MarkFlagRequired("intent")
 }
 
-// runbookCreateJSON is the --json shape of a new runbook. It is its own struct
-// rather than the raw response so the keys callers parse stay put as the
-// response grows.
 type runbookCreateJSON struct {
-	RunbookNumber int    `json:"runbook_number"`
-	RunbookID     string `json:"runbook_id"`
-	URL           string `json:"url"`
+	sessionRef
 	Status        string `json:"status"`
 	CriteriaCount int    `json:"criteria_count"`
 }
 
 func newRunbookCreateJSON(resp *api.CreateRunbookResponse, criteriaCount int) runbookCreateJSON {
 	return runbookCreateJSON{
-		RunbookNumber: resp.RunbookNumber,
-		RunbookID:     formatRunbookID(resp.RunbookNumber),
-		URL:           resp.URL,
+		sessionRef:    newSessionRef(resp.RunbookNumber, resp.URL),
 		Status:        resp.Status,
 		CriteriaCount: criteriaCount,
 	}

@@ -52,7 +52,7 @@ func TestGetRunbookDetail(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, detail, err := newTestClient(srv).GetRunbookDetail(
+	detail, err := newTestClient(srv).GetRunbookDetail(
 		context.Background(), 123, []string{"runbook_state", "acceptance_criteria"},
 	)
 	if err != nil {
@@ -95,7 +95,7 @@ func TestGetRunbookDetailNoFields(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, detail, err := newTestClient(srv).GetRunbookDetail(context.Background(), 7, nil)
+	detail, err := newTestClient(srv).GetRunbookDetail(context.Background(), 7, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -104,21 +104,16 @@ func TestGetRunbookDetailNoFields(t *testing.T) {
 	}
 }
 
-func TestGetRunbookDetailRawBody(t *testing.T) {
-	// A field the client structs don't model must survive verbatim in the raw
-	// body returned alongside the decoded struct.
-	const body = `{"runbook_number": 5, "url": "u", "runbook_version": 1, "future_field": "kept"}`
+func TestGetRunbookDetailVerificationAbsent(t *testing.T) {
+	const body = `{"runbook_number": 5, "url": "u", "runbook_version": 1}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(body))
 	}))
 	defer srv.Close()
 
-	raw, detail, err := newTestClient(srv).GetRunbookDetail(context.Background(), 5, nil)
+	detail, err := newTestClient(srv).GetRunbookDetail(context.Background(), 5, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if string(raw) != body {
-		t.Errorf("raw = %s", raw)
 	}
 	if detail.LatestVerificationPresent {
 		t.Error("LatestVerificationPresent = true for a response without the key")
@@ -135,7 +130,7 @@ func TestGetRunbookDetailVerificationPresence(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, detail, err := newTestClient(srv).GetRunbookDetail(context.Background(), 5, nil)
+	detail, err := newTestClient(srv).GetRunbookDetail(context.Background(), 5, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

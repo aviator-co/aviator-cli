@@ -154,3 +154,89 @@ func formatInvariantCategories(resp *api.ListInvariantCategoriesResponse) string
 	_ = w.Flush()
 	return b.String()
 }
+
+type invariantJSON struct {
+	ID           int             `json:"id"`
+	Title        string          `json:"title"`
+	Body         string          `json:"body"`
+	Category     string          `json:"category"`
+	Source       string          `json:"source"`
+	Status       string          `json:"status"`
+	Enabled      bool            `json:"enabled"`
+	Reason       string          `json:"reason"`
+	SourceRefs   []string        `json:"source_refs"`
+	Repositories []string        `json:"repositories"`
+	Conditions   []conditionJSON `json:"conditions"`
+	CreatedAt    string          `json:"created_at"`
+	ModifiedAt   string          `json:"modified_at"`
+}
+
+type conditionJSON struct {
+	Type   string `json:"type"`
+	Value  string `json:"value"`
+	Negate bool   `json:"negate"`
+}
+
+// invariantListJSON serves list (with HasMore) and the status commands.
+type invariantListJSON struct {
+	Invariants []invariantJSON `json:"invariants"`
+	HasMore    bool            `json:"has_more"`
+}
+
+type invariantDeleteJSON struct {
+	ID int `json:"id"`
+}
+
+type categoryJSON struct {
+	Slug        string `json:"slug"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+type categoriesJSON struct {
+	Categories []categoryJSON `json:"categories"`
+}
+
+func newInvariantJSON(inv *api.Invariant) invariantJSON {
+	out := invariantJSON{
+		ID:           inv.ID,
+		Title:        inv.Title,
+		Body:         inv.Body,
+		Category:     inv.Category,
+		Source:       inv.Source,
+		Status:       inv.Status,
+		Enabled:      inv.Enabled,
+		Reason:       inv.Reason,
+		SourceRefs:   inv.SourceRefs,
+		Repositories: make([]string, 0, len(inv.Repositories)),
+		Conditions:   make([]conditionJSON, 0, len(inv.Conditions)),
+		CreatedAt:    rfc3339(inv.CreatedAt),
+		ModifiedAt:   rfc3339(inv.ModifiedAt),
+	}
+	if out.SourceRefs == nil {
+		out.SourceRefs = []string{}
+	}
+	for _, r := range inv.Repositories {
+		out.Repositories = append(out.Repositories, r.Org+"/"+r.Name)
+	}
+	for _, c := range inv.Conditions {
+		out.Conditions = append(out.Conditions, conditionJSON{Type: c.Type, Value: c.Value, Negate: c.Negate})
+	}
+	return out
+}
+
+func newInvariantsJSON(invariants []api.Invariant) []invariantJSON {
+	out := make([]invariantJSON, 0, len(invariants))
+	for i := range invariants {
+		out = append(out, newInvariantJSON(&invariants[i]))
+	}
+	return out
+}
+
+func newCategoriesJSON(categories []api.InvariantCategory) categoriesJSON {
+	out := categoriesJSON{Categories: make([]categoryJSON, 0, len(categories))}
+	for _, c := range categories {
+		out.Categories = append(out.Categories, categoryJSON{Slug: c.Slug, Name: c.Name, Description: c.Description})
+	}
+	return out
+}

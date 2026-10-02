@@ -27,7 +27,7 @@ func TestListInvariantsQuery(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	raw, resp, err := newTestClient(srv).ListInvariants(context.Background(), ListInvariantsQuery{
+	resp, err := newTestClient(srv).ListInvariants(context.Background(), ListInvariantsQuery{
 		Repo:    &Repository{Org: "acme", Name: "web"},
 		Status:  "active",
 		IDs:     []int{7, 12},
@@ -48,11 +48,6 @@ func TestListInvariantsQuery(t *testing.T) {
 	if inv.ID != 7 || inv.Repositories[0].Name != "web" || !inv.Conditions[0].Negate {
 		t.Errorf("invariant = %+v", inv)
 	}
-	// The raw body is what --json prints, so a null the struct decodes to ""
-	// must still be a null there.
-	if !strings.Contains(string(raw), `"reason":null`) {
-		t.Errorf("raw body should be verbatim, got %s", raw)
-	}
 }
 
 // TestListInvariantsDefaultQuery covers the zero query: nothing is sent, so
@@ -66,7 +61,7 @@ func TestListInvariantsDefaultQuery(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, _, err := newTestClient(srv).ListInvariants(context.Background(), ListInvariantsQuery{}); err != nil {
+	if _, err := newTestClient(srv).ListInvariants(context.Background(), ListInvariantsQuery{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -80,7 +75,7 @@ func TestListInvariantCategories(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, resp, err := newTestClient(srv).ListInvariantCategories(context.Background())
+	resp, err := newTestClient(srv).ListInvariantCategories(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -106,7 +101,7 @@ func TestCreateInvariant(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, inv, err := newTestClient(srv).CreateInvariant(context.Background(), CreateInvariantRequest{
+	inv, err := newTestClient(srv).CreateInvariant(context.Background(), CreateInvariantRequest{
 		Title:      "T",
 		Body:       "B",
 		Category:   "security",
@@ -139,7 +134,7 @@ func TestUpdateInvariantBody(t *testing.T) {
 
 	title := "New"
 	enabled := false
-	_, _, err := newTestClient(srv).UpdateInvariant(context.Background(), 7, UpdateInvariantRequest{
+	_, err := newTestClient(srv).UpdateInvariant(context.Background(), 7, UpdateInvariantRequest{
 		Title:        &title,
 		Repositories: &[]Repository{},
 		Enabled:      &enabled,
@@ -166,7 +161,7 @@ func TestDeleteInvariant(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, resp, err := newTestClient(srv).DeleteInvariant(context.Background(), 7)
+	resp, err := newTestClient(srv).DeleteInvariant(context.Background(), 7)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -188,7 +183,7 @@ func TestSetInvariantStatus(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, resp, err := newTestClient(srv).SetInvariantStatus(context.Background(), SetInvariantStatusRequest{
+	resp, err := newTestClient(srv).SetInvariantStatus(context.Background(), SetInvariantStatusRequest{
 		InvariantIDs: []int{7, 8},
 		Status:       "rejected",
 	})
@@ -209,7 +204,7 @@ func TestSetInvariantStatusForeignID(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, _, err := newTestClient(srv).SetInvariantStatus(context.Background(), SetInvariantStatusRequest{
+	_, err := newTestClient(srv).SetInvariantStatus(context.Background(), SetInvariantStatusRequest{
 		InvariantIDs: []int{7, 999},
 		Status:       "active",
 	})

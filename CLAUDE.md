@@ -78,6 +78,10 @@ Equivalent raw commands: `go build ./...`, `go test --vet=all ./...`,
   Tokens are never written to files.
 - **Output**: use `internal/utils/colors` helpers; keep success output to a
   short confirmation line plus a couple of indented details.
+- **`--json`**: every command builds its own JSON from a CLI-owned struct and
+  never prints the backend body, so a backend change can't silently reshape
+  what callers parse. Sessions are identified by `id` (`r/N`) and `url`
+  (`sessionRef`); "runbook" stays out of Verify-facing keys.
 - Code must be `gofumpt`-clean and pass `golangci-lint` (config in
   `.golangci.yaml`). CI (`.github/workflows/go.yml`) runs build, test, smoke
   test, and lint on every PR.
