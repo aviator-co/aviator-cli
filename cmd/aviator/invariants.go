@@ -23,7 +23,7 @@ const invariantSources = "manual, ai_generated, ai_generated_docs, ai_generated_
 
 // conditionFlagHelp documents the --condition syntax shared by create and edit.
 const conditionFlagHelp = "narrow when the invariant applies, as <type>=<value> or <type>!=<value> " +
-	"(types: file_path_glob, language; repeatable)"
+	"(types: file_path_glob, language; repeatable; see https://docs.aviator.co/verify/reference/invariant-conditions)"
 
 // invariantsFlags holds the flags every invariants subcommand shares.
 var invariantsFlags struct {
@@ -44,7 +44,9 @@ var invariantsCmd = &cobra.Command{
 		"included. Creating, editing, deleting and changing status act as the\n" +
 		"caller, so they need a user access token (from `aviator login` or a\n" +
 		"personal token) whose user is a maintainer or admin; an account-scoped\n" +
-		"token is refused for them.",
+		"token is refused for them.\n" +
+		"\n" +
+		"Docs: https://docs.aviator.co/verify/how-to-guides/managing-invariants-with-the-cli",
 }
 
 var invariantsListFlags struct {
