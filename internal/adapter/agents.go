@@ -68,8 +68,8 @@ func (a settingsAgent) configDir() string {
 	return filepath.Join(home, a.userDir)
 }
 
-// HookFile is the repo's config for team scope and the user's own for self,
-// which is why self applies to every repository on the machine.
+// HookFile is the repo's config for team scope, the user's own for self, and
+// the repo's uncommitted per-user file for local.
 func (a settingsAgent) HookFile(scope Scope, repoRoot string) string {
 	switch scope {
 	case ScopeSelf:
