@@ -109,13 +109,12 @@ bind to a PR through a `Review: <url>` line in the PR body.
 
 One review tracks exactly one PR. Stacked or multi-PR work needs one
 submission per PR, each with its own `--working-branch`, intent, and criteria.
-To update the criteria on a session that already exists, use `aviator edit`
+To update the intent or criteria on a session that already exists, use `aviator edit`
 rather than submitting the branch again. `aviator sessions` says whether a
 branch already has one.
 
 Pass `--json` to print the submission as a single JSON object
-(`runbook_number`, `runbook_id`, `url`, `working_branch`, `target_branch`,
-`criteria_count`) instead of the human summary.
+(`id`, `url`, `working_branch`, `target_branch`, `criteria_count`) instead of the human summary.
 
 ### Create a runbook
 
@@ -133,8 +132,8 @@ aviator runbook \
 
 `--intent` is required; `--title`, `--spec`, `--criteria`/`--criteria-file`,
 `--target-branch`, and `--author-email` are optional. `--oneshot` is on by
-default. `--json` prints `runbook_number`, `runbook_id`, `url`, `status`, and
-`criteria_count` as a single JSON object.
+default. `--json` prints `id`, `url`, `status`, and `criteria_count` as a
+single JSON object.
 
 ### Find a session
 
@@ -157,15 +156,21 @@ session contains, use `aviator show r/42`.
 `--status` (default `active`) chooses what to list, `--limit` (default 20, max
 100) sets the page size, and `--page` steps through the pages. `--json` prints
 `{"sessions": [...], "has_more": bool}`, with `id`, `url`, `working_branch`,
-`pull_requests`, and the `runbook_version` that `aviator edit
---expected-version` takes.
+`pull_requests`, and the `version` that `aviator edit --expected-version`
+takes.
 
 ### Inspect a session
 
 ```bash
 aviator show r/123            # session summary
 aviator results r/123         # latest verification results
+aviator scenarios r/123       # what the latest run exercised, with evidence ids
+aviator evidence 4567 -o trace.json   # download one evidence file, e.g. a run trace
 aviator edit r/123 --expected-version 4 --criteria "..."
+aviator edit r/123 --intent "..."
+aviator dismiss r/123 --key <key>                  # delete a task criterion
+aviator dismiss r/123 --criteria-json \
+  '[{"baseline_invariant_id": 42, "category": "accepted_risk", "justification": "..."}]'
 ```
 
 ### Manage baseline invariants
@@ -216,7 +221,7 @@ repeat them for the full new set. `--category` takes one of the account's
 category slugs (see `aviator invariants categories`); an unknown slug is
 rejected with the valid ones listed. `--enable`/`--disable` only apply to
 active invariants; approve a pending one first. `--json` on any subcommand
-prints the server's response verbatim.
+prints the result as a single JSON object.
 
 ## Contributing
 

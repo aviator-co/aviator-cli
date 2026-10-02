@@ -23,6 +23,7 @@ type RunbookDetail struct {
 	RunbookState       *RunbookState       `json:"runbook_state,omitempty"`
 	AcceptanceCriteria []DetailCriterion   `json:"acceptance_criteria,omitempty"`
 	LatestVerification *LatestVerification `json:"latest_verification,omitempty"`
+	PullRequests       []LinkedPullRequest `json:"pull_requests,omitempty"`
 	// LatestVerificationPresent distinguishes a response that carried an
 	// explicit null latest_verification (no runs yet) from one where the
 	// server omitted the key entirely.
@@ -56,9 +57,10 @@ type RunbookStep struct {
 
 // DetailCriterion is one acceptance criterion.
 type DetailCriterion struct {
-	Ordinal int    `json:"ordinal"`
-	RawText string `json:"raw_text"`
-	Source  string `json:"source"`
+	Ordinal   int     `json:"ordinal"`
+	RawText   string  `json:"raw_text"`
+	Source    string  `json:"source"`
+	StableKey *string `json:"stable_key"`
 }
 
 // LatestVerification summarizes the most recent verification run.
@@ -78,36 +80,36 @@ type LatestVerification struct {
 
 // FailedResult is a single failing criterion within a verification.
 type FailedResult struct {
-	Criterion   string          `json:"criterion"`
-	IsInvariant bool            `json:"is_invariant"`
-	IsWaived    bool            `json:"is_waived"`
-	Status      string          `json:"status"`
-	Reason      *string         `json:"reason"`
-	Evidence    json.RawMessage `json:"evidence"`
-	Location    json.RawMessage `json:"location"`
+	Criterion           string          `json:"criterion"`
+	StableKey           *string         `json:"stable_key"`
+	BaselineInvariantID *int            `json:"baseline_invariant_id"`
+	IsInvariant         bool            `json:"is_invariant"`
+	IsWaived            bool            `json:"is_waived"`
+	Status              string          `json:"status"`
+	Reason              *string         `json:"reason"`
+	Evidence            json.RawMessage `json:"evidence"`
+	Location            json.RawMessage `json:"location"`
 }
 
-// GetRunbookDetail fetches a runbook's detail, returning both the verbatim
-// response body (which preserves fields this client version doesn't model) and
-// its decoded form. When fields is non-empty, only those sections are
-// requested via the fields query parameter.
+// GetRunbookDetail fetches a session's detail. When fields is non-empty, only
+// those sections are requested via the fields query parameter.
 func (c *Client) GetRunbookDetail(
 	ctx context.Context, runbookNumber int, fields []string,
-) (json.RawMessage, *RunbookDetail, error) {
+) (*RunbookDetail, error) {
 	var raw json.RawMessage
 	if err := c.getJSON(
 		ctx, runbookDetailPath(runbookNumber), runbookDetailQuery(fields), &raw,
 	); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	var out RunbookDetail
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, nil, errors.Wrap(err, "failed to decode session detail")
+		return nil, errors.Wrap(err, "failed to decode session detail")
 	}
 	var keys map[string]json.RawMessage
 	_ = json.Unmarshal(raw, &keys)
 	_, out.LatestVerificationPresent = keys["latest_verification"]
-	return raw, &out, nil
+	return &out, nil
 }
 
 func runbookDetailPath(runbookNumber int) string {

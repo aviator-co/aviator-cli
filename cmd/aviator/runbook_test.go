@@ -15,8 +15,7 @@ func TestRunbookCreateJSON(t *testing.T) {
 		Status:        "queued",
 	}, 3))
 	assertJSONFields(t, got, map[string]any{
-		"runbook_number": float64(42),
-		"runbook_id":     "r/42",
+		"id":             "r/42",
 		"url":            "https://app.aviator.co/r/42",
 		"status":         "queued",
 		"criteria_count": float64(3),

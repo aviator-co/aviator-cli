@@ -14,8 +14,8 @@ func TestTriggerVerifyRun(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s, want POST", r.Method)
 		}
-		if r.URL.Path != "/api/v1/verify/42/run" {
-			t.Errorf("path = %s, want /api/v1/verify/42/run", r.URL.Path)
+		if r.URL.Path != "/api/v1/verify/42/runs" {
+			t.Errorf("path = %s, want /api/v1/verify/42/runs", r.URL.Path)
 		}
 		body, _ := io.ReadAll(r.Body)
 		// Both fields are false, so the omitempty body is an empty object.

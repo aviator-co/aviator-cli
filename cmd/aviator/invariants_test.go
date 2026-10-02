@@ -306,3 +306,35 @@ func TestFormatInvariantDetailMultilineBody(t *testing.T) {
 		t.Errorf("output missing %q\n---\n%s", want, out)
 	}
 }
+
+func TestInvariantJSON(t *testing.T) {
+	got := decodeJSON(t, newInvariantJSON(&api.Invariant{
+		ID:           7,
+		Title:        "no secrets",
+		Status:       "active",
+		Enabled:      true,
+		Repositories: []api.Repository{{Org: "acme", Name: "web"}},
+		Conditions:   []api.InvariantCondition{{Type: "language", Value: "go", Negate: true}},
+		CreatedAt:    "Fri, 02 Oct 2026 20:24:50 GMT",
+	}))
+	for key, want := range map[string]any{
+		"id":         float64(7),
+		"title":      "no secrets",
+		"status":     "active",
+		"enabled":    true,
+		"created_at": "2026-10-02T20:24:50Z",
+	} {
+		if got[key] != want {
+			t.Errorf("%s = %v, want %v", key, got[key], want)
+		}
+	}
+	if repos := got["repositories"].([]any); len(repos) != 1 || repos[0] != "acme/web" {
+		t.Errorf("repositories = %v", repos)
+	}
+	if c := got["conditions"].([]any)[0].(map[string]any); c["type"] != "language" || c["negate"] != true {
+		t.Errorf("conditions = %v", got["conditions"])
+	}
+	if refs := got["source_refs"].([]any); len(refs) != 0 {
+		t.Errorf("source_refs = %v", refs)
+	}
+}

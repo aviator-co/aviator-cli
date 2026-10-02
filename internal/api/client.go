@@ -82,33 +82,10 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, out any)
 		}
 	}
 
-	token, err := c.tokens.Token(ctx)
+	status, _, data, err := c.do(ctx, c.http, method, path, payload)
 	if err != nil {
 		return err
 	}
-	status, data, err := c.send(ctx, method, path, payload, token)
-	if err != nil {
-		return err
-	}
-
-	// The server can revoke a token before it expires, so a 401 is the first
-	// sign the stored session is stale. Renew it once and retry; a credential
-	// that can't be renewed (a static token) falls through to the error below.
-	if status == http.StatusUnauthorized {
-		if source, ok := c.tokens.(refresher); ok {
-			refreshed, err := source.ForceRefresh(ctx, token)
-			if errors.Is(err, auth.ErrSessionExpired) {
-				return err
-			}
-			if err != nil {
-				return errors.Wrap(err, "could not renew the Aviator session")
-			}
-			if status, data, err = c.send(ctx, method, path, payload, refreshed); err != nil {
-				return err
-			}
-		}
-	}
-
 	if status >= 400 {
 		return c.statusError(status, data)
 	}
@@ -120,34 +97,65 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, out any)
 	return nil
 }
 
+// do sends one authenticated request through hc and reads its whole response.
+func (c *Client) do(
+	ctx context.Context, hc *http.Client, method, path string, payload []byte,
+) (int, http.Header, []byte, error) {
+	token, err := c.tokens.Token(ctx)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	status, header, data, err := c.send(ctx, hc, method, path, payload, token)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+
+	// The server can revoke a token before it expires, so a 401 is the first
+	// sign the stored session is stale. Renew it once and retry; a credential
+	// that can't be renewed (a static token) falls through to the caller.
+	if status == http.StatusUnauthorized {
+		if source, ok := c.tokens.(refresher); ok {
+			refreshed, err := source.ForceRefresh(ctx, token)
+			if errors.Is(err, auth.ErrSessionExpired) {
+				return 0, nil, nil, err
+			}
+			if err != nil {
+				return 0, nil, nil, errors.Wrap(err, "could not renew the Aviator session")
+			}
+			return c.send(ctx, hc, method, path, payload, refreshed)
+		}
+	}
+	return status, header, data, nil
+}
+
 // send performs one request and reads its whole response.
 func (c *Client) send(
-	ctx context.Context, method, path string, payload []byte, token string,
-) (int, []byte, error) {
+	ctx context.Context, hc *http.Client, method, path string, payload []byte, token string,
+) (int, http.Header, []byte, error) {
 	var reader io.Reader
 	if payload != nil {
 		reader = bytes.NewReader(payload)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.host+path, reader)
 	if err != nil {
-		return 0, nil, errors.Wrap(err, "failed to build request")
+		return 0, nil, nil, errors.Wrap(err, "failed to build request")
 	}
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	resp, err := c.http.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
-		return 0, nil, errors.Wrap(err, "request failed")
+		return 0, nil, nil, errors.Wrap(err, "request failed")
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return 0, nil, errors.Wrap(err, "failed to read response")
+		return 0, nil, nil, errors.Wrap(err, "failed to read response")
 	}
-	return resp.StatusCode, data, nil
+	return resp.StatusCode, resp.Header, data, nil
 }
 
 func (c *Client) statusError(status int, data []byte) error {

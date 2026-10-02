@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"slices"
 	"strings"
 
 	"emperror.dev/errors"
@@ -12,14 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// detailFieldsHelp names the server's selectable detail fields for flag help.
-// The server validates --fields and its 400 lists the valid names — it is the
-// source of truth, so nothing is validated client-side.
-const detailFieldsHelp = "steps_markdown, spec_files, runbook_state, acceptance_criteria, intent"
-
 var showFlags struct {
-	Fields []string
-	JSON   bool
+	JSON bool
 }
 
 var showCmd = &cobra.Command{
@@ -32,41 +25,25 @@ var showCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fields := cleanDetailFields(showFlags.Fields)
-
 		client, err := api.NewClient()
 		if err != nil {
 			return err
 		}
-		raw, detail, err := client.GetRunbookDetail(cmd.Context(), runbookNumber, fields)
+		detail, err := client.GetRunbookDetail(cmd.Context(), runbookNumber, nil)
 		if err != nil {
 			return err
 		}
 		if showFlags.JSON {
-			return printJSON(raw)
+			return printJSON(newShowJSON(detail))
 		}
-		fmt.Print(formatRunbookDetail(detail, slices.Contains(fields, "steps_markdown")))
+		fmt.Print(formatRunbookDetail(detail))
 		return nil
 	},
 }
 
 func init() {
-	f := showCmd.Flags()
-	f.StringSliceVar(&showFlags.Fields, "fields", nil,
-		"comma-separated subset of "+detailFieldsHelp)
-	f.BoolVar(&showFlags.JSON, "json", false, "print the raw response as pretty JSON")
-}
-
-// cleanDetailFields trims entries and drops empties; the server rejects
-// unknown names.
-func cleanDetailFields(fields []string) []string {
-	var out []string
-	for _, f := range fields {
-		if f = strings.TrimSpace(f); f != "" {
-			out = append(out, f)
-		}
-	}
-	return out
+	showCmd.Flags().BoolVar(&showFlags.JSON, "json", false,
+		"print the session as a single JSON object instead of the human summary")
 }
 
 func printJSON(v any) error {
@@ -78,15 +55,13 @@ func printJSON(v any) error {
 	return nil
 }
 
-// formatRunbookDetail renders a runbook detail as a short human summary. The
-// steps markdown is long-form, so it is only included when explicitly
-// requested via --fields.
-func formatRunbookDetail(d *api.RunbookDetail, includeStepsMarkdown bool) string {
+// formatRunbookDetail renders a session detail as a short human summary.
+func formatRunbookDetail(d *api.RunbookDetail) string {
 	var b strings.Builder
 	b.WriteString(formatDetailHeader(d))
 
-	if d.Intent != nil && *d.Intent != "" {
-		fmt.Fprintf(&b, "  Intent: %s\n", *d.Intent)
+	if intent := deref(d.Intent); intent != "" {
+		fmt.Fprintf(&b, "  Intent: %s\n", intent)
 	}
 
 	if s := d.RunbookState; s != nil {
@@ -114,7 +89,7 @@ func formatRunbookDetail(d *api.RunbookDetail, includeStepsMarkdown bool) string
 	if len(d.AcceptanceCriteria) > 0 {
 		b.WriteString("  Criteria:\n")
 		for _, c := range d.AcceptanceCriteria {
-			fmt.Fprintf(&b, "    %d. %s\n", c.Ordinal, c.RawText)
+			fmt.Fprintf(&b, "    %d. %s%s\n", c.Ordinal, c.RawText, formatHandle(c.StableKey, nil))
 		}
 	}
 
@@ -124,47 +99,51 @@ func formatRunbookDetail(d *api.RunbookDetail, includeStepsMarkdown bool) string
 		b.WriteString("  Latest verification: none yet\n")
 	}
 
-	if includeStepsMarkdown && d.StepsMarkdown != nil && *d.StepsMarkdown != "" {
-		b.WriteString("\n" + strings.TrimRight(*d.StepsMarkdown, "\n") + "\n")
-	}
-
 	return b.String()
 }
 
 // formatDetailHeader renders the one-line runbook identity header.
 func formatDetailHeader(d *api.RunbookDetail) string {
-	version := ""
-	if d.RunbookVersion != nil {
-		version = fmt.Sprintf(" (version %d)", *d.RunbookVersion)
-	}
 	return fmt.Sprintf("%s %s%s — %s\n",
-		colors.Success("✓"), formatRunbookID(d.RunbookNumber), version, d.URL)
+		colors.Success("✓"), formatRunbookID(d.RunbookNumber), formatVersion(d.RunbookVersion), d.URL)
 }
 
 // formatVerification renders a verification run as indented summary lines.
 func formatVerification(v *api.LatestVerification) string {
 	var b strings.Builder
 	sha := ""
-	if v.CommitSHA != nil && *v.CommitSHA != "" {
-		sha = ", " + shortSHA(*v.CommitSHA)
+	if commit := deref(v.CommitSHA); commit != "" {
+		sha = ", " + shortSHA(commit)
 	}
 	fmt.Fprintf(&b, "  Latest verification: %s (%d/%d passed, %d failed%s)\n",
 		v.Status, v.CriteriaPassed, v.CriteriaTotal, v.CriteriaFailed, sha)
-	if v.ErrorMessage != nil && *v.ErrorMessage != "" {
-		fmt.Fprintf(&b, "    Error: %s\n", *v.ErrorMessage)
+	if msg := deref(v.ErrorMessage); msg != "" {
+		fmt.Fprintf(&b, "    Error: %s\n", msg)
 	}
 	for _, fr := range v.FailedResults {
 		reason := ""
-		if fr.Reason != nil && *fr.Reason != "" {
-			reason = ": " + *fr.Reason
+		if r := deref(fr.Reason); r != "" {
+			reason = ": " + r
 		}
-		fmt.Fprintf(&b, "    %s %s%s\n", colors.Failure("✗"), fr.Criterion, reason)
+		fmt.Fprintf(&b, "    %s %s%s%s\n", colors.Failure("✗"), fr.Criterion,
+			formatHandle(fr.StableKey, fr.BaselineInvariantID), reason)
 	}
 	return b.String()
 }
 
+// formatHandle renders the id `aviator dismiss` takes for a criterion.
+func formatHandle(stableKey *string, invariantID *int) string {
+	switch {
+	case stableKey != nil:
+		return " " + colors.Faint("[key "+*stableKey+"]")
+	case invariantID != nil:
+		return " " + colors.Faint(fmt.Sprintf("[invariant %d]", *invariantID))
+	}
+	return ""
+}
+
 func branchOr(s *string) string {
-	if s == nil || *s == "" {
+	if deref(s) == "" {
 		return "?"
 	}
 	return *s
@@ -175,4 +154,124 @@ func shortSHA(sha string) string {
 		return sha[:7]
 	}
 	return sha
+}
+
+type showJSON struct {
+	sessionRef
+	Version *int `json:"version"`
+	// TODO: drop once the verify-submit skill reads version instead.
+	RunbookVersion     *int              `json:"runbook_version"`
+	Intent             string            `json:"intent"`
+	WorkingBranch      string            `json:"working_branch"`
+	TargetBranch       string            `json:"target_branch"`
+	PullRequests       []pullRequestJSON `json:"pull_requests"`
+	SpecFiles          []string          `json:"spec_files"`
+	Criteria           []criterionJSON   `json:"criteria"`
+	LatestVerification *verificationJSON `json:"latest_verification"`
+}
+
+type pullRequestJSON struct {
+	Number int    `json:"number"`
+	URL    string `json:"url"`
+}
+
+type criterionJSON struct {
+	Text      string  `json:"text"`
+	StableKey *string `json:"stable_key"`
+}
+
+// handleJSON names a criterion the way `aviator dismiss --criteria-json` takes it.
+type handleJSON struct {
+	StableKey           *string `json:"stable_key"`
+	BaselineInvariantID *int    `json:"baseline_invariant_id"`
+}
+
+func newShowJSON(d *api.RunbookDetail) showJSON {
+	out := showJSON{
+		sessionRef:         newSessionRef(d.RunbookNumber, d.URL),
+		Version:            d.RunbookVersion,
+		RunbookVersion:     d.RunbookVersion,
+		Intent:             deref(d.Intent),
+		PullRequests:       make([]pullRequestJSON, 0, len(d.PullRequests)),
+		SpecFiles:          make([]string, 0, len(d.SpecFiles)),
+		Criteria:           make([]criterionJSON, 0, len(d.AcceptanceCriteria)),
+		LatestVerification: newVerificationJSON(d.LatestVerification),
+	}
+	if s := d.RunbookState; s != nil {
+		out.WorkingBranch, out.TargetBranch = deref(s.WorkingBranch), deref(s.TargetBranch)
+	}
+	for _, pr := range d.PullRequests {
+		out.PullRequests = append(out.PullRequests, pullRequestJSON{Number: pr.Number, URL: pr.URL})
+	}
+	for _, f := range d.SpecFiles {
+		out.SpecFiles = append(out.SpecFiles, f.Filename)
+	}
+	for _, c := range d.AcceptanceCriteria {
+		out.Criteria = append(out.Criteria, criterionJSON{Text: c.RawText, StableKey: c.StableKey})
+	}
+	return out
+}
+
+// verificationJSON is a verification run. Evidence and Location on a failure
+// are the evaluator's free-form objects, passed through as is.
+type verificationJSON struct {
+	Status    string        `json:"status"`
+	CommitSHA *string       `json:"commit_sha"`
+	Version   *int          `json:"version"`
+	Total     int           `json:"total"`
+	Passed    int           `json:"passed"`
+	Failed    int           `json:"failed"`
+	Skipped   int           `json:"skipped"`
+	Waived    int           `json:"waived"`
+	Error     *string       `json:"error"`
+	Failures  []failureJSON `json:"failures"`
+}
+
+type failureJSON struct {
+	handleJSON
+	Criterion string          `json:"criterion"`
+	Status    string          `json:"status"`
+	Reason    *string         `json:"reason"`
+	Invariant bool            `json:"invariant"`
+	Waived    bool            `json:"waived"`
+	Evidence  json.RawMessage `json:"evidence"`
+	Location  json.RawMessage `json:"location"`
+}
+
+func newVerificationJSON(v *api.LatestVerification) *verificationJSON {
+	if v == nil {
+		return nil
+	}
+	out := &verificationJSON{
+		Status:    v.Status,
+		CommitSHA: v.CommitSHA,
+		Version:   v.RunbookVersion,
+		Total:     v.CriteriaTotal,
+		Passed:    v.CriteriaPassed,
+		Failed:    v.CriteriaFailed,
+		Skipped:   v.CriteriaSkipped,
+		Waived:    v.CriteriaWaived,
+		Error:     v.ErrorMessage,
+		Failures:  make([]failureJSON, 0, len(v.FailedResults)),
+	}
+	for _, fr := range v.FailedResults {
+		out.Failures = append(out.Failures, failureJSON{
+			handleJSON: handleJSON{StableKey: fr.StableKey, BaselineInvariantID: fr.BaselineInvariantID},
+			Criterion:  fr.Criterion,
+			Status:     fr.Status,
+			Reason:     fr.Reason,
+			Invariant:  fr.IsInvariant,
+			Waived:     fr.IsWaived,
+			Evidence:   nullIfEmpty(fr.Evidence),
+			Location:   nullIfEmpty(fr.Location),
+		})
+	}
+	return out
+}
+
+func nullIfEmpty(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return json.RawMessage("null")
+	}
+	return raw
 }

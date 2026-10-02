@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
@@ -91,7 +93,7 @@ func collectBody(inline, file string) (string, error) {
 	}
 	data, err := os.ReadFile(file)
 	if err != nil {
-		return "", errors.Wrapf(err, "failed to read body file %s", file)
+		return "", errors.Wrapf(err, "failed to read %s", file)
 	}
 	return strings.TrimSpace(string(data)), nil
 }
@@ -119,4 +121,39 @@ func collectCriteria(inline []string, file string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// sessionRef identifies a session in every --json object that has its URL.
+type sessionRef struct {
+	ID  string `json:"id"`
+	URL string `json:"url"`
+}
+
+func newSessionRef(runbookNumber int, url string) sessionRef {
+	return sessionRef{ID: formatRunbookID(runbookNumber), URL: url}
+}
+
+// formatVersion renders an optional criteria version as a " (version N)" suffix.
+func formatVersion(version *int) string {
+	if version == nil {
+		return ""
+	}
+	return fmt.Sprintf(" (version %d)", *version)
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// rfc3339 rewrites the backend's HTTP-date timestamps as RFC 3339, passing
+// through anything it can't parse.
+func rfc3339(ts string) string {
+	t, err := http.ParseTime(ts)
+	if err != nil {
+		return ts
+	}
+	return t.UTC().Format(time.RFC3339)
 }

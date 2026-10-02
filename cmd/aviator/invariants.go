@@ -88,12 +88,12 @@ var invariantsListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		raw, resp, err := client.ListInvariants(cmd.Context(), query)
+		resp, err := client.ListInvariants(cmd.Context(), query)
 		if err != nil {
 			return err
 		}
 		if invariantsFlags.JSON {
-			return printJSON(raw)
+			return printJSON(invariantListJSON{Invariants: newInvariantsJSON(resp.Invariants), HasMore: resp.HasMore})
 		}
 		fmt.Print(formatInvariantList(resp))
 		return nil
@@ -109,12 +109,12 @@ var invariantsCategoriesCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		raw, resp, err := client.ListInvariantCategories(cmd.Context())
+		resp, err := client.ListInvariantCategories(cmd.Context())
 		if err != nil {
 			return err
 		}
 		if invariantsFlags.JSON {
-			return printJSON(raw)
+			return printJSON(newCategoriesJSON(resp.Categories))
 		}
 		fmt.Print(formatInvariantCategories(resp))
 		return nil
@@ -172,12 +172,12 @@ var invariantsCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		raw, inv, err := client.CreateInvariant(cmd.Context(), req)
+		inv, err := client.CreateInvariant(cmd.Context(), req)
 		if err != nil {
 			return err
 		}
 		if invariantsFlags.JSON {
-			return printJSON(raw)
+			return printJSON(newInvariantJSON(inv))
 		}
 		fmt.Printf("%s Invariant #%d created\n", colors.Success("✓"), inv.ID)
 		fmt.Print(formatInvariantDetail(inv))
@@ -225,12 +225,12 @@ var invariantsEditCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		raw, inv, err := client.UpdateInvariant(cmd.Context(), id, req)
+		inv, err := client.UpdateInvariant(cmd.Context(), id, req)
 		if err != nil {
 			return err
 		}
 		if invariantsFlags.JSON {
-			return printJSON(raw)
+			return printJSON(newInvariantJSON(inv))
 		}
 		fmt.Printf("%s Invariant #%d updated\n", colors.Success("✓"), inv.ID)
 		fmt.Print(formatInvariantDetail(inv))
@@ -324,12 +324,12 @@ var invariantsDeleteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		raw, resp, err := client.DeleteInvariant(cmd.Context(), id)
+		resp, err := client.DeleteInvariant(cmd.Context(), id)
 		if err != nil {
 			return err
 		}
 		if invariantsFlags.JSON {
-			return printJSON(raw)
+			return printJSON(invariantDeleteJSON{ID: resp.DeletedInvariantID})
 		}
 		fmt.Printf("%s Invariant #%d deleted\n", colors.Success("✓"), resp.DeletedInvariantID)
 		return nil
@@ -381,7 +381,7 @@ func runSetInvariantStatus(cmd *cobra.Command, status string, rawIDs []string) e
 	if err != nil {
 		return err
 	}
-	raw, resp, err := client.SetInvariantStatus(cmd.Context(), api.SetInvariantStatusRequest{
+	resp, err := client.SetInvariantStatus(cmd.Context(), api.SetInvariantStatusRequest{
 		InvariantIDs: ids,
 		Status:       status,
 	})
@@ -389,7 +389,7 @@ func runSetInvariantStatus(cmd *cobra.Command, status string, rawIDs []string) e
 		return err
 	}
 	if invariantsFlags.JSON {
-		return printJSON(raw)
+		return printJSON(invariantListJSON{Invariants: newInvariantsJSON(resp.Invariants)})
 	}
 	fmt.Printf("%s %s now %s\n", colors.Success("✓"),
 		english.Plural(len(resp.Invariants), "invariant", ""), status)
@@ -399,7 +399,7 @@ func runSetInvariantStatus(cmd *cobra.Command, status string, rawIDs []string) e
 
 func init() {
 	invariantsCmd.PersistentFlags().BoolVar(&invariantsFlags.JSON, "json", false,
-		"print the raw response as pretty JSON")
+		"print the result as a single JSON object instead of the human summary")
 
 	lf := invariantsListCmd.Flags()
 	lf.StringVar(&invariantsListFlags.Repo, "repo", "",

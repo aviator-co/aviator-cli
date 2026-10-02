@@ -5,13 +5,13 @@ import (
 	"fmt"
 )
 
-// TriggerVerifyRunRequest is the body for POST /api/v1/verify/<number>/run.
+// TriggerVerifyRunRequest is the body for POST /api/v1/verify/<number>/runs.
 type TriggerVerifyRunRequest struct {
 	EvaluatorOnly bool `json:"evaluator_only,omitempty"`
 	Force         bool `json:"force,omitempty"`
 }
 
-// TriggerVerifyRunResponse is the response from POST /api/v1/verify/<number>/run.
+// TriggerVerifyRunResponse is the response from POST /api/v1/verify/<number>/runs.
 // Deduplicated is true when the server returned an existing equivalent run
 // instead of enqueueing a new one.
 type TriggerVerifyRunResponse struct {
@@ -28,7 +28,7 @@ func (c *Client) TriggerVerifyRun(
 	ctx context.Context, runbookNumber int, req TriggerVerifyRunRequest,
 ) (*TriggerVerifyRunResponse, error) {
 	var out TriggerVerifyRunResponse
-	path := fmt.Sprintf("/api/v1/verify/%d/run", runbookNumber)
+	path := fmt.Sprintf("/api/v1/verify/%d/runs", runbookNumber)
 	if err := c.postJSON(ctx, path, req, &out); err != nil {
 		return nil, err
 	}

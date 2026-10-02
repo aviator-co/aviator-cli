@@ -28,12 +28,9 @@ var resultsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		raw, detail, err := client.GetRunbookDetail(cmd.Context(), runbookNumber, []string{"acceptance_criteria"})
+		detail, err := client.GetRunbookDetail(cmd.Context(), runbookNumber, []string{"acceptance_criteria"})
 		if err != nil {
 			return err
-		}
-		if resultsFlags.JSON {
-			return printJSON(raw)
 		}
 
 		// The server only defines latest_verification as part of the
@@ -41,7 +38,10 @@ var resultsCmd = &cobra.Command{
 		// loudly instead of misreading an absent key as "no runs yet".
 		if !detail.LatestVerificationPresent {
 			return errors.New(
-				"response did not include latest_verification; the server contract may have changed — try 'aviator show' or --json")
+				"response did not include latest_verification; the server contract may have changed — try 'aviator show'")
+		}
+		if resultsFlags.JSON {
+			return printJSON(newResultsJSON(detail))
 		}
 
 		fmt.Print(formatDetailHeader(detail))
@@ -56,5 +56,22 @@ var resultsCmd = &cobra.Command{
 
 func init() {
 	resultsCmd.Flags().BoolVar(&resultsFlags.JSON, "json", false,
-		"print the raw response as pretty JSON (the acceptance_criteria fetch the results are attached to)")
+		"print the results as a single JSON object instead of the human summary")
+}
+
+type resultsJSON struct {
+	sessionRef
+	Version *int `json:"version"`
+	// TODO: drop once the verify-submit skill reads version instead.
+	RunbookVersion     *int              `json:"runbook_version"`
+	LatestVerification *verificationJSON `json:"latest_verification"`
+}
+
+func newResultsJSON(d *api.RunbookDetail) resultsJSON {
+	return resultsJSON{
+		sessionRef:         newSessionRef(d.RunbookNumber, d.URL),
+		Version:            d.RunbookVersion,
+		RunbookVersion:     d.RunbookVersion,
+		LatestVerification: newVerificationJSON(d.LatestVerification),
+	}
 }

@@ -27,7 +27,7 @@ var sessionsCmd = &cobra.Command{
 		"Check here before running `aviator verify`. Submitting a branch that\n" +
 		"already has a session creates a second one instead of updating the first,\n" +
 		"and a PR opened from that branch then links to neither. To update the\n" +
-		"criteria on a session you already have, use `aviator edit`.",
+		"intent or criteria on a session you already have, use `aviator edit`.",
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		repo, err := parseRepo(sessionsFlags.Repo)
@@ -137,15 +137,13 @@ func orDash(s string) string {
 	return s
 }
 
-// sessionJSON is the --json shape of one session: enough to identify it, match
-// it to a branch, put its URL in a PR body, and edit its criteria. It is its
-// own struct rather than the raw response so the keys stay put as that grows.
 type sessionJSON struct {
-	ID             string `json:"id"`
-	URL            string `json:"url"`
-	WorkingBranch  string `json:"working_branch"`
-	PullRequests   []int  `json:"pull_requests"`
-	RunbookVersion *int   `json:"runbook_version"`
+	sessionRef
+	WorkingBranch string `json:"working_branch"`
+	PullRequests  []int  `json:"pull_requests"`
+	Version       *int   `json:"version"`
+	// TODO: drop once the verify-submit skill reads version instead.
+	RunbookVersion *int `json:"runbook_version"`
 }
 
 type sessionsJSON struct {
@@ -161,10 +159,10 @@ func newSessionsJSON(sessions []api.SessionSummary, hasMore bool) sessionsJSON {
 			prs = append(prs, pr.Number)
 		}
 		out.Sessions = append(out.Sessions, sessionJSON{
-			ID:             formatRunbookID(s.RunbookNumber),
-			URL:            s.URL,
+			sessionRef:     newSessionRef(s.RunbookNumber, s.URL),
 			WorkingBranch:  s.WorkingBranch,
 			PullRequests:   prs,
+			Version:        s.RunbookVersion,
 			RunbookVersion: s.RunbookVersion,
 		})
 	}

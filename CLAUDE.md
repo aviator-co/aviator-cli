@@ -23,7 +23,10 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   show.go           # `aviator show`    -> runbook detail
   sessions.go       # `aviator sessions`-> list/lookup sessions by branch or PR
   results.go        # `aviator results` -> runbook step results
-  edit.go           # `aviator edit`    -> PATCH acceptance criteria
+  edit.go           # `aviator edit`    -> PATCH intent / acceptance criteria
+  dismiss.go        # `aviator dismiss` -> delete criteria / waive invariants
+  scenarios.go      # `aviator scenarios` -> scenario runs + evidence of a verification run
+  evidence.go       # `aviator evidence`  -> signed URL / download of one evidence file
   invariants.go     # `aviator invariants <list|categories|create|edit|delete|approve|reject|set-status>`
   invariants_format.go  # text rendering for the invariants commands
   version.go        # `aviator version`
@@ -78,6 +81,10 @@ Equivalent raw commands: `go build ./...`, `go test --vet=all ./...`,
   Tokens are never written to files.
 - **Output**: use `internal/utils/colors` helpers; keep success output to a
   short confirmation line plus a couple of indented details.
+- **`--json`**: every command builds its own JSON from a CLI-owned struct and
+  never prints the backend body, so a backend change can't silently reshape
+  what callers parse. Sessions are identified by `id` (`r/N`) and `url`
+  (`sessionRef`); "runbook" stays out of Verify-facing keys.
 - Code must be `gofumpt`-clean and pass `golangci-lint` (config in
   `.golangci.yaml`). CI (`.github/workflows/go.yml`) runs build, test, smoke
   test, and lint on every PR.
@@ -125,10 +132,26 @@ The CLI targets endpoints in the `mergeit` backend:
   Lists the caller's sessions in a repo, newest first, for `aviator sessions`.
   `working_branch` is the only filter, so `--pr` matches client-side over the
   `pull_requests` each summary carries.
+- `PATCH /api/v1/verify/<n>` — `{intent?, acceptance_criteria?,
+  expected_version?}`, at least one of the first two; `expected_version` is
+  required with criteria (409 `stale-runbook-version` when it's behind).
+  Returns the session with its `url` and `version`. Starts no run.
+- `POST /api/v1/verify/<n>/runs` — `{evaluator_only?, force?}`. Triggers a
+  verification run, deduplicated against an equivalent run unless `force`.
+- `POST /api/v1/verify/<n>/dismissals` — `{criteria: [{stable_key} |
+  {baseline_invariant_id, category, justification}]}`. Deletes task criteria
+  and waives invariants; the handles come from the detail endpoint. Starts no
+  run.
+- `GET /api/v1/verify/<n>/runs/latest/scenarios` — the latest run's scenario
+  runs with their criteria handles and evidence ids. The backend also serves
+  `/runs/<run_id>/scenarios`; the CLI doesn't use it, since nothing lists runs.
+- `GET /api/v1/verify/evidence/<id>` — 302 to a short-lived signed storage URL.
+  The CLI doesn't follow it with the bearer token: `EvidenceURL` stops at the
+  redirect and the download is a plain unauthenticated GET.
 
-`/api/v1/verify` and the listing are gated on `role="user"`: an account-scoped
-API token resolves to no role and gets a 403, so both need a user token or an
-`aviator login` session.
+`POST` and `PATCH /api/v1/verify`, dismissals, and the listing are gated on
+`role="user"`: an account-scoped API token resolves to no role and gets a 403,
+so they need a user token or an `aviator login` session.
 
 - `/api/v1/invariants` — `GET` (list; `org`+`repo`, `status`, comma-separated
   `ids` and `source`, `page`, `per_page` query), `GET /categories`, `POST`
