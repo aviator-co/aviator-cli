@@ -74,6 +74,21 @@ Two commands, two different jobs:
 - `aviator runbook`: Aviator's agent writes the code from your spec and opens
   its own PR.
 
+### Set up your agents
+
+Add hooks that have your coding agents capture a change's intent and
+acceptance criteria for Verify as you open a PR:
+
+```bash
+aviator init                 # in this repo, committed for your whole team
+aviator init --scope self    # just you, in every repo on this machine
+aviator init --scope local   # just you, in this repo only
+```
+
+`--scope local` writes `.claude/settings.local.json` and covers Claude Code
+only. Re-run `init` any time to update; `aviator hooks uninstall` removes the
+hooks.
+
 ### Submit for verification
 
 ```bash

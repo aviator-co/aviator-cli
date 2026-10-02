@@ -83,7 +83,7 @@ var hooksInstallCmd = &cobra.Command{
 			return err
 		}
 		if hooksFlags.Scope == "" {
-			return errors.New("pass --scope team|self")
+			return errors.New("pass --scope team|self|local")
 		}
 		scope, err := parseScope(hooksFlags.Scope)
 		if err != nil {
@@ -146,11 +146,11 @@ var hooksUninstallCmd = &cobra.Command{
 	},
 }
 
-// scopesToClear defaults to both, since self scope now lives outside the repo
-// and a bare uninstall that silently skipped it was the old bug.
+// scopesToClear defaults to every scope, since self scope lives outside the
+// repo and a bare uninstall that silently skipped it was the old bug.
 func scopesToClear() ([]adapter.Scope, error) {
 	if hooksFlags.Scope == "" {
-		return []adapter.Scope{adapter.ScopeTeam, adapter.ScopeSelf}, nil
+		return []adapter.Scope{adapter.ScopeTeam, adapter.ScopeSelf, adapter.ScopeLocal}, nil
 	}
 	scope, err := parseScope(hooksFlags.Scope)
 	if err != nil {
@@ -176,8 +176,10 @@ func parseScope(s string) (adapter.Scope, error) {
 		return adapter.ScopeTeam, nil
 	case "self":
 		return adapter.ScopeSelf, nil
+	case "local":
+		return adapter.ScopeLocal, nil
 	default:
-		return adapter.ScopeTeam, errors.Errorf("unknown scope %q (use team or self)", s)
+		return adapter.ScopeTeam, errors.Errorf("unknown scope %q (use team, self or local)", s)
 	}
 }
 
@@ -186,11 +188,11 @@ func init() {
 		c.Flags().StringVar(&hooksFlags.Agent, "agent", "", "agent id (e.g. claude)")
 	}
 	hooksInstallCmd.Flags().StringVar(&hooksFlags.Scope, "scope", "",
-		"team (committed to this repo) or self (your config, every repo)")
+		"team (committed to this repo), self (your config, every repo) or local (just you, this repo)")
 	hooksInstallCmd.Flags().StringVar(&hooksFlags.Agents, "agents", "",
-		"comma-separated agent ids (default: all supported for team, detected for self)")
+		"comma-separated agent ids (default: all supported for team, detected otherwise)")
 	hooksUninstallCmd.Flags().StringVar(&hooksFlags.Scope, "scope", "",
-		"team or self; both are cleared if omitted")
+		"team, self or local; all are cleared if omitted")
 	hooksCmd.AddCommand(hooksSessionStartCmd, hooksPostToolUseCmd, hooksPreToolUseCmd,
 		hooksInstallCmd, hooksUninstallCmd)
 }
