@@ -212,6 +212,7 @@ type failureJSON struct {
 	Criterion string          `json:"criterion"`
 	Status    string          `json:"status"`
 	Reason    *string         `json:"reason"`
+	Invariant bool            `json:"invariant"`
 	Waived    bool            `json:"waived"`
 	Evidence  json.RawMessage `json:"evidence"`
 	Location  json.RawMessage `json:"location"`
@@ -238,6 +239,7 @@ func newVerificationJSON(v *api.LatestVerification) *verificationJSON {
 			Criterion: fr.Criterion,
 			Status:    fr.Status,
 			Reason:    fr.Reason,
+			Invariant: fr.IsInvariant,
 			Waived:    fr.IsWaived,
 			Evidence:  nullIfEmpty(fr.Evidence),
 			Location:  nullIfEmpty(fr.Location),

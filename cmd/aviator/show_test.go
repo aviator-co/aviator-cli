@@ -156,7 +156,7 @@ func TestResultsJSON(t *testing.T) {
 			CriteriaTotal:  2,
 			CriteriaPassed: 1,
 			CriteriaFailed: 1,
-			FailedResults:  []api.FailedResult{{Criterion: "does the thing", Status: "fail", Reason: ptr("nope")}},
+			FailedResults:  []api.FailedResult{{Criterion: "no secrets", Status: "fail", Reason: ptr("nope"), IsInvariant: true}},
 		},
 	}))
 	if got["id"] != "r/123" || got["version"] != float64(4) {
@@ -167,7 +167,7 @@ func TestResultsJSON(t *testing.T) {
 		t.Errorf("latest_verification = %v", v)
 	}
 	f := v["failures"].([]any)[0].(map[string]any)
-	if f["criterion"] != "does the thing" || f["reason"] != "nope" || f["evidence"] != nil {
+	if f["criterion"] != "no secrets" || f["reason"] != "nope" || f["invariant"] != true || f["evidence"] != nil {
 		t.Errorf("failure = %v", f)
 	}
 }
