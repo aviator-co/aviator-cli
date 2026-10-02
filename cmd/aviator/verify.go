@@ -57,9 +57,8 @@ var verifyCmd = &cobra.Command{
 		"the server returns that run instead of starting a new one, so this is\n" +
 		"safe to call liberally. Pass --force to start a fresh full run anyway,\n" +
 		"or --evaluator-only to re-judge the evidence an earlier run already\n" +
-		"collected instead of collecting it again — the cheap path after a\n" +
-		"criteria edit; it falls back to a full run when there is nothing to\n" +
-		"re-judge.",
+		"collected instead of collecting it again. Evaluator-only is refused once\n" +
+		"criteria have been added or reworded, since those need a full run.",
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 1 {

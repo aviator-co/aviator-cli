@@ -25,7 +25,7 @@ var editCmd = &cobra.Command{
 		"Replacing criteria needs --expected-version, the version `aviator show`\n" +
 		"prints; a stale version is refused.\n" +
 		"Edits don't start a verification run: follow a criteria edit with\n" +
-		"`aviator verify r/<number> --evaluator-only`.",
+		"`aviator verify r/<number>`.",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		runbookNumber, err := parseRunbookID(args[0])
@@ -62,7 +62,7 @@ var editCmd = &cobra.Command{
 		id := formatRunbookID(resp.RunbookNumber)
 		fmt.Printf("%s %s updated%s\n", colors.Success("✓"), id, formatVersion(resp.Version))
 		if len(criteria) > 0 {
-			fmt.Printf("  %s\n", colors.Faint("Re-judge with: aviator verify "+id+" --evaluator-only"))
+			fmt.Printf("  %s\n", colors.Faint("Verify with: aviator verify "+id))
 		}
 		return nil
 	},
