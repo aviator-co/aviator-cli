@@ -13,6 +13,8 @@ const (
 	// ScopeSelf writes to the user's own config, covering every repo on this
 	// machine and touching nothing in the working tree.
 	ScopeSelf
+	// ScopeLocal writes to the repo's uncommitted per-user config.
+	ScopeLocal
 )
 
 type Change int
@@ -42,8 +44,7 @@ type Adapter interface {
 	// EmitPreToolUse reads a native hook payload from stdin and writes the
 	// native response to stdout when the call opens a PR.
 	EmitPreToolUse(stdin io.Reader, stdout io.Writer) error
-	// HookFile is the config file written at scope, so init can offer to keep a
-	// self-scope file out of git.
+	// HookFile is the config file written at scope, or "" when there is none.
 	HookFile(scope Scope, repoRoot string) string
 	// SetupNote is anything the user must still do before the hook will fire,
 	// or "" when writing the file is enough.

@@ -15,8 +15,10 @@ type settingsAgent struct {
 	note string
 	// userEnv overrides userDir, which is relative to the user's home.
 	userEnv, userDir string
-	// repoFile is relative to the repo root, userFile to the agent's user dir.
-	repoFile, userFile string
+	// repoFile and localFile are relative to the repo root, userFile to the
+	// agent's user dir. localFile is empty when the agent has no uncommitted
+	// per-user repo config.
+	repoFile, localFile, userFile string
 	// install tells the agent how to get /verify-submit, which differs per agent.
 	install string
 }
@@ -25,8 +27,9 @@ var registry = []Adapter{
 	settingsAgent{
 		id: "claude", name: "Claude Code",
 		userEnv: "CLAUDE_CONFIG_DIR", userDir: ".claude",
-		repoFile: ".claude/settings.json",
-		userFile: "settings.json",
+		repoFile:  ".claude/settings.json",
+		localFile: ".claude/settings.local.json",
+		userFile:  "settings.json",
 		install: "run `/plugin marketplace add aviator-co/agent-plugins` then " +
 			"`/plugin install aviator@aviator-plugins`.",
 	},
@@ -68,12 +71,19 @@ func (a settingsAgent) configDir() string {
 // HookFile is the repo's config for team scope and the user's own for self,
 // which is why self applies to every repository on the machine.
 func (a settingsAgent) HookFile(scope Scope, repoRoot string) string {
-	if scope == ScopeSelf {
+	switch scope {
+	case ScopeSelf:
 		dir := a.configDir()
 		if dir == "" {
 			return ""
 		}
 		return filepath.Join(dir, filepath.FromSlash(a.userFile))
+	case ScopeLocal:
+		if a.localFile == "" {
+			return ""
+		}
+		return filepath.Join(repoRoot, filepath.FromSlash(a.localFile))
+	case ScopeTeam:
 	}
 	return filepath.Join(repoRoot, filepath.FromSlash(a.repoFile))
 }
