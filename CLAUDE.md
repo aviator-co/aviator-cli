@@ -25,6 +25,8 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   results.go        # `aviator results` -> runbook step results
   edit.go           # `aviator edit`    -> PATCH intent / acceptance criteria
   dismiss.go        # `aviator dismiss` -> delete criteria / waive invariants
+  scenarios.go      # `aviator scenarios` -> scenario runs + evidence of a verification run
+  evidence.go       # `aviator evidence`  -> signed URL / download of one evidence file
   invariants.go     # `aviator invariants <list|categories|create|edit|delete|approve|reject|set-status>`
   invariants_format.go  # text rendering for the invariants commands
   version.go        # `aviator version`
@@ -140,6 +142,12 @@ The CLI targets endpoints in the `mergeit` backend:
   {baseline_invariant_id, category, justification}]}`. Deletes task criteria
   and waives invariants; the handles come from the detail endpoint. Starts no
   run.
+- `GET /api/v1/verify/<n>/runs/latest/scenarios` — the latest run's scenario
+  runs with their criteria handles and evidence ids. The backend also serves
+  `/runs/<run_id>/scenarios`; the CLI doesn't use it, since nothing lists runs.
+- `GET /api/v1/verify/evidence/<id>` — 302 to a short-lived signed storage URL.
+  The CLI doesn't follow it with the bearer token: `EvidenceURL` stops at the
+  redirect and the download is a plain unauthenticated GET.
 
 `POST` and `PATCH /api/v1/verify`, dismissals, and the listing are gated on
 `role="user"`: an account-scoped API token resolves to no role and gets a 403,

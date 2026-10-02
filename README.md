@@ -164,6 +164,8 @@ takes.
 ```bash
 aviator show r/123            # session summary
 aviator results r/123         # latest verification results
+aviator scenarios r/123       # what the latest run exercised, with evidence ids
+aviator evidence 4567 -o trace.json   # download one evidence file, e.g. a run trace
 aviator edit r/123 --expected-version 4 --criteria "..."
 aviator edit r/123 --intent "..."
 aviator dismiss r/123 --key <key>                  # delete a task criterion

@@ -55,6 +55,8 @@ func init() {
 		resultsCmd,
 		editCmd,
 		dismissCmd,
+		scenariosCmd,
+		evidenceCmd,
 		invariantsCmd,
 		hooksCmd,
 		initCmd,
