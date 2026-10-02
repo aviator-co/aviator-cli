@@ -40,7 +40,7 @@ var initCmd = &cobra.Command{
 		"The agent config is written into this repository, so committing it sets\n" +
 		"up your team too. --scope self writes your own agent config instead,\n" +
 		"covering every repository on this machine and leaving the working tree\n" +
-		"untouched.\n\n" +
+		"untouched. --scope local writes your own config in just this repository.\n\n" +
 		"Re-run any time to add agents, update, or reconcile.",
 	Args: cobra.NoArgs,
 	RunE: runInit,
@@ -75,10 +75,10 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	if scope == adapter.ScopeSelf {
-		printScopeNote(scope, written, agents)
-	} else {
+	if scope == adapter.ScopeTeam {
 		printCommitSteps(written, agents)
+	} else {
+		printScopeNote(scope, written, agents)
 	}
 	printPluginNote()
 	printAuthNote()
@@ -91,7 +91,7 @@ func installAgents(agents []adapter.Adapter, scope adapter.Scope, root string) (
 	for _, a := range agents {
 		path := a.HookFile(scope, root)
 		if path == "" {
-			fmt.Printf("%s %s — couldn't locate its config directory, skipped\n",
+			fmt.Printf("%s %s — nowhere to put its hook at this scope, skipped\n",
 				colors.Warning("!"), a.DisplayName())
 			continue
 		}
@@ -175,7 +175,7 @@ func askAgents(scope adapter.Scope) ([]adapter.Adapter, error) {
 	}
 
 	desc := "This adds hooks to the repository. Select all agents that are used here."
-	if scope == adapter.ScopeSelf {
+	if scope != adapter.ScopeTeam {
 		desc = "Detected on this machine"
 	}
 
@@ -240,10 +240,15 @@ func printScopeNote(scope adapter.Scope, written []string, agents []adapter.Adap
 	if len(written) == 0 {
 		return
 	}
-	if scope == adapter.ScopeSelf {
+	switch scope {
+	case adapter.ScopeSelf:
 		fmt.Printf("\nSet up for you across every repository on this machine. Nothing was added\n" +
 			"to this repo.\n")
 		return
+	case adapter.ScopeLocal:
+		fmt.Println("\nSet up for you in this repo only. Don't commit it.")
+		return
+	case adapter.ScopeTeam:
 	}
 	fmt.Printf("\nNew files in your repo: %s\n", strings.Join(written, ", "))
 	fmt.Println("Commit them to share the setup with your team.")
@@ -313,8 +318,8 @@ func displayPath(root, path string) string {
 
 func init() {
 	initCmd.Flags().StringVar(&initFlags.Scope, "scope", "",
-		"team (committed to this repo, the default) or self (your config, every repo)")
+		"team (committed to this repo, the default), self (your config, every repo) or local (just you, this repo)")
 	initCmd.Flags().StringVar(&initFlags.Agents, "agents", "",
-		"comma-separated agent ids (default: all supported for team, detected for self)")
+		"comma-separated agent ids (default: all supported for team, detected otherwise)")
 	initCmd.Flags().BoolVar(&initFlags.Yes, "yes", false, "skip prompts")
 }
