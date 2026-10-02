@@ -52,7 +52,10 @@ func TestScenariosJSON(t *testing.T) {
 				Steps:    []api.ScenarioStep{{ID: 1, Text: "open the page", EvidenceTypes: []string{"screenshot"}}},
 				Criteria: []api.ScenarioCriterion{{StableKey: &key}},
 			},
-			Evidence: []api.Evidence{{ID: 4567, Type: "trace", URL: "https://api/evidence/4567"}},
+			Evidence: []api.Evidence{
+				{ID: 4567, Type: "trace", URL: "https://api/evidence/4567"},
+				{ID: 4568, Type: "screenshot", StepID: ptr(1)},
+			},
 		}},
 	}))
 	if got["id"] != "r/123" || got["run_status"] != "passed" {
@@ -65,8 +68,15 @@ func TestScenariosJSON(t *testing.T) {
 	if c := scenario["criteria"].([]any)[0].(map[string]any); c["stable_key"] != "k1" {
 		t.Errorf("criteria = %v", scenario["criteria"])
 	}
-	evidence := scenario["evidence"].([]any)[0].(map[string]any)
-	if _, ok := evidence["url"]; ok || evidence["id"] != float64(4567) {
-		t.Errorf("evidence = %v", evidence)
+	evidence := scenario["evidence"].([]any)
+	if trace := evidence[0].(map[string]any); trace["step_id"] != nil || trace["id"] != float64(4567) {
+		t.Errorf("trace = %v", trace)
+	}
+	if _, ok := evidence[0].(map[string]any)["url"]; ok {
+		t.Errorf("evidence should not carry the API url: %v", evidence[0])
+	}
+	step := scenario["steps"].([]any)[0].(map[string]any)
+	if shot := evidence[1].(map[string]any); shot["step_id"] != step["id"] {
+		t.Errorf("screenshot step_id = %v, step id = %v", shot["step_id"], step["id"])
 	}
 }

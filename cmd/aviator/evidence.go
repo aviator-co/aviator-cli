@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 
@@ -20,7 +21,8 @@ var evidenceCmd = &cobra.Command{
 	Short: "Download a piece of verification evidence, such as a screenshot or trace",
 	Long: "Without -o, print a signed URL for the evidence file; it expires after a\n" +
 		"few minutes. With -o, download the file to that path, or to stdout with\n" +
-		"-o -. `aviator scenarios` lists evidence ids.",
+		"-o -. Like curl -o, an existing file at the path is overwritten, but only\n" +
+		"once the download has started. `aviator scenarios` lists evidence ids.",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		evidenceID, err := strconv.Atoi(args[0])
@@ -32,26 +34,32 @@ var evidenceCmd = &cobra.Command{
 			return err
 		}
 
-		switch evidenceFlags.Output {
-		case "":
+		if evidenceFlags.Output == "" {
 			signedURL, err := client.EvidenceURL(cmd.Context(), evidenceID)
 			if err != nil {
 				return err
 			}
 			fmt.Println(signedURL)
 			return nil
-		case "-":
-			return client.DownloadEvidence(cmd.Context(), evidenceID, os.Stdout)
+		}
+
+		body, err := client.OpenEvidence(cmd.Context(), evidenceID)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = body.Close() }()
+		if evidenceFlags.Output == "-" {
+			_, err := io.Copy(os.Stdout, body)
+			return errors.Wrap(err, "failed to write evidence")
 		}
 
 		f, err := os.Create(evidenceFlags.Output)
 		if err != nil {
 			return errors.Wrapf(err, "failed to create %s", evidenceFlags.Output)
 		}
-		if err := client.DownloadEvidence(cmd.Context(), evidenceID, f); err != nil {
+		if _, err := io.Copy(f, body); err != nil {
 			_ = f.Close()
-			_ = os.Remove(evidenceFlags.Output)
-			return err
+			return errors.Wrapf(err, "failed to write %s", evidenceFlags.Output)
 		}
 		if err := f.Close(); err != nil {
 			return errors.Wrapf(err, "failed to write %s", evidenceFlags.Output)
@@ -62,5 +70,5 @@ var evidenceCmd = &cobra.Command{
 }
 
 func init() {
-	evidenceCmd.Flags().StringVarP(&evidenceFlags.Output, "output", "o", "", "download to this path (- for stdout)")
+	evidenceCmd.Flags().StringVarP(&evidenceFlags.Output, "output", "o", "", "download to this path, overwriting it like curl -o (- for stdout)")
 }

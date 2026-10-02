@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"emperror.dev/errors"
 )
@@ -30,28 +29,24 @@ func (c *Client) EvidenceURL(ctx context.Context, evidenceID int) (string, error
 	return "", errors.Errorf("expected a redirect to the evidence file, got %d", status)
 }
 
-// DownloadEvidence streams an evidence file into w.
-func (c *Client) DownloadEvidence(ctx context.Context, evidenceID int, w io.Writer) error {
+// OpenEvidence opens an evidence file for reading once storage has answered
+// 200. The download carries no bearer token: the signed URL authorizes it.
+func (c *Client) OpenEvidence(ctx context.Context, evidenceID int) (io.ReadCloser, error) {
 	signedURL, err := c.EvidenceURL(ctx, evidenceID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, signedURL, nil)
 	if err != nil {
-		return errors.Wrap(err, "failed to build download request")
+		return nil, errors.Wrap(err, "failed to build download request")
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
-		return errors.Wrap(err, "download failed")
+		return nil, errors.Wrap(err, "download failed")
 	}
-	defer func() { _ = resp.Body.Close() }()
-
 	if resp.StatusCode != http.StatusOK {
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return errors.Errorf("evidence download failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(data)))
+		_ = resp.Body.Close()
+		return nil, errors.Errorf("evidence download failed (%d)", resp.StatusCode)
 	}
-	if _, err := io.Copy(w, resp.Body); err != nil {
-		return errors.Wrap(err, "failed to write evidence")
-	}
-	return nil
+	return resp.Body, nil
 }

@@ -112,12 +112,14 @@ type scenarioJSON struct {
 }
 
 type scenarioStepJSON struct {
+	ID            int      `json:"id"`
 	Text          string   `json:"text"`
 	EvidenceTypes []string `json:"evidence_types"`
 }
 
 type evidenceJSON struct {
 	ID          int     `json:"id"`
+	StepID      *int    `json:"step_id"`
 	Type        string  `json:"type"`
 	Label       *string `json:"label"`
 	ContentType *string `json:"content_type"`
@@ -149,11 +151,11 @@ func newScenariosJSON(s *api.VerifyScenarios) scenariosJSON {
 			sc.Criteria = append(sc.Criteria, handleJSON{StableKey: c.StableKey, BaselineInvariantID: c.BaselineInvariantID})
 		}
 		for _, st := range sr.Scenario.Steps {
-			sc.Steps = append(sc.Steps, scenarioStepJSON{Text: st.Text, EvidenceTypes: st.EvidenceTypes})
+			sc.Steps = append(sc.Steps, scenarioStepJSON{ID: st.ID, Text: st.Text, EvidenceTypes: st.EvidenceTypes})
 		}
 		for _, e := range sr.Evidence {
 			sc.Evidence = append(sc.Evidence, evidenceJSON{
-				ID: e.ID, Type: e.Type, Label: e.Label, ContentType: e.ContentType, SizeBytes: e.SizeBytes,
+				ID: e.ID, StepID: e.StepID, Type: e.Type, Label: e.Label, ContentType: e.ContentType, SizeBytes: e.SizeBytes,
 			})
 		}
 		out.Scenarios = append(out.Scenarios, sc)

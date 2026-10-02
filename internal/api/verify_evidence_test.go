@@ -1,15 +1,15 @@
 package api
 
 import (
-	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-func TestDownloadEvidence(t *testing.T) {
+func TestOpenEvidence(t *testing.T) {
 	storage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "" {
 			t.Errorf("storage got Authorization %q", got)
@@ -25,12 +25,30 @@ func TestDownloadEvidence(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	var buf bytes.Buffer
-	if err := newTestClient(srv).DownloadEvidence(context.Background(), 4567, &buf); err != nil {
+	body, err := newTestClient(srv).OpenEvidence(context.Background(), 4567)
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if buf.String() != `{"transcript":[]}` {
-		t.Errorf("body = %q", buf.String())
+	defer func() { _ = body.Close() }()
+	if data, _ := io.ReadAll(body); string(data) != `{"transcript":[]}` {
+		t.Errorf("body = %q", data)
+	}
+}
+
+func TestOpenEvidenceMissingFromStorage(t *testing.T) {
+	storage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`<Error><Code>NoSuchKey</Code></Error>`))
+	}))
+	defer storage.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, storage.URL+"/signed", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	_, err := newTestClient(srv).OpenEvidence(context.Background(), 1)
+	if err == nil || err.Error() != "evidence download failed (404)" {
+		t.Fatalf("err = %v", err)
 	}
 }
 
