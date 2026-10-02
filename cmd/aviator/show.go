@@ -89,7 +89,7 @@ func formatRunbookDetail(d *api.RunbookDetail) string {
 	if len(d.AcceptanceCriteria) > 0 {
 		b.WriteString("  Criteria:\n")
 		for _, c := range d.AcceptanceCriteria {
-			fmt.Fprintf(&b, "    %d. %s\n", c.Ordinal, c.RawText)
+			fmt.Fprintf(&b, "    %d. %s%s\n", c.Ordinal, c.RawText, formatHandle(c.StableKey, nil))
 		}
 	}
 
@@ -125,9 +125,21 @@ func formatVerification(v *api.LatestVerification) string {
 		if r := deref(fr.Reason); r != "" {
 			reason = ": " + r
 		}
-		fmt.Fprintf(&b, "    %s %s%s\n", colors.Failure("✗"), fr.Criterion, reason)
+		fmt.Fprintf(&b, "    %s %s%s%s\n", colors.Failure("✗"), fr.Criterion,
+			formatHandle(fr.StableKey, fr.BaselineInvariantID), reason)
 	}
 	return b.String()
+}
+
+// formatHandle renders the id `aviator dismiss` takes for a criterion.
+func formatHandle(stableKey *string, invariantID *int) string {
+	switch {
+	case stableKey != nil:
+		return " " + colors.Faint("[key "+*stableKey+"]")
+	case invariantID != nil:
+		return " " + colors.Faint(fmt.Sprintf("[invariant %d]", *invariantID))
+	}
+	return ""
 }
 
 func branchOr(s *string) string {
@@ -164,7 +176,14 @@ type pullRequestJSON struct {
 }
 
 type criterionJSON struct {
-	Text string `json:"text"`
+	Text      string  `json:"text"`
+	StableKey *string `json:"stable_key"`
+}
+
+// handleJSON names a criterion the way `aviator dismiss --criteria-json` takes it.
+type handleJSON struct {
+	StableKey           *string `json:"stable_key"`
+	BaselineInvariantID *int    `json:"baseline_invariant_id"`
 }
 
 func newShowJSON(d *api.RunbookDetail) showJSON {
@@ -188,7 +207,7 @@ func newShowJSON(d *api.RunbookDetail) showJSON {
 		out.SpecFiles = append(out.SpecFiles, f.Filename)
 	}
 	for _, c := range d.AcceptanceCriteria {
-		out.Criteria = append(out.Criteria, criterionJSON{Text: c.RawText})
+		out.Criteria = append(out.Criteria, criterionJSON{Text: c.RawText, StableKey: c.StableKey})
 	}
 	return out
 }
@@ -209,6 +228,7 @@ type verificationJSON struct {
 }
 
 type failureJSON struct {
+	handleJSON
 	Criterion string          `json:"criterion"`
 	Status    string          `json:"status"`
 	Reason    *string         `json:"reason"`
@@ -236,13 +256,14 @@ func newVerificationJSON(v *api.LatestVerification) *verificationJSON {
 	}
 	for _, fr := range v.FailedResults {
 		out.Failures = append(out.Failures, failureJSON{
-			Criterion: fr.Criterion,
-			Status:    fr.Status,
-			Reason:    fr.Reason,
-			Invariant: fr.IsInvariant,
-			Waived:    fr.IsWaived,
-			Evidence:  nullIfEmpty(fr.Evidence),
-			Location:  nullIfEmpty(fr.Location),
+			handleJSON: handleJSON{StableKey: fr.StableKey, BaselineInvariantID: fr.BaselineInvariantID},
+			Criterion:  fr.Criterion,
+			Status:     fr.Status,
+			Reason:     fr.Reason,
+			Invariant:  fr.IsInvariant,
+			Waived:     fr.IsWaived,
+			Evidence:   nullIfEmpty(fr.Evidence),
+			Location:   nullIfEmpty(fr.Location),
 		})
 	}
 	return out

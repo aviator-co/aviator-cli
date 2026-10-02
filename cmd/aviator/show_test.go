@@ -117,7 +117,7 @@ func TestShowJSON(t *testing.T) {
 		PullRequests:   []api.LinkedPullRequest{{Number: 1201, URL: "https://github.com/acme/web/pull/1201"}},
 		SpecFiles:      []api.DetailSpecFile{{Filename: "spec.md", Content: "..."}},
 		AcceptanceCriteria: []api.DetailCriterion{
-			{Ordinal: 1, RawText: "does the thing"},
+			{Ordinal: 1, RawText: "does the thing", StableKey: ptr("abc123")},
 		},
 	}))
 	for key, want := range map[string]any{
@@ -137,7 +137,7 @@ func TestShowJSON(t *testing.T) {
 	if specs := got["spec_files"].([]any); len(specs) != 1 || specs[0] != "spec.md" {
 		t.Errorf("spec_files = %v", specs)
 	}
-	if c := got["criteria"].([]any); len(c) != 1 || c[0].(map[string]any)["text"] != "does the thing" {
+	if c := got["criteria"].([]any); len(c) != 1 || c[0].(map[string]any)["stable_key"] != "abc123" {
 		t.Errorf("criteria = %v", c)
 	}
 	if pr := got["pull_requests"].([]any); len(pr) != 1 || pr[0].(map[string]any)["number"] != float64(1201) {
@@ -156,7 +156,9 @@ func TestResultsJSON(t *testing.T) {
 			CriteriaTotal:  2,
 			CriteriaPassed: 1,
 			CriteriaFailed: 1,
-			FailedResults:  []api.FailedResult{{Criterion: "no secrets", Status: "fail", Reason: ptr("nope"), IsInvariant: true}},
+			FailedResults: []api.FailedResult{
+				{Criterion: "no secrets", Status: "fail", Reason: ptr("nope"), IsInvariant: true, BaselineInvariantID: ptr(42)},
+			},
 		},
 	}))
 	if got["id"] != "r/123" || got["version"] != float64(4) {
@@ -167,7 +169,32 @@ func TestResultsJSON(t *testing.T) {
 		t.Errorf("latest_verification = %v", v)
 	}
 	f := v["failures"].([]any)[0].(map[string]any)
-	if f["criterion"] != "no secrets" || f["reason"] != "nope" || f["invariant"] != true || f["evidence"] != nil {
+	if f["criterion"] != "no secrets" || f["invariant"] != true || f["baseline_invariant_id"] != float64(42) || f["stable_key"] != nil {
 		t.Errorf("failure = %v", f)
+	}
+}
+
+func TestFormatRunbookDetailHandles(t *testing.T) {
+	detail := &api.RunbookDetail{
+		RunbookNumber: 5,
+		URL:           "https://app.aviator.co/r/5",
+		AcceptanceCriteria: []api.DetailCriterion{
+			{Ordinal: 1, RawText: "does the thing", StableKey: ptr("abc123")},
+		},
+		LatestVerification: &api.LatestVerification{
+			Status: "failed",
+			FailedResults: []api.FailedResult{
+				{Criterion: "no secrets", BaselineInvariantID: ptr(42), Reason: ptr("leaked")},
+			},
+		},
+	}
+	out := formatRunbookDetail(detail)
+	for _, want := range []string{
+		"1. does the thing [key abc123]",
+		"no secrets [invariant 42]: leaked",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\n---\n%s", want, out)
+		}
 	}
 }

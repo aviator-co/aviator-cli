@@ -24,6 +24,7 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   sessions.go       # `aviator sessions`-> list/lookup sessions by branch or PR
   results.go        # `aviator results` -> runbook step results
   edit.go           # `aviator edit`    -> PATCH intent / acceptance criteria
+  dismiss.go        # `aviator dismiss` -> delete criteria / waive invariants
   invariants.go     # `aviator invariants <list|categories|create|edit|delete|approve|reject|set-status>`
   invariants_format.go  # text rendering for the invariants commands
   version.go        # `aviator version`
@@ -135,10 +136,14 @@ The CLI targets endpoints in the `mergeit` backend:
   Returns the session with its `url` and `version`. Starts no run.
 - `POST /api/v1/verify/<n>/runs` — `{evaluator_only?, force?}`. Triggers a
   verification run, deduplicated against an equivalent run unless `force`.
+- `POST /api/v1/verify/<n>/dismissals` — `{criteria: [{stable_key} |
+  {baseline_invariant_id, category, justification}]}`. Deletes task criteria
+  and waives invariants; the handles come from the detail endpoint. Starts no
+  run.
 
-`POST` and `PATCH /api/v1/verify` and the listing are gated on `role="user"`:
-an account-scoped API token resolves to no role and gets a 403, so they need a
-user token or an `aviator login` session.
+`POST` and `PATCH /api/v1/verify`, dismissals, and the listing are gated on
+`role="user"`: an account-scoped API token resolves to no role and gets a 403,
+so they need a user token or an `aviator login` session.
 
 - `/api/v1/invariants` — `GET` (list; `org`+`repo`, `status`, comma-separated
   `ids` and `source`, `page`, `per_page` query), `GET /categories`, `POST`

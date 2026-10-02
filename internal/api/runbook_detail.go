@@ -57,9 +57,10 @@ type RunbookStep struct {
 
 // DetailCriterion is one acceptance criterion.
 type DetailCriterion struct {
-	Ordinal int    `json:"ordinal"`
-	RawText string `json:"raw_text"`
-	Source  string `json:"source"`
+	Ordinal   int     `json:"ordinal"`
+	RawText   string  `json:"raw_text"`
+	Source    string  `json:"source"`
+	StableKey *string `json:"stable_key"`
 }
 
 // LatestVerification summarizes the most recent verification run.
@@ -79,13 +80,15 @@ type LatestVerification struct {
 
 // FailedResult is a single failing criterion within a verification.
 type FailedResult struct {
-	Criterion   string          `json:"criterion"`
-	IsInvariant bool            `json:"is_invariant"`
-	IsWaived    bool            `json:"is_waived"`
-	Status      string          `json:"status"`
-	Reason      *string         `json:"reason"`
-	Evidence    json.RawMessage `json:"evidence"`
-	Location    json.RawMessage `json:"location"`
+	Criterion           string          `json:"criterion"`
+	StableKey           *string         `json:"stable_key"`
+	BaselineInvariantID *int            `json:"baseline_invariant_id"`
+	IsInvariant         bool            `json:"is_invariant"`
+	IsWaived            bool            `json:"is_waived"`
+	Status              string          `json:"status"`
+	Reason              *string         `json:"reason"`
+	Evidence            json.RawMessage `json:"evidence"`
+	Location            json.RawMessage `json:"location"`
 }
 
 // GetRunbookDetail fetches a session's detail. When fields is non-empty, only

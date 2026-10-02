@@ -166,6 +166,9 @@ aviator show r/123            # session summary
 aviator results r/123         # latest verification results
 aviator edit r/123 --expected-version 4 --criteria "..."
 aviator edit r/123 --intent "..."
+aviator dismiss r/123 --criterion <key>            # delete a task criterion
+aviator dismiss r/123 --criteria-json \
+  '[{"baseline_invariant_id": 42, "category": "accepted_risk", "justification": "..."}]'
 ```
 
 ### Manage baseline invariants

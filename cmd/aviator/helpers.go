@@ -93,7 +93,7 @@ func collectBody(inline, file string) (string, error) {
 	}
 	data, err := os.ReadFile(file)
 	if err != nil {
-		return "", errors.Wrapf(err, "failed to read body file %s", file)
+		return "", errors.Wrapf(err, "failed to read %s", file)
 	}
 	return strings.TrimSpace(string(data)), nil
 }
