@@ -23,7 +23,7 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   show.go           # `aviator show`    -> runbook detail
   sessions.go       # `aviator sessions`-> list/lookup sessions by branch or PR
   results.go        # `aviator results` -> runbook step results
-  edit.go           # `aviator edit`    -> PATCH acceptance criteria
+  edit.go           # `aviator edit`    -> PATCH intent / acceptance criteria
   invariants.go     # `aviator invariants <list|categories|create|edit|delete|approve|reject|set-status>`
   invariants_format.go  # text rendering for the invariants commands
   version.go        # `aviator version`
@@ -129,10 +129,16 @@ The CLI targets endpoints in the `mergeit` backend:
   Lists the caller's sessions in a repo, newest first, for `aviator sessions`.
   `working_branch` is the only filter, so `--pr` matches client-side over the
   `pull_requests` each summary carries.
+- `PATCH /api/v1/verify/<n>` — `{intent?, acceptance_criteria?,
+  expected_version?}`, at least one of the first two; `expected_version` is
+  required with criteria (409 `stale-runbook-version` when it's behind).
+  Returns the session with its `url` and `version`. Starts no run.
+- `POST /api/v1/verify/<n>/runs` — `{evaluator_only?, force?}`. Triggers a
+  verification run, deduplicated against an equivalent run unless `force`.
 
-`/api/v1/verify` and the listing are gated on `role="user"`: an account-scoped
-API token resolves to no role and gets a 403, so both need a user token or an
-`aviator login` session.
+`POST` and `PATCH /api/v1/verify` and the listing are gated on `role="user"`:
+an account-scoped API token resolves to no role and gets a 403, so they need a
+user token or an `aviator login` session.
 
 - `/api/v1/invariants` — `GET` (list; `org`+`repo`, `status`, comma-separated
   `ids` and `source`, `page`, `per_page` query), `GET /categories`, `POST`

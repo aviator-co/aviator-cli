@@ -109,7 +109,7 @@ bind to a PR through a `Review: <url>` line in the PR body.
 
 One review tracks exactly one PR. Stacked or multi-PR work needs one
 submission per PR, each with its own `--working-branch`, intent, and criteria.
-To update the criteria on a session that already exists, use `aviator edit`
+To update the intent or criteria on a session that already exists, use `aviator edit`
 rather than submitting the branch again. `aviator sessions` says whether a
 branch already has one.
 
@@ -165,6 +165,7 @@ takes.
 aviator show r/123            # session summary
 aviator results r/123         # latest verification results
 aviator edit r/123 --expected-version 4 --criteria "..."
+aviator edit r/123 --intent "..."
 ```
 
 ### Manage baseline invariants
