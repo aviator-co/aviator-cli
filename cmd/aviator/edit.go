@@ -25,7 +25,9 @@ var editCmd = &cobra.Command{
 		"Replacing criteria needs --expected-version, the version `aviator show`\n" +
 		"prints; a stale version is refused.\n" +
 		"Edits don't start a verification run: follow a criteria edit with\n" +
-		"`aviator verify r/<number>`.",
+		"`aviator verify r/<number>`.\n" +
+		"\n" +
+		"When a criterion is wrong: " + docsResults + "#the-criterion-is-wrong",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		runbookNumber, err := parseRunbookID(args[0])

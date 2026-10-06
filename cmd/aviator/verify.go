@@ -37,7 +37,8 @@ var verifyTriggerOnlyFlags = []string{"evaluator-only", "force"}
 // through the "Review: <url>" line in the PR body.
 const noWorkingBranchWarning = "no --working-branch given, so this session can only bind to a PR " +
 	"through a \"Review: <url>\" line in the PR body.\n" +
-	"  Pass --working-branch <branch> to have the PR opened from that branch bind automatically."
+	"  Pass --working-branch <branch> to have the PR opened from that branch bind automatically.\n" +
+	"  How a PR gets its review: " + docsPRLink
 
 var verifyCmd = &cobra.Command{
 	Use:   "verify [r/<number>]",
@@ -58,7 +59,14 @@ var verifyCmd = &cobra.Command{
 		"safe to call liberally. Pass --force to start a fresh full run anyway,\n" +
 		"or --evaluator-only to re-judge the evidence an earlier run already\n" +
 		"collected instead of collecting it again. Evaluator-only is refused once\n" +
-		"criteria have been added or reworded, since those need a full run.",
+		"criteria have been added or reworded, since those need a full run.\n" +
+		"\n" +
+		"Coding agents: use the /verify-submit skill from\n" +
+		pluginRepo + ", which drafts the intent and\n" +
+		"criteria with you.\n" +
+		"\n" +
+		"How a PR gets its review: " + docsPRLink + "\n" +
+		"Starting a new run: " + docsResults + "#starting-a-new-run",
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 1 {
@@ -174,6 +182,7 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 	if resp.Deduplicated {
 		fmt.Printf("%s %s already has an equivalent run at this commit and criteria version\n",
 			colors.Success("✓"), id)
+		fmt.Printf("  %s\n", colors.Faint("To run again anyway: aviator verify "+id+" --force"))
 	} else {
 		fmt.Printf("%s Verification run started for %s\n", colors.Success("✓"), id)
 	}
