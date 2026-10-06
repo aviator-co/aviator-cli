@@ -27,7 +27,9 @@ var sessionsCmd = &cobra.Command{
 		"Check here before running `aviator verify`. Submitting a branch that\n" +
 		"already has a session creates a second one instead of updating the first,\n" +
 		"and a PR opened from that branch then links to neither. To update the\n" +
-		"intent or criteria on a session you already have, use `aviator edit`.",
+		"intent or criteria on a session you already have, use `aviator edit`.\n" +
+		"\n" +
+		"How a PR gets its review: " + docsPRLink,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		repo, err := parseRepo(sessionsFlags.Repo)

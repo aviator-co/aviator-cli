@@ -41,7 +41,8 @@ var initCmd = &cobra.Command{
 		"up your team too. --scope self writes your own agent config instead,\n" +
 		"covering every repository on this machine and leaving the working tree\n" +
 		"untouched. --scope local writes your own config in just this repository.\n\n" +
-		"Re-run any time to add agents, update, or reconcile.",
+		"Re-run any time to add agents, update, or reconcile.\n\n" +
+		"Which scope to use: " + docsHooks + "#who-the-setup-covers",
 	Args: cobra.NoArgs,
 	RunE: runInit,
 }

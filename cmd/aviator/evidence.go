@@ -22,7 +22,9 @@ var evidenceCmd = &cobra.Command{
 	Long: "Without -o, print a signed URL for the evidence file; it expires after a\n" +
 		"few minutes. With -o, download the file to that path, or to stdout with\n" +
 		"-o -. Like curl -o, an existing file at the path is overwritten, but only\n" +
-		"once the download has started. `aviator scenarios` lists evidence ids.",
+		"once the download has started. `aviator scenarios` lists evidence ids.\n" +
+		"\n" +
+		"Reading a trace: " + docsResults + "#reading-a-scenario-trace",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		evidenceID, err := strconv.Atoi(args[0])

@@ -18,7 +18,11 @@ var resultsFlags struct {
 var resultsCmd = &cobra.Command{
 	Use:   "results <id>",
 	Short: "Show the latest verification results (e.g. aviator results r/123)",
-	Args:  cobra.ExactArgs(1),
+	Long: "Show the latest verification results (e.g. aviator results r/123)\n" +
+		"\n" +
+		"Reading results: " + docsResults + "#reading-results\n" +
+		"Fixing a failure: " + docsResults + "#fixing-a-failure",
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		runbookNumber, err := parseRunbookID(args[0])
 		if err != nil {

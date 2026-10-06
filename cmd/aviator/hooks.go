@@ -20,6 +20,9 @@ var hooksFlags struct {
 var hooksCmd = &cobra.Command{
 	Use:   "hooks",
 	Short: "Manage the Aviator Verify pre-PR reminder hooks for AI agents",
+	Long: "Manage the Aviator Verify pre-PR reminder hooks for AI agents\n\n" +
+		"What the hooks do: " + docsHooks + "#what-the-hooks-do\n" +
+		"Removing them: " + docsHooks + "#removing-the-hooks",
 }
 
 // The tool-use callbacks run inside an agent's loop and need neither config nor

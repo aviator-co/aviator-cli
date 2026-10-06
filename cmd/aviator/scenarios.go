@@ -18,8 +18,10 @@ var scenariosCmd = &cobra.Command{
 	Short: "Show what a verification run exercised and the evidence it captured (e.g. aviator scenarios r/123)",
 	Long: "List the scenarios behind a review's latest verification run, with each\n" +
 		"one's status, the criteria it covers, and its evidence. Every scenario\n" +
-		"captures a trace of what the agent did; download any evidence with\n" +
-		"`aviator evidence <id> -o <path>`.",
+		"that ran captures a trace of what the agent did; download any evidence\n" +
+		"with `aviator evidence <id> -o <path>`.\n" +
+		"\n" +
+		"How each criterion was checked: " + docsResults + "#code-scan-and-runtime-verdicts",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		runbookNumber, err := parseRunbookID(args[0])
@@ -85,6 +87,12 @@ func formatScenarios(s *api.VerifyScenarios) string {
 				label = "  " + l
 			}
 			fmt.Fprintf(&b, "    %s %s%s\n", colors.Faint(fmt.Sprintf("[evidence %d]", e.ID)), e.Type, label)
+		}
+	}
+	for _, sr := range s.ScenarioRuns {
+		if sr.TerminationReason != nil {
+			fmt.Fprintf(&b, "  %s\n", colors.Faint("Why a scenario stops early: "+docsResults+"#runs-that-didnt-finish"))
+			break
 		}
 	}
 	return b.String()

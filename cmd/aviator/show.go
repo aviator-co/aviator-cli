@@ -128,6 +128,12 @@ func formatVerification(v *api.LatestVerification) string {
 		fmt.Fprintf(&b, "    %s %s%s%s\n", colors.Failure("✗"), fr.Criterion,
 			formatHandle(fr.StableKey, fr.BaselineInvariantID), reason)
 	}
+	switch v.Status {
+	case "failed":
+		fmt.Fprintf(&b, "  %s\n", colors.Faint("Fixing a failure: "+docsResults+"#fixing-a-failure"))
+	case "error":
+		fmt.Fprintf(&b, "  %s\n", colors.Faint("Runs that didn't finish: "+docsResults+"#runs-that-didnt-finish"))
+	}
 	return b.String()
 }
 
