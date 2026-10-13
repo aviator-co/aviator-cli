@@ -143,9 +143,15 @@ The CLI targets endpoints in the `mergeit` backend:
   `stale-runbook-version` when it's behind). Returns the session with its
   `url`, `version`, and `preview_config_name`. Starts no run.
 - `POST /api/v1/verify/<n>/runs` — `{evaluator_only?, force?,
-  preview_config_name?}`. Triggers a verification run, deduplicated against an
-  equivalent run unless `force` or the preview config changes. A preview config
-  set on submit, edit, or trigger sticks to the session for later runs.
+  preview_config_name?, regenerate_feedback?}`. Triggers a verification run,
+  deduplicated against an equivalent run unless `force`, `regenerate_feedback`,
+  or the preview config changes. A preview config set
+  on submit, edit, or trigger sticks to the session for later runs.
+  `regenerate_feedback` (`--regen-scenarios`) rewrites the scenarios first,
+  every criterion back through the prepass, which `force` alone never re-runs;
+  it is the dashboard's regenerate-with-feedback. It needs non-blank feedback
+  and a preview, doesn't combine with `evaluator_only`, and the backend caps it
+  per session for non-BYOK accounts (429 `scenario-regen-limit-reached`).
 - `POST /api/v1/verify/<n>/dismissals` — `{criteria: [{stable_key} |
   {baseline_invariant_id, category, justification}]}`. Deletes task criteria
   and waives invariants; the handles come from the detail endpoint. Starts no
