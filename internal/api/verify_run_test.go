@@ -52,7 +52,9 @@ func TestTriggerVerifyRun(t *testing.T) {
 func TestTriggerVerifyRunSendsFlags(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		for _, want := range []string{`"evaluator_only":true`, `"force":true`} {
+		for _, want := range []string{
+			`"evaluator_only":true`, `"force":true`, `"preview_config_name":"docs"`,
+		} {
 			if !strings.Contains(string(body), want) {
 				t.Errorf("body = %s, missing %s", body, want)
 			}
@@ -62,7 +64,8 @@ func TestTriggerVerifyRunSendsFlags(t *testing.T) {
 	defer srv.Close()
 
 	_, err := newTestClient(srv).TriggerVerifyRun(
-		context.Background(), 7, TriggerVerifyRunRequest{EvaluatorOnly: true, Force: true},
+		context.Background(), 7,
+		TriggerVerifyRunRequest{EvaluatorOnly: true, Force: true, PreviewConfigName: "docs"},
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
