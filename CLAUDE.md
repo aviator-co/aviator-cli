@@ -122,8 +122,10 @@ Equivalent raw commands: `go build ./...`, `go test --vet=all ./...`,
 The CLI targets endpoints in the `mergeit` backend:
 
 - `POST /api/v1/verify` — `{repository:{org,name}, intent, acceptance_criteria,
-  working_branch?, target_branch?, spec_file?}`. Creates a verify-only runbook
-  session, owned by the caller, seeded with the criteria.
+  working_branch?, target_branch?, spec_file?, preview_config_name?}`. Creates a
+  verify-only runbook session, owned by the caller, seeded with the criteria.
+  `preview_config_name` (`--preview`) names one of the repo's preview configs;
+  unknown names are a 400 `invalid-input`.
 - `POST /api/v1/runbook` — `{repository, intent, oneshot, target_branch?,
   spec_file?, acceptance_criteria?, ...}`. Creates a runbook from an intent
   (`prompt` is a deprecated backend alias; the CLI sends `intent`); criteria
@@ -133,11 +135,14 @@ The CLI targets endpoints in the `mergeit` backend:
   `working_branch` is the only filter, so `--pr` matches client-side over the
   `pull_requests` each summary carries.
 - `PATCH /api/v1/verify/<n>` — `{intent?, acceptance_criteria?,
-  expected_version?}`, at least one of the first two; `expected_version` is
-  required with criteria (409 `stale-runbook-version` when it's behind).
-  Returns the session with its `url` and `version`. Starts no run.
-- `POST /api/v1/verify/<n>/runs` — `{evaluator_only?, force?}`. Triggers a
-  verification run, deduplicated against an equivalent run unless `force`.
+  expected_version?, preview_config_name?}`, at least one of intent, criteria,
+  or preview config; `expected_version` is required with criteria (409
+  `stale-runbook-version` when it's behind). Returns the session with its
+  `url`, `version`, and `preview_config_name`. Starts no run.
+- `POST /api/v1/verify/<n>/runs` — `{evaluator_only?, force?,
+  preview_config_name?}`. Triggers a verification run, deduplicated against an
+  equivalent run unless `force` or the preview config changes. A preview config
+  set on submit, edit, or trigger sticks to the session for later runs.
 - `POST /api/v1/verify/<n>/dismissals` — `{criteria: [{stable_key} |
   {baseline_invariant_id, category, justification}]}`. Deletes task criteria
   and waives invariants; the handles come from the detail endpoint. Starts no

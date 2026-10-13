@@ -7,8 +7,9 @@ import (
 
 // TriggerVerifyRunRequest is the body for POST /api/v1/verify/<number>/runs.
 type TriggerVerifyRunRequest struct {
-	EvaluatorOnly bool `json:"evaluator_only,omitempty"`
-	Force         bool `json:"force,omitempty"`
+	EvaluatorOnly     bool   `json:"evaluator_only,omitempty"`
+	Force             bool   `json:"force,omitempty"`
+	PreviewConfigName string `json:"preview_config_name,omitempty"`
 }
 
 // TriggerVerifyRunResponse is the response from POST /api/v1/verify/<number>/runs.

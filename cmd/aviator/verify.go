@@ -20,6 +20,7 @@ var verifyFlags struct {
 	Spec          string
 	EvaluatorOnly bool
 	Force         bool
+	Preview       string
 	JSON          bool
 }
 
@@ -60,6 +61,11 @@ var verifyCmd = &cobra.Command{
 		"or --evaluator-only to re-judge the evidence an earlier run already\n" +
 		"collected instead of collecting it again. Evaluator-only is refused once\n" +
 		"criteria have been added or reworded, since those need a full run.\n" +
+		"\n" +
+		"--preview names one of the repo's preview configs for the session's runs\n" +
+		"to use instead of the repo default, in either mode. The choice sticks:\n" +
+		"later runs on the session, including automatic ones, keep using it until\n" +
+		"it is changed again (here or with aviator edit --preview).\n" +
 		"\n" +
 		"Coding agents: use the /verify-submit skill from\n" +
 		pluginRepo + ", which drafts the intent and\n" +
@@ -125,6 +131,7 @@ func runVerifySubmit(cmd *cobra.Command) error {
 		WorkingBranch:      verifyFlags.WorkingBranch,
 		TargetBranch:       verifyFlags.TargetBranch,
 		SpecFile:           spec,
+		PreviewConfigName:  verifyFlags.Preview,
 	})
 	if err != nil {
 		return err
@@ -147,6 +154,9 @@ func runVerifySubmit(cmd *cobra.Command) error {
 		fmt.Printf("  Target branch:  %s\n", resp.TargetBranch)
 	}
 	fmt.Printf("  Criteria: %d\n", len(resp.AcceptanceCriteria))
+	if verifyFlags.Preview != "" {
+		fmt.Printf("  Preview config: %s\n", verifyFlags.Preview)
+	}
 	return nil
 }
 
@@ -168,8 +178,9 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 		return err
 	}
 	resp, err := client.TriggerVerifyRun(cmd.Context(), runbookNumber, api.TriggerVerifyRunRequest{
-		EvaluatorOnly: verifyFlags.EvaluatorOnly,
-		Force:         verifyFlags.Force,
+		EvaluatorOnly:     verifyFlags.EvaluatorOnly,
+		Force:             verifyFlags.Force,
+		PreviewConfigName: verifyFlags.Preview,
 	})
 	if err != nil {
 		return err
@@ -189,6 +200,9 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 	if resp.Message != "" {
 		fmt.Printf("  %s\n", resp.Message)
 	}
+	if verifyFlags.Preview != "" {
+		fmt.Printf("  Preview config: %s\n", verifyFlags.Preview)
+	}
 	fmt.Printf("  Run %d: %s\n", resp.RunID, resp.RunStatus)
 	fmt.Printf("  URL: %s\n", resp.URL)
 	fmt.Printf("  %s\n", colors.Faint(fmt.Sprintf("Poll with: aviator results %s --run %d", id, resp.RunID)))
@@ -207,6 +221,8 @@ func init() {
 		"re-judge the evidence an earlier run collected instead of collecting it again (trigger mode only)")
 	f.BoolVar(&verifyFlags.Force, "force", false,
 		"start a fresh full run even if an equivalent run already exists (trigger mode only)")
+	f.StringVar(&verifyFlags.Preview, "preview", "",
+		"preview config the session's runs use instead of the repo default; sticks for later runs")
 	f.BoolVar(&verifyFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 }
 

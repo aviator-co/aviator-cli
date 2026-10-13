@@ -107,6 +107,11 @@ per line, `#` comments ignored). `--working-branch`, `--target-branch`, and
 `--spec` are optional, though without `--working-branch` the session can only
 bind to a PR through a `Review: <url>` line in the PR body.
 
+`--preview <name>` picks one of the repo's preview configs for the session's
+runs instead of the repo default. It works on `aviator verify r/123` and
+`aviator edit r/123` too, and sticks: later runs on the session, automatic ones
+included, keep using it until it's changed again.
+
 One review tracks exactly one PR. Stacked or multi-PR work needs one
 submission per PR, each with its own `--working-branch`, intent, and criteria.
 To update the intent or criteria on a session that already exists, use `aviator edit`
@@ -170,6 +175,7 @@ aviator scenarios r/123 --run 887   # the same for an earlier run
 aviator evidence 4567 -o trace.json   # download one evidence file, e.g. a run trace
 aviator edit r/123 --expected-version 4 --criteria "..."
 aviator edit r/123 --intent "..."
+aviator edit r/123 --preview docs                  # switch preview config, no run
 aviator dismiss r/123 --key <key>                  # delete a task criterion
 aviator dismiss r/123 --criteria-json \
   '[{"baseline_invariant_id": 42, "category": "accepted_risk", "justification": "..."}]'
