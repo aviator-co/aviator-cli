@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
@@ -11,16 +12,17 @@ import (
 )
 
 var verifyFlags struct {
-	Repo          string
-	Intent        string
-	Criteria      []string
-	CriteriaFile  string
-	WorkingBranch string
-	TargetBranch  string
-	Spec          string
-	EvaluatorOnly bool
-	Force         bool
-	JSON          bool
+	Repo           string
+	Intent         string
+	Criteria       []string
+	CriteriaFile   string
+	WorkingBranch  string
+	TargetBranch   string
+	Spec           string
+	EvaluatorOnly  bool
+	Force          bool
+	RegenScenarios string
+	JSON           bool
 }
 
 // verifySubmitOnlyFlags are meaningless when triggering a run on an existing
@@ -30,7 +32,7 @@ var verifySubmitOnlyFlags = []string{
 	"working-branch", "target-branch", "spec",
 }
 
-var verifyTriggerOnlyFlags = []string{"evaluator-only", "force"}
+var verifyTriggerOnlyFlags = []string{"evaluator-only", "force", "regen-scenarios"}
 
 // noWorkingBranchWarning covers the one thing a submission gives up without
 // --working-branch: with no branch to match on, the session can only reach a PR
@@ -60,6 +62,14 @@ var verifyCmd = &cobra.Command{
 		"or --evaluator-only to re-judge the evidence an earlier run already\n" +
 		"collected instead of collecting it again. Evaluator-only is refused once\n" +
 		"criteria have been added or reworded, since those need a full run.\n" +
+		"\n" +
+		"The scenarios each criterion is checked by (in a preview, or by code\n" +
+		"scan) are written once, on the first run, and --force reuses them.\n" +
+		"--regen-scenarios \"<feedback>\" writes them again before the run (say,\n" +
+		"after changing the preview's skill): every criterion goes back through\n" +
+		"planning, with the feedback saying what the new scenarios should do\n" +
+		"differently. It needs a preview, and is limited to a few per session\n" +
+		"a day.\n" +
 		"\n" +
 		"Coding agents: use the /verify-submit skill from\n" +
 		pluginRepo + ", which drafts the intent and\n" +
@@ -159,6 +169,18 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 		}
 	}
 
+	var regen *api.RegenerateScenarios
+	if cmd.Flags().Changed("regen-scenarios") {
+		feedback := strings.TrimSpace(verifyFlags.RegenScenarios)
+		if feedback == "" {
+			return errors.New("--regen-scenarios needs feedback saying what the new scenarios should do differently")
+		}
+		if verifyFlags.EvaluatorOnly {
+			return errors.New("--regen-scenarios replaces the scenarios, so it can't be combined with --evaluator-only")
+		}
+		regen = &api.RegenerateScenarios{Feedback: feedback}
+	}
+
 	runbookNumber, err := parseRunbookID(arg)
 	if err != nil {
 		return err
@@ -167,10 +189,12 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := client.TriggerVerifyRun(cmd.Context(), runbookNumber, api.TriggerVerifyRunRequest{
-		EvaluatorOnly: verifyFlags.EvaluatorOnly,
-		Force:         verifyFlags.Force,
-	})
+	req := api.TriggerVerifyRunRequest{
+		EvaluatorOnly:       verifyFlags.EvaluatorOnly,
+		Force:               verifyFlags.Force,
+		RegenerateScenarios: regen,
+	}
+	resp, err := client.TriggerVerifyRun(cmd.Context(), runbookNumber, req)
 	if err != nil {
 		return err
 	}
@@ -207,6 +231,8 @@ func init() {
 		"re-judge the evidence an earlier run collected instead of collecting it again (trigger mode only)")
 	f.BoolVar(&verifyFlags.Force, "force", false,
 		"start a fresh full run even if an equivalent run already exists (trigger mode only)")
+	f.StringVar(&verifyFlags.RegenScenarios, "regen-scenarios", "",
+		"rewrite the scenarios before running, with feedback on what to change (trigger mode only)")
 	f.BoolVar(&verifyFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 }
 

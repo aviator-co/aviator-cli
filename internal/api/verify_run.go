@@ -7,8 +7,14 @@ import (
 
 // TriggerVerifyRunRequest is the body for POST /api/v1/verify/<number>/runs.
 type TriggerVerifyRunRequest struct {
-	EvaluatorOnly bool `json:"evaluator_only,omitempty"`
-	Force         bool `json:"force,omitempty"`
+	EvaluatorOnly       bool                 `json:"evaluator_only,omitempty"`
+	Force               bool                 `json:"force,omitempty"`
+	RegenerateScenarios *RegenerateScenarios `json:"regenerate_scenarios,omitempty"`
+}
+
+// RegenerateScenarios asks the run to rewrite the session's scenarios first.
+type RegenerateScenarios struct {
+	Feedback string `json:"feedback"`
 }
 
 // TriggerVerifyRunResponse is the response from POST /api/v1/verify/<number>/runs.
