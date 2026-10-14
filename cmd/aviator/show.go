@@ -166,6 +166,12 @@ func formatVerification(label string, v *api.VerificationRun) string {
 	}
 	fmt.Fprintf(&b, "  %s: run %d, %s (%d/%d passed, %d failed%s)\n",
 		label, v.ID, v.Status, v.CriteriaPassed, v.CriteriaTotal, v.CriteriaFailed, sha)
+	if name := deref(v.PreviewConfigName); name != "" {
+		if method := deref(v.PreviewMethod); method != "" {
+			name += " (" + method + ")"
+		}
+		fmt.Fprintf(&b, "    Preview config: %s\n", name)
+	}
 	if msg := deref(v.ErrorMessage); msg != "" {
 		fmt.Fprintf(&b, "    Error: %s\n", msg)
 	}
@@ -297,6 +303,8 @@ type runJSON struct {
 	CreatedAt     string  `json:"created_at"`
 	StartedAt     *string `json:"started_at"`
 	CompletedAt   *string `json:"completed_at"`
+	PreviewConfig *string `json:"preview_config_name"`
+	PreviewMethod *string `json:"preview_method"`
 }
 
 func newRunJSON(r *api.VerificationRun) runJSON {
@@ -315,6 +323,8 @@ func newRunJSON(r *api.VerificationRun) runJSON {
 		CreatedAt:     r.CreatedAt,
 		StartedAt:     r.StartedAt,
 		CompletedAt:   r.CompletedAt,
+		PreviewConfig: r.PreviewConfigName,
+		PreviewMethod: r.PreviewMethod,
 	}
 }
 
