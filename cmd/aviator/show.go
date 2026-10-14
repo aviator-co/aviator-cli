@@ -117,6 +117,12 @@ func formatVerification(v *api.LatestVerification) string {
 	}
 	fmt.Fprintf(&b, "  Latest verification: %s (%d/%d passed, %d failed%s)\n",
 		v.Status, v.CriteriaPassed, v.CriteriaTotal, v.CriteriaFailed, sha)
+	if name := deref(v.PreviewConfigName); name != "" {
+		if method := deref(v.PreviewMethod); method != "" {
+			name += " (" + method + ")"
+		}
+		fmt.Fprintf(&b, "    Preview config: %s\n", name)
+	}
 	if msg := deref(v.ErrorMessage); msg != "" {
 		fmt.Fprintf(&b, "    Error: %s\n", msg)
 	}
@@ -221,16 +227,18 @@ func newShowJSON(d *api.RunbookDetail) showJSON {
 // verificationJSON is a verification run. Evidence and Location on a failure
 // are the evaluator's free-form objects, passed through as is.
 type verificationJSON struct {
-	Status    string        `json:"status"`
-	CommitSHA *string       `json:"commit_sha"`
-	Version   *int          `json:"version"`
-	Total     int           `json:"total"`
-	Passed    int           `json:"passed"`
-	Failed    int           `json:"failed"`
-	Skipped   int           `json:"skipped"`
-	Waived    int           `json:"waived"`
-	Error     *string       `json:"error"`
-	Failures  []failureJSON `json:"failures"`
+	Status        string        `json:"status"`
+	CommitSHA     *string       `json:"commit_sha"`
+	Version       *int          `json:"version"`
+	Total         int           `json:"total"`
+	Passed        int           `json:"passed"`
+	Failed        int           `json:"failed"`
+	Skipped       int           `json:"skipped"`
+	Waived        int           `json:"waived"`
+	Error         *string       `json:"error"`
+	Failures      []failureJSON `json:"failures"`
+	PreviewConfig *string       `json:"preview_config_name"`
+	PreviewMethod *string       `json:"preview_method"`
 }
 
 type failureJSON struct {
@@ -259,6 +267,9 @@ func newVerificationJSON(v *api.LatestVerification) *verificationJSON {
 		Waived:    v.CriteriaWaived,
 		Error:     v.ErrorMessage,
 		Failures:  make([]failureJSON, 0, len(v.FailedResults)),
+
+		PreviewConfig: v.PreviewConfigName,
+		PreviewMethod: v.PreviewMethod,
 	}
 	for _, fr := range v.FailedResults {
 		out.Failures = append(out.Failures, failureJSON{
