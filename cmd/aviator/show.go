@@ -125,7 +125,12 @@ func formatVerification(v *api.LatestVerification) string {
 		if r := deref(fr.Reason); r != "" {
 			reason = ": " + r
 		}
-		fmt.Fprintf(&b, "    %s %s%s%s\n", colors.Failure("✗"), fr.Criterion,
+		// Warnings don't block the gate; errored rows read as failed, like the web UI.
+		mark := colors.Failure("✗")
+		if fr.Status == "warn" {
+			mark = colors.Warning("⚠")
+		}
+		fmt.Fprintf(&b, "    %s %s%s%s\n", mark, fr.Criterion,
 			formatHandle(fr.StableKey, fr.BaselineInvariantID), reason)
 	}
 	switch v.Status {
