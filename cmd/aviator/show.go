@@ -78,6 +78,10 @@ func formatRunbookDetail(d *api.RunbookDetail) string {
 		}
 	}
 
+	if name := deref(d.PreviewConfigName); name != "" {
+		fmt.Fprintf(&b, "  Preview config: %s\n", name)
+	}
+
 	if len(d.SpecFiles) > 0 {
 		names := make([]string, len(d.SpecFiles))
 		for i, sf := range d.SpecFiles {
@@ -121,7 +125,7 @@ func formatVerification(v *api.LatestVerification) string {
 		if method := deref(v.PreviewMethod); method != "" {
 			name += " (" + method + ")"
 		}
-		fmt.Fprintf(&b, "    Preview config: %s\n", name)
+		fmt.Fprintf(&b, "    Ran on preview config: %s\n", name)
 	}
 	if msg := deref(v.ErrorMessage); msg != "" {
 		fmt.Fprintf(&b, "    Error: %s\n", msg)
@@ -180,6 +184,7 @@ type showJSON struct {
 	SpecFiles          []string          `json:"spec_files"`
 	Criteria           []criterionJSON   `json:"criteria"`
 	LatestVerification *verificationJSON `json:"latest_verification"`
+	PreviewConfigName  *string           `json:"preview_config_name"`
 }
 
 type pullRequestJSON struct {
@@ -208,6 +213,7 @@ func newShowJSON(d *api.RunbookDetail) showJSON {
 		SpecFiles:          make([]string, 0, len(d.SpecFiles)),
 		Criteria:           make([]criterionJSON, 0, len(d.AcceptanceCriteria)),
 		LatestVerification: newVerificationJSON(d.LatestVerification),
+		PreviewConfigName:  d.PreviewConfigName,
 	}
 	if s := d.RunbookState; s != nil {
 		out.WorkingBranch, out.TargetBranch = deref(s.WorkingBranch), deref(s.TargetBranch)

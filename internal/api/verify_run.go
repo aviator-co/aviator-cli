@@ -22,6 +22,8 @@ type TriggerVerifyRunResponse struct {
 	RunStatus     string `json:"run_status"`
 	Deduplicated  bool   `json:"deduplicated"`
 	Message       string `json:"message"`
+	// PreviewConfigName is the session's preview config after the trigger.
+	PreviewConfigName *string `json:"preview_config_name"`
 }
 
 // TriggerVerifyRun starts a verification run on an existing verify session.

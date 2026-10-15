@@ -24,6 +24,9 @@ type RunbookDetail struct {
 	AcceptanceCriteria []DetailCriterion   `json:"acceptance_criteria,omitempty"`
 	LatestVerification *LatestVerification `json:"latest_verification,omitempty"`
 	PullRequests       []LinkedPullRequest `json:"pull_requests,omitempty"`
+	// PreviewConfigName is the preview config the session's runs use; the
+	// latest run's config is on LatestVerification.
+	PreviewConfigName *string `json:"preview_config_name"`
 	// LatestVerificationPresent distinguishes a response that carried an
 	// explicit null latest_verification (no runs yet) from one where the
 	// server omitted the key entirely.
