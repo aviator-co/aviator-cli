@@ -122,8 +122,11 @@ Equivalent raw commands: `go build ./...`, `go test --vet=all ./...`,
 The CLI targets endpoints in the `mergeit` backend:
 
 - `POST /api/v1/verify` — `{repository:{org,name}, intent, acceptance_criteria,
-  working_branch?, target_branch?, spec_file?}`. Creates a verify-only runbook
-  session, owned by the caller, seeded with the criteria.
+  working_branch?, target_branch?, spec_file?, scenario_guidance?}`. Creates a
+  verify-only runbook session, owned by the caller, seeded with the criteria.
+  `scenario_guidance` (non-blank, `--scenario-guidance`) is stored on the
+  session and shown to the prepass whenever it writes scenarios, never to the
+  evaluator.
 - `POST /api/v1/runbook` — `{repository, intent, oneshot, target_branch?,
   spec_file?, acceptance_criteria?, ...}`. Creates a runbook from an intent
   (`prompt` is a deprecated backend alias; the CLI sends `intent`); criteria

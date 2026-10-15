@@ -10,6 +10,7 @@ type SubmitVerifyRequest struct {
 	WorkingBranch      string     `json:"working_branch,omitempty"`
 	TargetBranch       string     `json:"target_branch,omitempty"`
 	SpecFile           *SpecFile  `json:"spec_file,omitempty"`
+	ScenarioGuidance   string     `json:"scenario_guidance,omitempty"`
 }
 
 // SubmitVerifyResponse is the response from POST /api/v1/verify.
