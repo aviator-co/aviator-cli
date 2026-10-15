@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
@@ -11,23 +12,24 @@ import (
 )
 
 var verifyFlags struct {
-	Repo          string
-	Intent        string
-	Criteria      []string
-	CriteriaFile  string
-	WorkingBranch string
-	TargetBranch  string
-	Spec          string
-	EvaluatorOnly bool
-	Force         bool
-	JSON          bool
+	Repo             string
+	Intent           string
+	Criteria         []string
+	CriteriaFile     string
+	WorkingBranch    string
+	TargetBranch     string
+	Spec             string
+	ScenarioGuidance string
+	EvaluatorOnly    bool
+	Force            bool
+	JSON             bool
 }
 
 // verifySubmitOnlyFlags are meaningless when triggering a run on an existing
 // session, so trigger mode rejects them by name.
 var verifySubmitOnlyFlags = []string{
 	"repo", "intent", "criteria", "criteria-file",
-	"working-branch", "target-branch", "spec",
+	"working-branch", "target-branch", "spec", "scenario-guidance",
 }
 
 var verifyTriggerOnlyFlags = []string{"evaluator-only", "force"}
@@ -51,6 +53,10 @@ var verifyCmd = &cobra.Command{
 		"One review tracks exactly one PR. Stacked or multi-PR work needs\n" +
 		"one submission per PR, each with its own --working-branch, intent, and\n" +
 		"acceptance criteria. A single submission cannot cover a stack.\n" +
+		"\n" +
+		"--scenario-guidance is a note on how to verify the change (say, which\n" +
+		"seeded user to log in as). It is read whenever the session's scenarios\n" +
+		"are written, never by the evaluator that grades the criteria.\n" +
 		"\n" +
 		"With a session ID (aviator verify r/123), trigger a verification run on\n" +
 		"that existing session — including its first run. If an equivalent\n" +
@@ -105,6 +111,11 @@ func runVerifySubmit(cmd *cobra.Command) error {
 		return errors.New("at least one --criteria (or --criteria-file) is required")
 	}
 
+	guidance := strings.TrimSpace(verifyFlags.ScenarioGuidance)
+	if cmd.Flags().Changed("scenario-guidance") && guidance == "" {
+		return errors.New("--scenario-guidance can't be blank")
+	}
+
 	var spec *api.SpecFile
 	if verifyFlags.Spec != "" {
 		spec, err = readSpecFile(verifyFlags.Spec)
@@ -125,6 +136,7 @@ func runVerifySubmit(cmd *cobra.Command) error {
 		WorkingBranch:      verifyFlags.WorkingBranch,
 		TargetBranch:       verifyFlags.TargetBranch,
 		SpecFile:           spec,
+		ScenarioGuidance:   guidance,
 	})
 	if err != nil {
 		return err
@@ -203,6 +215,8 @@ func init() {
 	f.StringVar(&verifyFlags.WorkingBranch, "working-branch", "", "branch the work lives on (optional)")
 	f.StringVar(&verifyFlags.TargetBranch, "target-branch", "", "base branch to verify against (defaults to the repo default)")
 	f.StringVar(&verifyFlags.Spec, "spec", "", "path to an optional spec file")
+	f.StringVar(&verifyFlags.ScenarioGuidance, "scenario-guidance", "",
+		"note on how to verify the change, read when scenarios are written (submit mode only)")
 	f.BoolVar(&verifyFlags.EvaluatorOnly, "evaluator-only", false,
 		"re-judge the evidence an earlier run collected instead of collecting it again (trigger mode only)")
 	f.BoolVar(&verifyFlags.Force, "force", false,
