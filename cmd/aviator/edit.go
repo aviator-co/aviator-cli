@@ -24,6 +24,9 @@ var editCmd = &cobra.Command{
 	Long: "Update a session's intent, replace its acceptance criteria, or switch the\n" +
 		"preview config its runs use (--preview), in any combination.\n" +
 		"\n" +
+		"A preview config choice sticks until changed. Going back to the repo\n" +
+		"default means passing that config's name.\n" +
+		"\n" +
 		"Replacing criteria needs --expected-version, the version `aviator show`\n" +
 		"prints; a stale version is refused.\n" +
 		"Edits don't start a verification run: follow a criteria edit with\n" +
@@ -60,14 +63,15 @@ var editCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		warnPreviewNotApplied(editFlags.Preview, resp.PreviewConfigName)
 		if editFlags.JSON {
 			return printJSON(newEditJSON(resp))
 		}
 
 		id := formatRunbookID(resp.RunbookNumber)
 		fmt.Printf("%s %s updated%s\n", colors.Success("✓"), id, formatVersion(resp.Version))
-		if editFlags.Preview != "" && resp.PreviewConfigName != nil {
-			fmt.Printf("  Preview config: %s\n", *resp.PreviewConfigName)
+		if name := deref(resp.PreviewConfigName); editFlags.Preview != "" && name != "" {
+			fmt.Printf("  Preview config: %s\n", name)
 		}
 		if len(criteria) > 0 {
 			fmt.Printf("  %s\n", colors.Faint("Verify with: aviator verify "+id))
@@ -83,7 +87,7 @@ func init() {
 	f.IntVar(&editFlags.ExpectedVersion, "expected-version", 0,
 		"session version you expect to be editing (required with --criteria; guards against stale edits)")
 	f.StringVar(&editFlags.Preview, "preview", "",
-		"preview config the session's runs use from now on, instead of the repo default")
+		"preview config the session's runs use from now on, instead of the repo default; sticks until changed")
 	f.BoolVar(&editFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 }
 

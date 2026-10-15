@@ -20,6 +20,7 @@ type SubmitVerifyResponse struct {
 	WorkingBranch      string   `json:"working_branch"`
 	TargetBranch       string   `json:"target_branch"`
 	AcceptanceCriteria []string `json:"acceptance_criteria"`
+	PreviewConfigName  *string  `json:"preview_config_name"`
 }
 
 // SubmitVerify creates a verify submission.

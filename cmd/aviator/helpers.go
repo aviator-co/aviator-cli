@@ -9,6 +9,7 @@ import (
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
+	"github.com/aviator-co/aviator-cli/internal/utils/colors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -144,4 +145,28 @@ func deref(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// previewNotAppliedWarning explains a --preview the server didn't save, or ""
+// when it did. Backends that predate preview selection ignore the field and
+// leave preview_config_name out of the response.
+func previewNotAppliedWarning(sent string, got *string) string {
+	switch {
+	case sent == "":
+		return ""
+	case got == nil:
+		return fmt.Sprintf("the server didn't confirm preview config %q; it may not support choosing one, "+
+			"so runs keep using the repo default", sent)
+	case *got != sent:
+		return fmt.Sprintf("asked for preview config %q, but the session uses %q", sent, *got)
+	}
+	return ""
+}
+
+// warnPreviewNotApplied prints previewNotAppliedWarning to stderr, so --json
+// output on stdout stays a clean object.
+func warnPreviewNotApplied(sent string, got *string) {
+	if msg := previewNotAppliedWarning(sent, got); msg != "" {
+		fmt.Fprintf(os.Stderr, "%s %s\n", colors.Warning("warning:"), msg)
+	}
 }

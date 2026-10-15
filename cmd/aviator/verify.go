@@ -65,7 +65,9 @@ var verifyCmd = &cobra.Command{
 		"--preview names one of the repo's preview configs for the session's runs\n" +
 		"to use instead of the repo default, in either mode. The choice sticks:\n" +
 		"later runs on the session, including automatic ones, keep using it until\n" +
-		"it is changed again (here or with aviator edit --preview).\n" +
+		"it is changed again (here or with aviator edit --preview). Without a\n" +
+		"choice, the first run saves the repo default by name, so going back to\n" +
+		"the repo default later means passing that config's name.\n" +
 		"\n" +
 		"Coding agents: use the /verify-submit skill from\n" +
 		pluginRepo + ", which drafts the intent and\n" +
@@ -141,6 +143,7 @@ func runVerifySubmit(cmd *cobra.Command) error {
 		// stderr, so --json consumers still get a clean object on stdout.
 		fmt.Fprintf(os.Stderr, "%s %s\n", colors.Warning("warning:"), noWorkingBranchWarning)
 	}
+	warnPreviewNotApplied(verifyFlags.Preview, resp.PreviewConfigName)
 	if verifyFlags.JSON {
 		return printJSON(newVerifySubmitJSON(resp))
 	}
@@ -154,8 +157,8 @@ func runVerifySubmit(cmd *cobra.Command) error {
 		fmt.Printf("  Target branch:  %s\n", resp.TargetBranch)
 	}
 	fmt.Printf("  Criteria: %d\n", len(resp.AcceptanceCriteria))
-	if verifyFlags.Preview != "" {
-		fmt.Printf("  Preview config: %s\n", verifyFlags.Preview)
+	if name := deref(resp.PreviewConfigName); name != "" {
+		fmt.Printf("  Preview config: %s\n", name)
 	}
 	return nil
 }
@@ -185,6 +188,7 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 	if err != nil {
 		return err
 	}
+	warnPreviewNotApplied(verifyFlags.Preview, resp.PreviewConfigName)
 	if verifyFlags.JSON {
 		return printJSON(newVerifyRunJSON(resp))
 	}
@@ -200,8 +204,8 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 	if resp.Message != "" {
 		fmt.Printf("  %s\n", resp.Message)
 	}
-	if verifyFlags.Preview != "" {
-		fmt.Printf("  Preview config: %s\n", verifyFlags.Preview)
+	if name := deref(resp.PreviewConfigName); name != "" {
+		fmt.Printf("  Preview config: %s\n", name)
 	}
 	fmt.Printf("  Run %d: %s\n", resp.RunID, resp.RunStatus)
 	fmt.Printf("  URL: %s\n", resp.URL)
@@ -222,40 +226,44 @@ func init() {
 	f.BoolVar(&verifyFlags.Force, "force", false,
 		"start a fresh full run even if an equivalent run already exists (trigger mode only)")
 	f.StringVar(&verifyFlags.Preview, "preview", "",
-		"preview config the session's runs use instead of the repo default; sticks for later runs")
+		"preview config the session's runs use instead of the repo default; sticks until changed")
 	f.BoolVar(&verifyFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 }
 
 type verifySubmitJSON struct {
 	sessionRef
-	WorkingBranch string `json:"working_branch"`
-	TargetBranch  string `json:"target_branch"`
-	CriteriaCount int    `json:"criteria_count"`
+	WorkingBranch     string  `json:"working_branch"`
+	TargetBranch      string  `json:"target_branch"`
+	CriteriaCount     int     `json:"criteria_count"`
+	PreviewConfigName *string `json:"preview_config_name"`
 }
 
 func newVerifySubmitJSON(resp *api.SubmitVerifyResponse) verifySubmitJSON {
 	return verifySubmitJSON{
-		sessionRef:    newSessionRef(resp.RunbookNumber, resp.URL),
-		WorkingBranch: resp.WorkingBranch,
-		TargetBranch:  resp.TargetBranch,
-		CriteriaCount: len(resp.AcceptanceCriteria),
+		sessionRef:        newSessionRef(resp.RunbookNumber, resp.URL),
+		WorkingBranch:     resp.WorkingBranch,
+		TargetBranch:      resp.TargetBranch,
+		CriteriaCount:     len(resp.AcceptanceCriteria),
+		PreviewConfigName: resp.PreviewConfigName,
 	}
 }
 
 type verifyRunJSON struct {
 	sessionRef
-	RunID        int    `json:"run_id"`
-	RunStatus    string `json:"run_status"`
-	Deduplicated bool   `json:"deduplicated"`
-	Message      string `json:"message"`
+	RunID             int     `json:"run_id"`
+	RunStatus         string  `json:"run_status"`
+	Deduplicated      bool    `json:"deduplicated"`
+	Message           string  `json:"message"`
+	PreviewConfigName *string `json:"preview_config_name"`
 }
 
 func newVerifyRunJSON(resp *api.TriggerVerifyRunResponse) verifyRunJSON {
 	return verifyRunJSON{
-		sessionRef:   newSessionRef(resp.RunbookNumber, resp.URL),
-		RunID:        resp.RunID,
-		RunStatus:    resp.RunStatus,
-		Deduplicated: resp.Deduplicated,
-		Message:      resp.Message,
+		sessionRef:        newSessionRef(resp.RunbookNumber, resp.URL),
+		RunID:             resp.RunID,
+		RunStatus:         resp.RunStatus,
+		Deduplicated:      resp.Deduplicated,
+		Message:           resp.Message,
+		PreviewConfigName: resp.PreviewConfigName,
 	}
 }
