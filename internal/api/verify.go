@@ -10,6 +10,7 @@ type SubmitVerifyRequest struct {
 	WorkingBranch      string     `json:"working_branch,omitempty"`
 	TargetBranch       string     `json:"target_branch,omitempty"`
 	SpecFile           *SpecFile  `json:"spec_file,omitempty"`
+	PreviewConfigName  string     `json:"preview_config_name,omitempty"`
 }
 
 // SubmitVerifyResponse is the response from POST /api/v1/verify.
@@ -19,6 +20,7 @@ type SubmitVerifyResponse struct {
 	WorkingBranch      string   `json:"working_branch"`
 	TargetBranch       string   `json:"target_branch"`
 	AcceptanceCriteria []string `json:"acceptance_criteria"`
+	PreviewConfigName  *string  `json:"preview_config_name"`
 }
 
 // SubmitVerify creates a verify submission.

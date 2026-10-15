@@ -43,13 +43,15 @@ func TestVerifySubmitJSON(t *testing.T) {
 		WorkingBranch:      "feature",
 		TargetBranch:       "main",
 		AcceptanceCriteria: []string{"one", "two"},
+		PreviewConfigName:  ptr("docs"),
 	}))
 	assertJSONFields(t, got, map[string]any{
-		"id":             "r/123",
-		"url":            "https://app.aviator.co/r/123",
-		"working_branch": "feature",
-		"target_branch":  "main",
-		"criteria_count": float64(2),
+		"id":                  "r/123",
+		"url":                 "https://app.aviator.co/r/123",
+		"working_branch":      "feature",
+		"target_branch":       "main",
+		"criteria_count":      float64(2),
+		"preview_config_name": "docs",
 	})
 }
 
@@ -61,30 +63,33 @@ func TestVerifySubmitJSONKeepsEmptyFields(t *testing.T) {
 		URL:           "https://app.aviator.co/r/7",
 	}))
 	assertJSONFields(t, got, map[string]any{
-		"id":             "r/7",
-		"url":            "https://app.aviator.co/r/7",
-		"working_branch": "",
-		"target_branch":  "",
-		"criteria_count": float64(0),
+		"id":                  "r/7",
+		"url":                 "https://app.aviator.co/r/7",
+		"working_branch":      "",
+		"target_branch":       "",
+		"criteria_count":      float64(0),
+		"preview_config_name": nil,
 	})
 }
 
 // Same contract as verifySubmitJSON: callers parse these keys.
 func TestVerifyRunJSON(t *testing.T) {
 	got := decodeJSON(t, newVerifyRunJSON(&api.TriggerVerifyRunResponse{
-		RunbookNumber: 42,
-		URL:           "https://app.aviator.co/r/42",
-		RunID:         1234,
-		RunStatus:     "pending",
-		Deduplicated:  false,
-		Message:       "Verification started.",
+		RunbookNumber:     42,
+		URL:               "https://app.aviator.co/r/42",
+		RunID:             1234,
+		RunStatus:         "pending",
+		Deduplicated:      false,
+		Message:           "Verification started.",
+		PreviewConfigName: ptr("docs"),
 	}))
 	assertJSONFields(t, got, map[string]any{
-		"id":           "r/42",
-		"url":          "https://app.aviator.co/r/42",
-		"run_status":   "pending",
-		"deduplicated": false,
-		"message":      "Verification started.",
+		"id":                  "r/42",
+		"url":                 "https://app.aviator.co/r/42",
+		"run_status":          "pending",
+		"deduplicated":        false,
+		"message":             "Verification started.",
+		"preview_config_name": "docs",
 	})
 }
 
@@ -94,11 +99,12 @@ func TestVerifyRunJSONKeepsEmptyFields(t *testing.T) {
 		Deduplicated:  true,
 	}))
 	assertJSONFields(t, got, map[string]any{
-		"id":           "r/7",
-		"url":          "",
-		"run_status":   "",
-		"deduplicated": true,
-		"message":      "",
+		"id":                  "r/7",
+		"url":                 "",
+		"run_status":          "",
+		"deduplicated":        true,
+		"message":             "",
+		"preview_config_name": nil,
 	})
 }
 
@@ -109,5 +115,29 @@ func TestNoWorkingBranchWarning(t *testing.T) {
 		if !strings.Contains(noWorkingBranchWarning, want) {
 			t.Errorf("warning missing %q: %q", want, noWorkingBranchWarning)
 		}
+	}
+}
+
+func TestPreviewNotAppliedWarning(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		sent string
+		got  *string
+		want string
+	}{
+		{"no flag", "", nil, ""},
+		{"saved", "docs", ptr("docs"), ""},
+		{"server ignored it", "docs", nil, "didn't confirm preview config \"docs\""},
+		{"server saved another", "docs", ptr("default"), "the session uses \"default\""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			msg := previewNotAppliedWarning(tc.sent, tc.got)
+			if tc.want == "" && msg != "" {
+				t.Errorf("want no warning, got %q", msg)
+			}
+			if !strings.Contains(msg, tc.want) {
+				t.Errorf("warning %q missing %q", msg, tc.want)
+			}
+		})
 	}
 }

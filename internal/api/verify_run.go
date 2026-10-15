@@ -7,8 +7,9 @@ import (
 
 // TriggerVerifyRunRequest is the body for POST /api/v1/verify/<number>/runs.
 type TriggerVerifyRunRequest struct {
-	EvaluatorOnly bool `json:"evaluator_only,omitempty"`
-	Force         bool `json:"force,omitempty"`
+	EvaluatorOnly     bool   `json:"evaluator_only,omitempty"`
+	Force             bool   `json:"force,omitempty"`
+	PreviewConfigName string `json:"preview_config_name,omitempty"`
 }
 
 // TriggerVerifyRunResponse is the response from POST /api/v1/verify/<number>/runs.
@@ -21,6 +22,8 @@ type TriggerVerifyRunResponse struct {
 	RunStatus     string `json:"run_status"`
 	Deduplicated  bool   `json:"deduplicated"`
 	Message       string `json:"message"`
+	// PreviewConfigName is the session's preview config after the trigger.
+	PreviewConfigName *string `json:"preview_config_name"`
 }
 
 // TriggerVerifyRun starts a verification run on an existing verify session.
