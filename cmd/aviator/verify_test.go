@@ -82,6 +82,7 @@ func TestVerifyRunJSON(t *testing.T) {
 	assertJSONFields(t, got, map[string]any{
 		"id":           "r/42",
 		"url":          "https://app.aviator.co/r/42",
+		"run_id":       float64(1234),
 		"run_status":   "pending",
 		"deduplicated": false,
 		"message":      "Verification started.",
@@ -96,6 +97,7 @@ func TestVerifyRunJSONKeepsEmptyFields(t *testing.T) {
 	assertJSONFields(t, got, map[string]any{
 		"id":           "r/7",
 		"url":          "",
+		"run_id":       float64(0),
 		"run_status":   "",
 		"deduplicated": true,
 		"message":      "",

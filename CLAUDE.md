@@ -20,7 +20,7 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   logout.go         # `aviator logout`  -> drop the stored session
   verify.go         # `aviator verify`  -> POST /api/v1/verify
   runbook.go        # `aviator runbook` -> POST /api/v1/runbook
-  show.go           # `aviator show`    -> runbook detail
+  show.go           # `aviator show`    -> runbook detail + its verification runs
   sessions.go       # `aviator sessions`-> list/lookup sessions by branch or PR
   results.go        # `aviator results` -> runbook step results
   edit.go           # `aviator edit`    -> PATCH intent / acceptance criteria
@@ -142,9 +142,11 @@ The CLI targets endpoints in the `mergeit` backend:
   {baseline_invariant_id, category, justification}]}`. Deletes task criteria
   and waives invariants; the handles come from the detail endpoint. Starts no
   run.
-- `GET /api/v1/verify/<n>/runs/latest/scenarios` — the latest run's scenario
-  runs with their criteria handles and evidence ids. The backend also serves
-  `/runs/<run_id>/scenarios`; the CLI doesn't use it, since nothing lists runs.
+- `GET /api/v1/verify/<n>/runs` — `?page=&per_page=`. The session's
+  verification runs, newest first, for the run list in `aviator show`.
+- `GET /api/v1/verify/<n>/runs/latest/scenarios` and
+  `/runs/<run_id>/scenarios` — a run's scenario runs with their criteria
+  handles and evidence ids. `aviator scenarios --run` picks the run.
 - `GET /api/v1/verify/evidence/<id>` — 302 to a short-lived signed storage URL.
   The CLI doesn't follow it with the bearer token: `EvidenceURL` stops at the
   redirect and the download is a plain unauthenticated GET.

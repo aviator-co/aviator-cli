@@ -3,11 +3,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
+	"text/tabwriter"
+	"time"
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
 	"github.com/aviator-co/aviator-cli/internal/utils/colors"
+	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
 )
 
@@ -33,13 +37,23 @@ var showCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if showFlags.JSON {
-			return printJSON(newShowJSON(detail))
+		runs, moreRuns, runsErr := client.ListVerifyRuns(cmd.Context(), runbookNumber, showRunsLimit)
+		if runsErr != nil {
+			fmt.Fprintf(os.Stderr, "%s couldn't list runs: %v\n", colors.Warning("warning:"), runsErr)
 		}
-		fmt.Print(formatRunbookDetail(detail))
+		if showFlags.JSON {
+			out := newShowJSON(detail, runs, moreRuns)
+			if runsErr != nil {
+				out.Runs = nil
+			}
+			return printJSON(out)
+		}
+		fmt.Print(formatRunbookDetail(detail, runs, moreRuns))
 		return nil
 	},
 }
+
+const showRunsLimit = 20
 
 func init() {
 	showCmd.Flags().BoolVar(&showFlags.JSON, "json", false,
@@ -56,7 +70,7 @@ func printJSON(v any) error {
 }
 
 // formatRunbookDetail renders a session detail as a short human summary.
-func formatRunbookDetail(d *api.RunbookDetail) string {
+func formatRunbookDetail(d *api.RunbookDetail, runs []api.VerificationRun, moreRuns bool) string {
 	var b strings.Builder
 	b.WriteString(formatDetailHeader(d))
 
@@ -99,7 +113,42 @@ func formatRunbookDetail(d *api.RunbookDetail) string {
 		b.WriteString("  Latest verification: none yet\n")
 	}
 
+	if len(runs) > 0 {
+		b.WriteString(formatRuns(runs, moreRuns, d.URL))
+	}
+
 	return b.String()
+}
+
+func formatRuns(runs []api.VerificationRun, more bool, reviewURL string) string {
+	var b strings.Builder
+	b.WriteString("  Runs:\n")
+	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
+	for _, r := range runs {
+		fmt.Fprintf(w, "    %d\t%s\t%s\t%d/%d passed\t%s\t%s\n",
+			r.ID, r.Status, orDash(shortSHA(deref(r.CommitSHA))),
+			r.CriteriaPassed, r.CriteriaTotal, formatRunVersion(r.RunbookVersion), formatRelativeTime(r.CreatedAt))
+	}
+	_ = w.Flush()
+	if more {
+		fmt.Fprintf(&b, "    More runs: %s/verify/history\n", reviewURL)
+	}
+	return b.String()
+}
+
+func formatRunVersion(version *int) string {
+	if version == nil {
+		return "-"
+	}
+	return fmt.Sprintf("version %d", *version)
+}
+
+func formatRelativeTime(ts string) string {
+	t, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return ts
+	}
+	return humanize.Time(t)
 }
 
 // formatDetailHeader renders the one-line runbook identity header.
@@ -109,14 +158,14 @@ func formatDetailHeader(d *api.RunbookDetail) string {
 }
 
 // formatVerification renders a verification run as indented summary lines.
-func formatVerification(v *api.LatestVerification) string {
+func formatVerification(v *api.VerificationRun) string {
 	var b strings.Builder
 	sha := ""
 	if commit := deref(v.CommitSHA); commit != "" {
 		sha = ", " + shortSHA(commit)
 	}
-	fmt.Fprintf(&b, "  Latest verification: %s (%d/%d passed, %d failed%s)\n",
-		v.Status, v.CriteriaPassed, v.CriteriaTotal, v.CriteriaFailed, sha)
+	fmt.Fprintf(&b, "  Latest verification: run %d, %s (%d/%d passed, %d failed%s)\n",
+		v.ID, v.Status, v.CriteriaPassed, v.CriteriaTotal, v.CriteriaFailed, sha)
 	if msg := deref(v.ErrorMessage); msg != "" {
 		fmt.Fprintf(&b, "    Error: %s\n", msg)
 	}
@@ -174,6 +223,8 @@ type showJSON struct {
 	SpecFiles          []string          `json:"spec_files"`
 	Criteria           []criterionJSON   `json:"criteria"`
 	LatestVerification *verificationJSON `json:"latest_verification"`
+	Runs               []runJSON         `json:"runs"`
+	RunsHasMore        bool              `json:"runs_has_more"`
 }
 
 type pullRequestJSON struct {
@@ -192,7 +243,7 @@ type handleJSON struct {
 	BaselineInvariantID *int    `json:"baseline_invariant_id"`
 }
 
-func newShowJSON(d *api.RunbookDetail) showJSON {
+func newShowJSON(d *api.RunbookDetail, runs []api.VerificationRun, moreRuns bool) showJSON {
 	out := showJSON{
 		sessionRef:         newSessionRef(d.RunbookNumber, d.URL),
 		Version:            d.RunbookVersion,
@@ -202,6 +253,11 @@ func newShowJSON(d *api.RunbookDetail) showJSON {
 		SpecFiles:          make([]string, 0, len(d.SpecFiles)),
 		Criteria:           make([]criterionJSON, 0, len(d.AcceptanceCriteria)),
 		LatestVerification: newVerificationJSON(d.LatestVerification),
+		Runs:               make([]runJSON, 0, len(runs)),
+		RunsHasMore:        moreRuns,
+	}
+	for i := range runs {
+		out.Runs = append(out.Runs, newRunJSON(&runs[i]))
 	}
 	if s := d.RunbookState; s != nil {
 		out.WorkingBranch, out.TargetBranch = deref(s.WorkingBranch), deref(s.TargetBranch)
@@ -221,16 +277,45 @@ func newShowJSON(d *api.RunbookDetail) showJSON {
 // verificationJSON is a verification run. Evidence and Location on a failure
 // are the evaluator's free-form objects, passed through as is.
 type verificationJSON struct {
-	Status    string        `json:"status"`
-	CommitSHA *string       `json:"commit_sha"`
-	Version   *int          `json:"version"`
-	Total     int           `json:"total"`
-	Passed    int           `json:"passed"`
-	Failed    int           `json:"failed"`
-	Skipped   int           `json:"skipped"`
-	Waived    int           `json:"waived"`
-	Error     *string       `json:"error"`
-	Failures  []failureJSON `json:"failures"`
+	runJSON
+	Failures []failureJSON `json:"failures"`
+}
+
+// runJSON summarizes a verification run without its failures.
+type runJSON struct {
+	RunID         int     `json:"run_id"`
+	Status        string  `json:"status"`
+	CommitSHA     *string `json:"commit_sha"`
+	Version       *int    `json:"version"`
+	Total         int     `json:"total"`
+	Passed        int     `json:"passed"`
+	Failed        int     `json:"failed"`
+	Skipped       int     `json:"skipped"`
+	Waived        int     `json:"waived"`
+	Error         *string `json:"error"`
+	EvaluatorOnly bool    `json:"evaluator_only"`
+	CreatedAt     string  `json:"created_at"`
+	StartedAt     *string `json:"started_at"`
+	CompletedAt   *string `json:"completed_at"`
+}
+
+func newRunJSON(r *api.VerificationRun) runJSON {
+	return runJSON{
+		RunID:         r.ID,
+		Status:        r.Status,
+		CommitSHA:     r.CommitSHA,
+		Version:       r.RunbookVersion,
+		Total:         r.CriteriaTotal,
+		Passed:        r.CriteriaPassed,
+		Failed:        r.CriteriaFailed,
+		Skipped:       r.CriteriaSkipped,
+		Waived:        r.CriteriaWaived,
+		Error:         r.ErrorMessage,
+		EvaluatorOnly: r.EvaluatorOnly,
+		CreatedAt:     r.CreatedAt,
+		StartedAt:     r.StartedAt,
+		CompletedAt:   r.CompletedAt,
+	}
 }
 
 type failureJSON struct {
@@ -244,21 +329,13 @@ type failureJSON struct {
 	Location  json.RawMessage `json:"location"`
 }
 
-func newVerificationJSON(v *api.LatestVerification) *verificationJSON {
+func newVerificationJSON(v *api.VerificationRun) *verificationJSON {
 	if v == nil {
 		return nil
 	}
 	out := &verificationJSON{
-		Status:    v.Status,
-		CommitSHA: v.CommitSHA,
-		Version:   v.RunbookVersion,
-		Total:     v.CriteriaTotal,
-		Passed:    v.CriteriaPassed,
-		Failed:    v.CriteriaFailed,
-		Skipped:   v.CriteriaSkipped,
-		Waived:    v.CriteriaWaived,
-		Error:     v.ErrorMessage,
-		Failures:  make([]failureJSON, 0, len(v.FailedResults)),
+		runJSON:  newRunJSON(v),
+		Failures: make([]failureJSON, 0, len(v.FailedResults)),
 	}
 	for _, fr := range v.FailedResults {
 		out.Failures = append(out.Failures, failureJSON{
