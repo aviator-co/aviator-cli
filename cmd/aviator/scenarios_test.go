@@ -28,7 +28,7 @@ func TestFormatScenarios(t *testing.T) {
 		}},
 	})
 	for _, want := range []string{
-		"r/123 latest run: failed at abcdef1",
+		"r/123 run 900: failed at abcdef1",
 		"log in and see the banner [failed: give_up, 12 tool calls, reused from an earlier run]",
 		"Criteria: [key k1] [invariant 42]",
 		"[evidence 4567] trace  Run trace",
@@ -40,9 +40,10 @@ func TestFormatScenarios(t *testing.T) {
 }
 
 func TestScenariosJSON(t *testing.T) {
-	key, started := "k1", "Fri, 02 Oct 2026 20:24:50 GMT"
+	key, started := "k1", "2026-10-02T20:24:50Z"
 	got := decodeJSON(t, newScenariosJSON(&api.VerifyScenarios{
 		RunbookNumber: 123,
+		RunID:         900,
 		RunStatus:     "passed",
 		ScenarioRuns: []api.ScenarioRun{{
 			Status:    "completed",
@@ -58,7 +59,7 @@ func TestScenariosJSON(t *testing.T) {
 			},
 		}},
 	}))
-	if got["id"] != "r/123" || got["run_status"] != "passed" {
+	if got["id"] != "r/123" || got["run_id"] != float64(900) || got["run_status"] != "passed" {
 		t.Errorf("top level = %v", got)
 	}
 	scenario := got["scenarios"].([]any)[0].(map[string]any)

@@ -3,11 +3,11 @@ package api
 import (
 	"context"
 	"fmt"
+	"strconv"
 )
 
 // VerifyScenarios is the response from
-// GET /api/v1/verify/<n>/runs/latest/scenarios. Timestamps are HTTP-date
-// strings, as the backend serializes them.
+// GET /api/v1/verify/<n>/runs/<run>/scenarios.
 type VerifyScenarios struct {
 	RunbookNumber int           `json:"runbook_number"`
 	RunID         int           `json:"run_id"`
@@ -63,10 +63,14 @@ type Evidence struct {
 	URL         string  `json:"url"`
 }
 
-// GetVerifyScenarios fetches the scenario runs behind a session's latest
-// verification run.
-func (c *Client) GetVerifyScenarios(ctx context.Context, runbookNumber int) (*VerifyScenarios, error) {
-	path := fmt.Sprintf("/api/v1/verify/%d/runs/latest/scenarios", runbookNumber)
+// GetVerifyScenarios fetches the scenario runs behind a verification run, or
+// behind the session's latest run when runID is 0.
+func (c *Client) GetVerifyScenarios(ctx context.Context, runbookNumber, runID int) (*VerifyScenarios, error) {
+	run := "latest"
+	if runID != 0 {
+		run = strconv.Itoa(runID)
+	}
+	path := fmt.Sprintf("/api/v1/verify/%d/runs/%s/scenarios", runbookNumber, run)
 	var out VerifyScenarios
 	if err := c.getJSON(ctx, path, nil, &out); err != nil {
 		return nil, err

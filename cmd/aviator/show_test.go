@@ -54,7 +54,8 @@ func TestFormatRunbookDetail(t *testing.T) {
 		AcceptanceCriteria: []api.DetailCriterion{
 			{Ordinal: 1, RawText: "does the thing"},
 		},
-		LatestVerification: &api.LatestVerification{
+		LatestVerification: &api.VerificationRun{
+			ID:             900,
 			Status:         "failed",
 			CommitSHA:      ptr("abcdef1234567890"),
 			CriteriaTotal:  2,
@@ -66,14 +67,14 @@ func TestFormatRunbookDetail(t *testing.T) {
 		},
 	}
 
-	out := formatRunbookDetail(detail)
+	out := formatRunbookDetail(detail, nil, false)
 	for _, want := range []string{
 		"✓ r/123 (version 4)",
 		"Intent: make the thing doable",
 		"Branch: feature -> main",
 		"Steps: 1/2 completed",
 		"1. does the thing",
-		"Latest verification: failed (1/2 passed, 1 failed, abcdef1)",
+		"Latest verification: run 900, failed (1/2 passed, 1 failed, abcdef1)",
 		"does the thing: nope",
 	} {
 		if !strings.Contains(out, want) {
@@ -90,7 +91,7 @@ func TestFormatRunbookDetailNoVerificationYet(t *testing.T) {
 			{Ordinal: 1, RawText: "criterion"},
 		},
 	}
-	out := formatRunbookDetail(detail)
+	out := formatRunbookDetail(detail, nil, false)
 	if !strings.Contains(out, "Latest verification: none yet") {
 		t.Errorf("expected 'none yet', got:\n%s", out)
 	}
@@ -98,7 +99,7 @@ func TestFormatRunbookDetailNoVerificationYet(t *testing.T) {
 
 func TestFormatVerificationError(t *testing.T) {
 	msg := "sandbox timed out"
-	out := formatVerification(&api.LatestVerification{
+	out := formatVerification(&api.VerificationRun{
 		Status:       "error",
 		ErrorMessage: &msg,
 	})
@@ -119,7 +120,7 @@ func TestShowJSON(t *testing.T) {
 		AcceptanceCriteria: []api.DetailCriterion{
 			{Ordinal: 1, RawText: "does the thing", StableKey: ptr("abc123")},
 		},
-	}))
+	}, nil, false))
 	for key, want := range map[string]any{
 		"id":                  "r/123",
 		"url":                 "https://app.aviator.co/r/123",
@@ -129,6 +130,7 @@ func TestShowJSON(t *testing.T) {
 		"working_branch":      "feature",
 		"target_branch":       "main",
 		"latest_verification": nil,
+		"runs_has_more":       false,
 	} {
 		if got[key] != want {
 			t.Errorf("%s = %v, want %v", key, got[key], want)
@@ -145,12 +147,74 @@ func TestShowJSON(t *testing.T) {
 	}
 }
 
+func TestShowJSONRuns(t *testing.T) {
+	got := decodeJSON(t, newShowJSON(&api.RunbookDetail{RunbookNumber: 123}, []api.VerificationRun{{
+		ID:             900,
+		Status:         "passed",
+		CommitSHA:      ptr("abc123"),
+		RunbookVersion: ptr(4),
+		CriteriaTotal:  12,
+		CriteriaPassed: 12,
+		CreatedAt:      "2026-10-08T12:00:00Z",
+		FailedResults:  []api.FailedResult{{Criterion: "ignored"}},
+	}}, true))
+	if got["runs_has_more"] != true {
+		t.Errorf("runs_has_more = %v", got["runs_has_more"])
+	}
+	run := got["runs"].([]any)[0].(map[string]any)
+	for key, want := range map[string]any{
+		"run_id":     float64(900),
+		"status":     "passed",
+		"commit_sha": "abc123",
+		"version":    float64(4),
+		"total":      float64(12),
+		"passed":     float64(12),
+		"created_at": "2026-10-08T12:00:00Z",
+	} {
+		if run[key] != want {
+			t.Errorf("%s = %v, want %v", key, run[key], want)
+		}
+	}
+	if _, ok := run["failures"]; ok {
+		t.Errorf("a listed run should not carry failures: %v", run)
+	}
+}
+
+func TestShowJSONNoRuns(t *testing.T) {
+	got := decodeJSON(t, newShowJSON(&api.RunbookDetail{RunbookNumber: 123}, nil, false))
+	if runs, ok := got["runs"].([]any); !ok || len(runs) != 0 {
+		t.Errorf("runs = %v, want []", got["runs"])
+	}
+}
+
+func TestFormatRunbookDetailRuns(t *testing.T) {
+	detail := &api.RunbookDetail{RunbookNumber: 123, URL: "https://app.aviator.co/r/123"}
+	runs := []api.VerificationRun{
+		{ID: 900, Status: "passed", CommitSHA: ptr("abcdef1234"), RunbookVersion: ptr(4), CriteriaTotal: 12, CriteriaPassed: 12},
+		{ID: 887, Status: "error"},
+	}
+	out := formatRunbookDetail(detail, runs, true)
+	for _, want := range []string{
+		"  Runs:\n",
+		"900  passed  abcdef1  12/12 passed  version 4",
+		"887  error   -        0/0 passed    -",
+		"More runs: https://app.aviator.co/r/123/verify/history",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\n---\n%s", want, out)
+		}
+	}
+	if strings.Contains(formatRunbookDetail(detail, nil, false), "Runs:") {
+		t.Error("a review with no runs should not print a Runs section")
+	}
+}
+
 func TestResultsJSON(t *testing.T) {
 	got := decodeJSON(t, newResultsJSON(&api.RunbookDetail{
 		RunbookNumber:  123,
 		URL:            "https://app.aviator.co/r/123",
 		RunbookVersion: ptr(4),
-		LatestVerification: &api.LatestVerification{
+		LatestVerification: &api.VerificationRun{
 			Status:         "failed",
 			RunbookVersion: ptr(4),
 			CriteriaTotal:  2,
@@ -181,14 +245,14 @@ func TestFormatRunbookDetailHandles(t *testing.T) {
 		AcceptanceCriteria: []api.DetailCriterion{
 			{Ordinal: 1, RawText: "does the thing", StableKey: ptr("abc123")},
 		},
-		LatestVerification: &api.LatestVerification{
+		LatestVerification: &api.VerificationRun{
 			Status: "failed",
 			FailedResults: []api.FailedResult{
 				{Criterion: "no secrets", BaselineInvariantID: ptr(42), Reason: ptr("leaked")},
 			},
 		},
 	}
-	out := formatRunbookDetail(detail)
+	out := formatRunbookDetail(detail, nil, false)
 	for _, want := range []string{
 		"1. does the thing [key abc123]",
 		"no secrets [invariant 42]: leaked",

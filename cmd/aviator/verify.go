@@ -189,7 +189,7 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 	if resp.Message != "" {
 		fmt.Printf("  %s\n", resp.Message)
 	}
-	fmt.Printf("  Run status: %s\n", resp.RunStatus)
+	fmt.Printf("  Run %d: %s\n", resp.RunID, resp.RunStatus)
 	fmt.Printf("  URL: %s\n", resp.URL)
 	fmt.Printf("  %s\n", colors.Faint("Poll with: aviator results "+id))
 	return nil
@@ -228,6 +228,7 @@ func newVerifySubmitJSON(resp *api.SubmitVerifyResponse) verifySubmitJSON {
 
 type verifyRunJSON struct {
 	sessionRef
+	RunID        int    `json:"run_id"`
 	RunStatus    string `json:"run_status"`
 	Deduplicated bool   `json:"deduplicated"`
 	Message      string `json:"message"`
@@ -236,6 +237,7 @@ type verifyRunJSON struct {
 func newVerifyRunJSON(resp *api.TriggerVerifyRunResponse) verifyRunJSON {
 	return verifyRunJSON{
 		sessionRef:   newSessionRef(resp.RunbookNumber, resp.URL),
+		RunID:        resp.RunID,
 		RunStatus:    resp.RunStatus,
 		Deduplicated: resp.Deduplicated,
 		Message:      resp.Message,
