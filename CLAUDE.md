@@ -144,6 +144,8 @@ The CLI targets endpoints in the `mergeit` backend:
   run.
 - `GET /api/v1/verify/<n>/runs` — `?page=&per_page=`. The session's
   verification runs, newest first, for the run list in `aviator show`.
+- `GET /api/v1/verify/<n>/runs/<run_id>` — one run with its failed criteria,
+  for `aviator results --run`.
 - `GET /api/v1/verify/<n>/runs/latest/scenarios` and
   `/runs/<run_id>/scenarios` — a run's scenario runs with their criteria
   handles and evidence ids. `aviator scenarios --run` picks the run.

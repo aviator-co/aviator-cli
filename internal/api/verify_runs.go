@@ -24,3 +24,13 @@ func (c *Client) ListVerifyRuns(
 	}
 	return out.Runs, out.HasMore, nil
 }
+
+// GetVerifyRun fetches one verification run with the criteria it didn't pass.
+func (c *Client) GetVerifyRun(ctx context.Context, runbookNumber, runID int) (*VerificationRun, error) {
+	path := fmt.Sprintf("/api/v1/verify/%d/runs/%d", runbookNumber, runID)
+	var out VerificationRun
+	if err := c.getJSON(ctx, path, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}

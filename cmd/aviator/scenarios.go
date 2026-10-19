@@ -48,7 +48,7 @@ var scenariosCmd = &cobra.Command{
 
 func init() {
 	scenariosCmd.Flags().IntVar(&scenariosFlags.Run, "run", 0,
-		"show this run instead of the latest (run ids are in `aviator show`)")
+		"show run `id` instead of the latest, run ids are in aviator show")
 	scenariosCmd.Flags().BoolVar(&scenariosFlags.JSON, "json", false,
 		"print the scenarios as a single JSON object instead of the human summary")
 }

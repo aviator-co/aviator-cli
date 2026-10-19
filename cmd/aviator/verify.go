@@ -191,7 +191,7 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 	}
 	fmt.Printf("  Run %d: %s\n", resp.RunID, resp.RunStatus)
 	fmt.Printf("  URL: %s\n", resp.URL)
-	fmt.Printf("  %s\n", colors.Faint("Poll with: aviator results "+id))
+	fmt.Printf("  %s\n", colors.Faint(fmt.Sprintf("Poll with: aviator results %s --run %d", id, resp.RunID)))
 	return nil
 }
 

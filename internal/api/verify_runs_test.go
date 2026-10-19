@@ -31,3 +31,22 @@ func TestListVerifyRuns(t *testing.T) {
 		t.Errorf("run = %+v", r)
 	}
 }
+
+func TestGetVerifyRun(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/verify/123/runs/887" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"id":887,"status":"failed","criteria_total":2,"criteria_failed":1,` +
+			`"failed_results":[{"criterion":"no secrets","status":"fail","is_invariant":true,"baseline_invariant_id":42}]}`))
+	}))
+	defer srv.Close()
+
+	run, err := newTestClient(srv).GetVerifyRun(context.Background(), 123, 887)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if run.ID != 887 || len(run.FailedResults) != 1 || *run.FailedResults[0].BaselineInvariantID != 42 {
+		t.Errorf("run = %+v", run)
+	}
+}

@@ -63,8 +63,8 @@ type DetailCriterion struct {
 	StableKey *string `json:"stable_key"`
 }
 
-// VerificationRun is one verification run. Only the latest run in a session's
-// detail carries FailedResults; the run listing leaves it out.
+// VerificationRun is one verification run. The run listing leaves out
+// FailedResults.
 type VerificationRun struct {
 	ID              int            `json:"id"`
 	Status          string         `json:"status"`

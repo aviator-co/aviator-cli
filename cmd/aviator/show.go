@@ -108,7 +108,7 @@ func formatRunbookDetail(d *api.RunbookDetail, runs []api.VerificationRun, moreR
 	}
 
 	if v := d.LatestVerification; v != nil {
-		b.WriteString(formatVerification(v))
+		b.WriteString(formatVerification("Latest verification", v))
 	} else if len(d.AcceptanceCriteria) > 0 {
 		b.WriteString("  Latest verification: none yet\n")
 	}
@@ -158,14 +158,14 @@ func formatDetailHeader(d *api.RunbookDetail) string {
 }
 
 // formatVerification renders a verification run as indented summary lines.
-func formatVerification(v *api.VerificationRun) string {
+func formatVerification(label string, v *api.VerificationRun) string {
 	var b strings.Builder
 	sha := ""
 	if commit := deref(v.CommitSHA); commit != "" {
 		sha = ", " + shortSHA(commit)
 	}
-	fmt.Fprintf(&b, "  Latest verification: run %d, %s (%d/%d passed, %d failed%s)\n",
-		v.ID, v.Status, v.CriteriaPassed, v.CriteriaTotal, v.CriteriaFailed, sha)
+	fmt.Fprintf(&b, "  %s: run %d, %s (%d/%d passed, %d failed%s)\n",
+		label, v.ID, v.Status, v.CriteriaPassed, v.CriteriaTotal, v.CriteriaFailed, sha)
 	if msg := deref(v.ErrorMessage); msg != "" {
 		fmt.Fprintf(&b, "    Error: %s\n", msg)
 	}

@@ -9,6 +9,7 @@ import (
 )
 
 var resultsFlags struct {
+	Run  int
 	JSON bool
 }
 
@@ -18,7 +19,8 @@ var resultsFlags struct {
 var resultsCmd = &cobra.Command{
 	Use:   "results <id>",
 	Short: "Show the latest verification results (e.g. aviator results r/123)",
-	Long: "Show the latest verification results (e.g. aviator results r/123)\n" +
+	Long: "Show the latest verification results (e.g. aviator results r/123), or\n" +
+		"those of the run --run names. `aviator show` lists a review's runs.\n" +
 		"\n" +
 		"Reading results: " + docsResults + "#reading-results\n" +
 		"Fixing a failure: " + docsResults + "#fixing-a-failure",
@@ -44,14 +46,23 @@ var resultsCmd = &cobra.Command{
 			return errors.New(
 				"response did not include latest_verification; the server contract may have changed — try 'aviator show'")
 		}
+		var run *api.VerificationRun
+		if resultsFlags.Run != 0 {
+			if run, err = client.GetVerifyRun(cmd.Context(), runbookNumber, resultsFlags.Run); err != nil {
+				return err
+			}
+		}
 		if resultsFlags.JSON {
-			return printJSON(newResultsJSON(detail))
+			return printJSON(newResultsJSON(detail, run))
 		}
 
 		fmt.Print(formatDetailHeader(detail))
-		if detail.LatestVerification != nil {
-			fmt.Print(formatVerification(detail.LatestVerification))
-		} else {
+		switch {
+		case run != nil:
+			fmt.Print(formatVerification("Verification", run))
+		case detail.LatestVerification != nil:
+			fmt.Print(formatVerification("Latest verification", detail.LatestVerification))
+		default:
 			fmt.Println("  Latest verification: none yet")
 		}
 		return nil
@@ -59,6 +70,8 @@ var resultsCmd = &cobra.Command{
 }
 
 func init() {
+	resultsCmd.Flags().IntVar(&resultsFlags.Run, "run", 0,
+		"show run `id` instead of the latest, run ids are in aviator show")
 	resultsCmd.Flags().BoolVar(&resultsFlags.JSON, "json", false,
 		"print the results as a single JSON object instead of the human summary")
 }
@@ -69,13 +82,15 @@ type resultsJSON struct {
 	// TODO: drop once the verify-submit skill reads version instead.
 	RunbookVersion     *int              `json:"runbook_version"`
 	LatestVerification *verificationJSON `json:"latest_verification"`
+	Run                *verificationJSON `json:"run,omitempty"`
 }
 
-func newResultsJSON(d *api.RunbookDetail) resultsJSON {
+func newResultsJSON(d *api.RunbookDetail, run *api.VerificationRun) resultsJSON {
 	return resultsJSON{
 		sessionRef:         newSessionRef(d.RunbookNumber, d.URL),
 		Version:            d.RunbookVersion,
 		RunbookVersion:     d.RunbookVersion,
 		LatestVerification: newVerificationJSON(d.LatestVerification),
+		Run:                newVerificationJSON(run),
 	}
 }

@@ -99,7 +99,7 @@ func TestFormatRunbookDetailNoVerificationYet(t *testing.T) {
 
 func TestFormatVerificationError(t *testing.T) {
 	msg := "sandbox timed out"
-	out := formatVerification(&api.VerificationRun{
+	out := formatVerification("Latest verification", &api.VerificationRun{
 		Status:       "error",
 		ErrorMessage: &msg,
 	})
@@ -224,9 +224,12 @@ func TestResultsJSON(t *testing.T) {
 				{Criterion: "no secrets", Status: "fail", Reason: ptr("nope"), IsInvariant: true, BaselineInvariantID: ptr(42)},
 			},
 		},
-	}))
+	}, nil))
 	if got["id"] != "r/123" || got["version"] != float64(4) {
 		t.Errorf("top level = %v", got)
+	}
+	if _, ok := got["run"]; ok {
+		t.Errorf("run should only appear with --run: %v", got)
 	}
 	v := got["latest_verification"].(map[string]any)
 	if v["status"] != "failed" || v["total"] != float64(2) || v["failed"] != float64(1) {
@@ -235,6 +238,23 @@ func TestResultsJSON(t *testing.T) {
 	f := v["failures"].([]any)[0].(map[string]any)
 	if f["criterion"] != "no secrets" || f["invariant"] != true || f["baseline_invariant_id"] != float64(42) || f["stable_key"] != nil {
 		t.Errorf("failure = %v", f)
+	}
+}
+
+func TestResultsJSONForRun(t *testing.T) {
+	got := decodeJSON(t, newResultsJSON(
+		&api.RunbookDetail{RunbookNumber: 123, LatestVerification: &api.VerificationRun{ID: 900, Status: "passed"}},
+		&api.VerificationRun{ID: 887, Status: "failed", FailedResults: []api.FailedResult{{Criterion: "no secrets"}}},
+	))
+	if v := got["latest_verification"].(map[string]any); v["run_id"] != float64(900) {
+		t.Errorf("latest_verification = %v", v)
+	}
+	run := got["run"].(map[string]any)
+	if run["run_id"] != float64(887) || run["status"] != "failed" {
+		t.Errorf("run = %v", run)
+	}
+	if f := run["failures"].([]any); len(f) != 1 || f[0].(map[string]any)["criterion"] != "no secrets" {
+		t.Errorf("failures = %v", f)
 	}
 }
 
