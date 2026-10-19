@@ -24,6 +24,9 @@ type RunbookDetail struct {
 	AcceptanceCriteria []DetailCriterion   `json:"acceptance_criteria,omitempty"`
 	LatestVerification *VerificationRun    `json:"latest_verification,omitempty"`
 	PullRequests       []LinkedPullRequest `json:"pull_requests,omitempty"`
+	// PreviewConfigName is the preview config the session's runs use; the
+	// latest run's config is on LatestVerification.
+	PreviewConfigName *string `json:"preview_config_name"`
 	// LatestVerificationPresent distinguishes a response that carried an
 	// explicit null latest_verification (no runs yet) from one where the
 	// server omitted the key entirely.
@@ -66,22 +69,24 @@ type DetailCriterion struct {
 // VerificationRun is one verification run. The run listing leaves out
 // FailedResults.
 type VerificationRun struct {
-	ID              int            `json:"id"`
-	Status          string         `json:"status"`
-	TriggerSource   string         `json:"trigger_source"`
-	EvaluatorOnly   bool           `json:"evaluator_only"`
-	RunbookVersion  *int           `json:"runbook_version"`
-	CommitSHA       *string        `json:"commit_sha"`
-	CriteriaTotal   int            `json:"criteria_total"`
-	CriteriaPassed  int            `json:"criteria_passed"`
-	CriteriaFailed  int            `json:"criteria_failed"`
-	CriteriaSkipped int            `json:"criteria_skipped"`
-	CriteriaWaived  int            `json:"criteria_waived"`
-	ErrorMessage    *string        `json:"error_message"`
-	CreatedAt       string         `json:"created_at"`
-	StartedAt       *string        `json:"started_at"`
-	CompletedAt     *string        `json:"completed_at"`
-	FailedResults   []FailedResult `json:"failed_results"`
+	ID                int            `json:"id"`
+	Status            string         `json:"status"`
+	TriggerSource     string         `json:"trigger_source"`
+	EvaluatorOnly     bool           `json:"evaluator_only"`
+	RunbookVersion    *int           `json:"runbook_version"`
+	CommitSHA         *string        `json:"commit_sha"`
+	CriteriaTotal     int            `json:"criteria_total"`
+	CriteriaPassed    int            `json:"criteria_passed"`
+	CriteriaFailed    int            `json:"criteria_failed"`
+	CriteriaSkipped   int            `json:"criteria_skipped"`
+	CriteriaWaived    int            `json:"criteria_waived"`
+	ErrorMessage      *string        `json:"error_message"`
+	CreatedAt         string         `json:"created_at"`
+	StartedAt         *string        `json:"started_at"`
+	CompletedAt       *string        `json:"completed_at"`
+	FailedResults     []FailedResult `json:"failed_results"`
+	PreviewConfigName *string        `json:"preview_config_name"`
+	PreviewMethod     *string        `json:"preview_method"`
 }
 
 // FailedResult is a single failing criterion within a verification.

@@ -39,10 +39,11 @@ func TestFormatRunbookID(t *testing.T) {
 
 func TestFormatRunbookDetail(t *testing.T) {
 	detail := &api.RunbookDetail{
-		RunbookNumber:  123,
-		URL:            "https://app.aviator.co/runbook/123",
-		RunbookVersion: ptr(4),
-		Intent:         ptr("make the thing doable"),
+		RunbookNumber:     123,
+		URL:               "https://app.aviator.co/runbook/123",
+		RunbookVersion:    ptr(4),
+		Intent:            ptr("make the thing doable"),
+		PreviewConfigName: ptr("docs"),
 		RunbookState: &api.RunbookState{
 			WorkingBranch: ptr("feature"),
 			TargetBranch:  ptr("main"),
@@ -64,6 +65,8 @@ func TestFormatRunbookDetail(t *testing.T) {
 			FailedResults: []api.FailedResult{
 				{Criterion: "does the thing", Reason: ptr("nope")},
 			},
+			PreviewConfigName: ptr("default"),
+			PreviewMethod:     ptr("sandbox"),
 		},
 	}
 
@@ -76,6 +79,8 @@ func TestFormatRunbookDetail(t *testing.T) {
 		"1. does the thing",
 		"Latest verification: run 900, failed (1/2 passed, 1 failed, abcdef1)",
 		"does the thing: nope",
+		"  Preview config: docs",
+		"Ran on preview config: default (sandbox)",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q\n---\n%s", want, out)
@@ -110,13 +115,14 @@ func TestFormatVerificationError(t *testing.T) {
 
 func TestShowJSON(t *testing.T) {
 	got := decodeJSON(t, newShowJSON(&api.RunbookDetail{
-		RunbookNumber:  123,
-		URL:            "https://app.aviator.co/r/123",
-		RunbookVersion: ptr(4),
-		Intent:         ptr("gate the banner"),
-		RunbookState:   &api.RunbookState{WorkingBranch: ptr("feature"), TargetBranch: ptr("main")},
-		PullRequests:   []api.LinkedPullRequest{{Number: 1201, URL: "https://github.com/acme/web/pull/1201"}},
-		SpecFiles:      []api.DetailSpecFile{{Filename: "spec.md", Content: "..."}},
+		RunbookNumber:     123,
+		URL:               "https://app.aviator.co/r/123",
+		RunbookVersion:    ptr(4),
+		Intent:            ptr("gate the banner"),
+		PreviewConfigName: ptr("docs"),
+		RunbookState:      &api.RunbookState{WorkingBranch: ptr("feature"), TargetBranch: ptr("main")},
+		PullRequests:      []api.LinkedPullRequest{{Number: 1201, URL: "https://github.com/acme/web/pull/1201"}},
+		SpecFiles:         []api.DetailSpecFile{{Filename: "spec.md", Content: "..."}},
 		AcceptanceCriteria: []api.DetailCriterion{
 			{Ordinal: 1, RawText: "does the thing", StableKey: ptr("abc123")},
 		},
@@ -131,6 +137,7 @@ func TestShowJSON(t *testing.T) {
 		"target_branch":       "main",
 		"latest_verification": nil,
 		"runs_has_more":       false,
+		"preview_config_name": "docs",
 	} {
 		if got[key] != want {
 			t.Errorf("%s = %v, want %v", key, got[key], want)

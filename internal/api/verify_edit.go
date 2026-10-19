@@ -11,6 +11,7 @@ type EditVerifyRequest struct {
 	Intent             string   `json:"intent,omitempty"`
 	AcceptanceCriteria []string `json:"acceptance_criteria,omitempty"`
 	ExpectedVersion    int      `json:"expected_version,omitempty"`
+	PreviewConfigName  string   `json:"preview_config_name,omitempty"`
 }
 
 // VerifySession is the session shape returned by PATCH /api/v1/verify/<n>.
@@ -23,6 +24,7 @@ type VerifySession struct {
 	AcceptanceCriteria []string `json:"acceptance_criteria"`
 	Intent             string   `json:"intent"`
 	Version            *int     `json:"version"`
+	PreviewConfigName  *string  `json:"preview_config_name"`
 }
 
 // EditVerify updates a session's intent and/or replaces its acceptance criteria.
