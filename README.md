@@ -162,9 +162,11 @@ takes.
 ### Inspect a session
 
 ```bash
-aviator show r/123            # session summary
+aviator show r/123            # session summary, with its verification runs
 aviator results r/123         # latest verification results
+aviator results r/123 --run 887     # the results of an earlier run
 aviator scenarios r/123       # what the latest run exercised, with evidence ids
+aviator scenarios r/123 --run 887   # the same for an earlier run
 aviator evidence 4567 -o trace.json   # download one evidence file, e.g. a run trace
 aviator edit r/123 --expected-version 4 --criteria "..."
 aviator edit r/123 --intent "..."

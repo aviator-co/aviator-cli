@@ -2,12 +2,10 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
@@ -146,14 +144,4 @@ func deref(s *string) string {
 		return ""
 	}
 	return *s
-}
-
-// rfc3339 rewrites the backend's HTTP-date timestamps as RFC 3339, passing
-// through anything it can't parse.
-func rfc3339(ts string) string {
-	t, err := http.ParseTime(ts)
-	if err != nil {
-		return ts
-	}
-	return t.UTC().Format(time.RFC3339)
 }

@@ -210,8 +210,8 @@ func newInvariantJSON(inv *api.Invariant) invariantJSON {
 		SourceRefs:   inv.SourceRefs,
 		Repositories: make([]string, 0, len(inv.Repositories)),
 		Conditions:   make([]conditionJSON, 0, len(inv.Conditions)),
-		CreatedAt:    rfc3339(inv.CreatedAt),
-		ModifiedAt:   rfc3339(inv.ModifiedAt),
+		CreatedAt:    inv.CreatedAt,
+		ModifiedAt:   inv.ModifiedAt,
 	}
 	if out.SourceRefs == nil {
 		out.SourceRefs = []string{}

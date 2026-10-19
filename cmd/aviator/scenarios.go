@@ -10,14 +10,16 @@ import (
 )
 
 var scenariosFlags struct {
+	Run  int
 	JSON bool
 }
 
 var scenariosCmd = &cobra.Command{
 	Use:   "scenarios <id>",
 	Short: "Show what a verification run exercised and the evidence it captured (e.g. aviator scenarios r/123)",
-	Long: "List the scenarios behind a review's latest verification run, with each\n" +
-		"one's status, the criteria it covers, and its evidence. Every scenario\n" +
+	Long: "List the scenarios behind a review's latest verification run, or the\n" +
+		"run --run names, with each one's status, the criteria it covers, and its\n" +
+		"evidence. `aviator show` lists a review's runs. Every scenario\n" +
 		"that ran captures a trace of what the agent did; download any evidence\n" +
 		"with `aviator evidence <id> -o <path>`.\n" +
 		"\n" +
@@ -32,7 +34,7 @@ var scenariosCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		scenarios, err := client.GetVerifyScenarios(cmd.Context(), runbookNumber)
+		scenarios, err := client.GetVerifyScenarios(cmd.Context(), runbookNumber, scenariosFlags.Run)
 		if err != nil {
 			return err
 		}
@@ -45,6 +47,8 @@ var scenariosCmd = &cobra.Command{
 }
 
 func init() {
+	scenariosCmd.Flags().IntVar(&scenariosFlags.Run, "run", 0,
+		"show run `id` instead of the latest, run ids are in aviator show")
 	scenariosCmd.Flags().BoolVar(&scenariosFlags.JSON, "json", false,
 		"print the scenarios as a single JSON object instead of the human summary")
 }
@@ -55,7 +59,7 @@ func formatScenarios(s *api.VerifyScenarios) string {
 	if commit := deref(s.CommitSHA); commit != "" {
 		sha = " at " + shortSHA(commit)
 	}
-	fmt.Fprintf(&b, "%s latest run: %s%s\n", formatRunbookID(s.RunbookNumber), s.RunStatus, sha)
+	fmt.Fprintf(&b, "%s run %d: %s%s\n", formatRunbookID(s.RunbookNumber), s.RunID, s.RunStatus, sha)
 	if len(s.ScenarioRuns) == 0 {
 		b.WriteString("  No scenario runs\n")
 	}
@@ -100,6 +104,7 @@ func formatScenarios(s *api.VerifyScenarios) string {
 
 type scenariosJSON struct {
 	ID        string         `json:"id"`
+	RunID     int            `json:"run_id"`
 	RunStatus string         `json:"run_status"`
 	CommitSHA *string        `json:"commit_sha"`
 	Scenarios []scenarioJSON `json:"scenarios"`
@@ -137,6 +142,7 @@ type evidenceJSON struct {
 func newScenariosJSON(s *api.VerifyScenarios) scenariosJSON {
 	out := scenariosJSON{
 		ID:        formatRunbookID(s.RunbookNumber),
+		RunID:     s.RunID,
 		RunStatus: s.RunStatus,
 		CommitSHA: s.CommitSHA,
 		Scenarios: make([]scenarioJSON, 0, len(s.ScenarioRuns)),
@@ -149,8 +155,8 @@ func newScenariosJSON(s *api.VerifyScenarios) scenariosJSON {
 			FailureReason:     sr.FailureReason,
 			ToolCallCount:     sr.ToolCallCount,
 			Reused:            sr.Reused,
-			StartedAt:         optionalRFC3339(sr.StartedAt),
-			CompletedAt:       optionalRFC3339(sr.CompletedAt),
+			StartedAt:         sr.StartedAt,
+			CompletedAt:       sr.CompletedAt,
 			Steps:             make([]scenarioStepJSON, 0, len(sr.Scenario.Steps)),
 			Criteria:          make([]handleJSON, 0, len(sr.Scenario.Criteria)),
 			Evidence:          make([]evidenceJSON, 0, len(sr.Evidence)),
@@ -169,12 +175,4 @@ func newScenariosJSON(s *api.VerifyScenarios) scenariosJSON {
 		out.Scenarios = append(out.Scenarios, sc)
 	}
 	return out
-}
-
-func optionalRFC3339(ts *string) *string {
-	if ts == nil {
-		return nil
-	}
-	out := rfc3339(*ts)
-	return &out
 }

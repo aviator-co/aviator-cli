@@ -22,7 +22,7 @@ type RunbookDetail struct {
 	SpecFiles          []DetailSpecFile    `json:"spec_files,omitempty"`
 	RunbookState       *RunbookState       `json:"runbook_state,omitempty"`
 	AcceptanceCriteria []DetailCriterion   `json:"acceptance_criteria,omitempty"`
-	LatestVerification *LatestVerification `json:"latest_verification,omitempty"`
+	LatestVerification *VerificationRun    `json:"latest_verification,omitempty"`
 	PullRequests       []LinkedPullRequest `json:"pull_requests,omitempty"`
 	// LatestVerificationPresent distinguishes a response that carried an
 	// explicit null latest_verification (no runs yet) from one where the
@@ -63,10 +63,13 @@ type DetailCriterion struct {
 	StableKey *string `json:"stable_key"`
 }
 
-// LatestVerification summarizes the most recent verification run.
-type LatestVerification struct {
+// VerificationRun is one verification run. The run listing leaves out
+// FailedResults.
+type VerificationRun struct {
+	ID              int            `json:"id"`
 	Status          string         `json:"status"`
 	TriggerSource   string         `json:"trigger_source"`
+	EvaluatorOnly   bool           `json:"evaluator_only"`
 	RunbookVersion  *int           `json:"runbook_version"`
 	CommitSHA       *string        `json:"commit_sha"`
 	CriteriaTotal   int            `json:"criteria_total"`
@@ -75,6 +78,9 @@ type LatestVerification struct {
 	CriteriaSkipped int            `json:"criteria_skipped"`
 	CriteriaWaived  int            `json:"criteria_waived"`
 	ErrorMessage    *string        `json:"error_message"`
+	CreatedAt       string         `json:"created_at"`
+	StartedAt       *string        `json:"started_at"`
+	CompletedAt     *string        `json:"completed_at"`
 	FailedResults   []FailedResult `json:"failed_results"`
 }
 

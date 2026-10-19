@@ -315,7 +315,7 @@ func TestInvariantJSON(t *testing.T) {
 		Enabled:      true,
 		Repositories: []api.Repository{{Org: "acme", Name: "web"}},
 		Conditions:   []api.InvariantCondition{{Type: "language", Value: "go", Negate: true}},
-		CreatedAt:    "Fri, 02 Oct 2026 20:24:50 GMT",
+		CreatedAt:    "2026-10-02T20:24:50Z",
 	}))
 	for key, want := range map[string]any{
 		"id":         float64(7),
