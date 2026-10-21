@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
 	"github.com/spf13/pflag"
 )
@@ -336,5 +337,124 @@ func TestInvariantJSON(t *testing.T) {
 	}
 	if refs := got["source_refs"].([]any); len(refs) != 0 {
 		t.Errorf("source_refs = %v", refs)
+	}
+}
+
+func TestParseOwnerTeam(t *testing.T) {
+	good := map[string]api.OwnerTeam{
+		"acme/payments":         {Org: "acme", Slug: "payments"},
+		"@acme/payments":        {Org: "acme", Slug: "payments"},
+		" acme/platform-infra ": {Org: "acme", Slug: "platform-infra"}, //nolint:gocritic // the padding is what this case asserts gets trimmed
+	}
+	for in, want := range good {
+		got, err := parseOwnerTeam(in)
+		if err != nil {
+			t.Errorf("parseOwnerTeam(%q) error: %v", in, err)
+		} else if got != want {
+			t.Errorf("parseOwnerTeam(%q) = %+v, want %+v", in, got, want)
+		}
+	}
+	for _, in := range []string{"", "payments", "acme/", "/payments", "@", "default"} {
+		if _, err := parseOwnerTeam(in); err == nil {
+			t.Errorf("parseOwnerTeam(%q) expected error", in)
+		}
+	}
+}
+
+func TestBuildUpdateRequestOwnerTeams(t *testing.T) {
+	req, err := buildEditRequest(t, "--owner-team", "acme/payments", "--owner-team", "@acme/infra")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []api.OwnerTeam{{Org: "acme", Slug: "payments"}, {Org: "acme", Slug: "infra"}}
+	if req.OwnerTeams == nil || len(*req.OwnerTeams) != 2 || (*req.OwnerTeams)[1] != want[1] {
+		t.Errorf("owner teams = %v, want %v", req.OwnerTeams, want)
+	}
+
+	req, err = buildEditRequest(t, "--default-owner")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if req.OwnerTeams == nil || len(*req.OwnerTeams) != 0 {
+		t.Errorf("--default-owner should send an empty list, got %v", req.OwnerTeams)
+	}
+
+	req, err = buildEditRequest(t, "--title", "X", "--default-owner=false")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if req.OwnerTeams != nil {
+		t.Errorf("--default-owner=false should leave owners alone, got %v", req.OwnerTeams)
+	}
+
+	if _, err := buildEditRequest(t, "--owner-team", "payments"); err == nil {
+		t.Error("bad team: expected error")
+	}
+}
+
+func TestRequireOwnerTeams(t *testing.T) {
+	if err := requireOwnerTeams([]api.Invariant{{OwnerTeams: &[]api.OwnerTeam{}}}); err != nil {
+		t.Errorf("an unowned invariant is supported, got %v", err)
+	}
+	if err := requireOwnerTeams([]api.Invariant{{OwnerTeams: &[]api.OwnerTeam{}}, {}}); !errors.Is(err, errNoOwnerTeams) {
+		t.Errorf("a backend without owner teams should be refused, got %v", err)
+	}
+}
+
+func TestFormatInvariantOwner(t *testing.T) {
+	two := []api.OwnerTeam{{Org: "acme", Slug: "payments"}, {Org: "acme", Slug: "infra"}}
+	for want, inv := range map[string]api.Invariant{
+		"-":              {},
+		"none":           {OwnerTeams: &[]api.OwnerTeam{}},
+		"@acme/payments": {OwnerTeams: &[]api.OwnerTeam{two[0]}},
+		"2 teams":        {OwnerTeams: &two},
+	} {
+		if got := formatInvariantOwnerShort(&inv); got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	}
+
+	out := formatInvariantDetail(&api.Invariant{Title: "T", OwnerTeams: &two})
+	if !strings.Contains(out, "Owner: @acme/payments, @acme/infra") {
+		t.Errorf("output missing owners\n---\n%s", out)
+	}
+	if out := formatInvariantDetail(&api.Invariant{Title: "T"}); strings.Contains(out, "Owner:") {
+		t.Errorf("a backend without owner teams should print no owner line:\n%s", out)
+	}
+}
+
+func TestFormatInvariantOwnerTeams(t *testing.T) {
+	out := formatInvariantOwnerTeams(&api.ListInvariantOwnerTeamsResponse{
+		OwnerTeams: []api.InvariantOwnerTeam{
+			{OwnerTeam: api.OwnerTeam{Org: "acme", Slug: "infra", Name: "Infra"}, InvariantCount: 12, IsDefault: true},
+			{OwnerTeam: api.OwnerTeam{Org: "acme", Slug: "payments", Name: "Payments"}, InvariantCount: 0},
+		},
+		UnownedCount: 3,
+	})
+	for _, want := range []string{
+		"TEAM           INVARIANTS  NAME",
+		"acme/infra     12          Infra (default owner team)",
+		"acme/payments  0           Payments",
+		"3 invariants with no owner team",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\n---\n%s", want, out)
+		}
+	}
+	if out := formatInvariantOwnerTeams(&api.ListInvariantOwnerTeamsResponse{}); !strings.Contains(out, "no teams yet") ||
+		strings.Contains(out, "no owner team") {
+		t.Errorf("output = %q", out)
+	}
+}
+
+func TestInvariantJSONOwnerTeams(t *testing.T) {
+	if got := decodeJSON(t, newInvariantJSON(&api.Invariant{ID: 7})); got["owner_teams"] != nil {
+		t.Errorf("a backend without owner teams should give null, got %v", got["owner_teams"])
+	}
+	got := decodeJSON(t, newInvariantJSON(&api.Invariant{
+		ID: 7, OwnerTeams: &[]api.OwnerTeam{{Org: "acme", Slug: "payments", Name: "Payments"}},
+	}))
+	if teams := got["owner_teams"].([]any); len(teams) != 1 || teams[0] != "acme/payments" {
+		t.Errorf("owner_teams = %v", got["owner_teams"])
 	}
 }

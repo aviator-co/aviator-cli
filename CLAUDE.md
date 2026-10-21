@@ -27,7 +27,7 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   dismiss.go        # `aviator dismiss` -> delete criteria / waive invariants
   scenarios.go      # `aviator scenarios` -> scenario runs + evidence of a verification run
   evidence.go       # `aviator evidence`  -> signed URL / download of one evidence file
-  invariants.go     # `aviator invariants <list|categories|create|edit|delete|approve|reject|set-status>`
+  invariants.go     # `aviator invariants <list|categories|owner-teams|create|edit|delete|approve|reject|set-status|set-owner>`
   invariants_format.go  # text rendering for the invariants commands
   version.go        # `aviator version`
   helpers.go        # parseRepo(s), readSpecFile, collectCriteria, collectBody
@@ -163,12 +163,19 @@ The CLI targets endpoints in the `mergeit` backend:
 so they need a user token or an `aviator login` session.
 
 - `/api/v1/invariants` — `GET` (list; `org`+`repo`, `status`, comma-separated
-  `ids` and `source`, `page`, `per_page` query), `GET /categories`, `POST`
-  (create), `PATCH /<id>` (partial update; `repositories` and `conditions`
-  replace wholesale when present, `[]` clears; `enabled` is refused unless the
-  invariant is active), `DELETE /<id>`, and `POST /status`
-  (`{invariant_ids, status}` bulk approve/reject/restore). Reads need any
-  member; writes need a maintainer.
+  `ids`, `source` and `owner_team` (`org/slug`), `unowned`, `page`, `per_page`
+  query), `GET /categories`, `GET /owner-teams` (the account's teams with
+  `invariant_count` and `is_default`, plus `unowned_count`), `POST` (create),
+  `PATCH /<id>` (partial update; `repositories`, `conditions` and
+  `owner_teams` (`[{org, slug}]`) replace wholesale when present, `[]` clears,
+  which for owners means the default owner team applies; `enabled` is refused
+  unless the invariant is active), `DELETE /<id>`, `POST /status`
+  (`{invariant_ids, status}` bulk approve/reject/restore), and `POST /owners`
+  (`{invariant_ids, owner_teams}` bulk owner change). Each invariant carries
+  its effective `owner_teams`; a backend that predates owner teams omits the
+  key and ignores the owner filters and fields, so the CLI refuses owner
+  operations when it is missing. Reads need any member; writes need a
+  maintainer or someone directly on the invariant's owner team.
 
 When changing a request/response shape, keep it in sync with the backend
 schemas (`src/api/verify.py`, `src/api/runbook.py`, `src/api/invariants.py` in
