@@ -94,6 +94,28 @@ Equivalent raw commands: `go build ./...`, `go test --vet=all ./...`,
   no `formatters` block: golangci-lint bundles its own older copies of both, and
   two copies grading the same files is how CI deadlocks.
 
+## Experimental features
+
+New features that are only for internal dogfooding sit behind the
+`experimental` Go build tag, so they are left out of stable binaries entirely.
+Nobody can switch them on with a flag or env var.
+
+- A new command goes in its own file that starts with `//go:build experimental`
+  and registers itself: `func init() { rootCmd.AddCommand(fooCmd) }`. Don't
+  list it in `main.go`.
+- Mark a new top-level command `Hidden: true`, so even experimental builds
+  leave it out of `--help`, `aviator help`, and shell completion. It still runs
+  when called by name.
+- A new flag or branch inside an existing command is gated on
+  `config.Experimental` (a const, so the stable build drops the dead code).
+- No release (stable or nightly) is built with the tag; both are public. The
+  team builds its own binary with `just build-experimental` or
+  `go run -tags experimental ./cmd/aviator`.
+- CI builds, tests, and smoke-tests both variants; golangci-lint runs with the
+  tag on.
+- To ship a feature to everyone, delete the build tag or the `config.Experimental`
+  check.
+
 ## CI and releases
 
 - `.github/workflows/go.yml` — build, test, smoke test, golangci-lint on PRs.
