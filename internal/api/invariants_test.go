@@ -215,3 +215,111 @@ func TestSetInvariantStatusForeignID(t *testing.T) {
 		t.Errorf("error = %q", got)
 	}
 }
+
+// TestListInvariantsOwnerQuery pins the owner filters' encoding, and that an
+// invariant from a backend without owner teams decodes OwnerTeams as nil
+// while an unowned one decodes it as empty.
+func TestListInvariantsOwnerQuery(t *testing.T) {
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		owned := strings.Replace(invariantJSON, `"id":7`, `"id":8,"owner_teams":[]`, 1)
+		_, _ = w.Write([]byte(`{"invariants":[` + invariantJSON + `,` + owned + `],"page":1,"per_page":20,"has_more":false}`))
+	}))
+	defer srv.Close()
+
+	resp, err := newTestClient(srv).ListInvariants(context.Background(), ListInvariantsQuery{
+		OwnerTeams: []string{"acme/payments", "acme/infra"},
+		Unowned:    true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotQuery != "owner_team=acme%2Fpayments%2Cacme%2Finfra&unowned=true" {
+		t.Errorf("query = %q", gotQuery)
+	}
+	if resp.Invariants[0].OwnerTeams != nil {
+		t.Errorf("absent owner_teams should decode as nil, got %v", *resp.Invariants[0].OwnerTeams)
+	}
+	if teams := resp.Invariants[1].OwnerTeams; teams == nil || len(*teams) != 0 {
+		t.Errorf("owner_teams [] should decode as empty, got %v", teams)
+	}
+}
+
+func TestUpdateInvariantOwnerTeamsBody(t *testing.T) {
+	var got map[string]json.RawMessage
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(data, &got); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		_, _ = w.Write([]byte(invariantJSON))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(srv)
+	teams := []OwnerTeam{{Org: "acme", Slug: "payments"}}
+	if _, err := client.UpdateInvariant(context.Background(), 7, UpdateInvariantRequest{OwnerTeams: &teams}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := `[{"org":"acme","slug":"payments"}]`; string(got["owner_teams"]) != want {
+		t.Errorf("owner_teams = %s, want %s", got["owner_teams"], want)
+	}
+	if _, err := client.UpdateInvariant(context.Background(), 7, UpdateInvariantRequest{OwnerTeams: &[]OwnerTeam{}}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(got["owner_teams"]) != `[]` {
+		t.Errorf("owner_teams = %s, want []", got["owner_teams"])
+	}
+}
+
+// TestSetInvariantOwnersDefault pins that falling back to the default sends
+// [] rather than null, which the server would refuse.
+func TestSetInvariantOwnersDefault(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/invariants/owners" {
+			t.Errorf("%s %s", r.Method, r.URL.Path)
+		}
+		data, _ := io.ReadAll(r.Body)
+		if want := `{"invariant_ids":[7,8],"owner_teams":[]}`; string(data) != want {
+			t.Errorf("body = %s, want %s", data, want)
+		}
+		_, _ = w.Write([]byte(`{"invariants":[` + invariantJSON + `]}`))
+	}))
+	defer srv.Close()
+
+	resp, err := newTestClient(srv).SetInvariantOwners(context.Background(), SetInvariantOwnersRequest{
+		InvariantIDs: []int{7, 8},
+		OwnerTeams:   []OwnerTeam{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Invariants) != 1 {
+		t.Errorf("invariants = %+v", resp.Invariants)
+	}
+}
+
+func TestListInvariantOwnerTeams(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/invariants/owner-teams" {
+			t.Errorf("%s %s", r.Method, r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"owner_teams":[{"org":"acme","slug":"infra","name":"Infra",` +
+			`"invariant_count":3,"is_default":true}],"unowned_count":2}`))
+	}))
+	defer srv.Close()
+
+	resp, err := newTestClient(srv).ListInvariantOwnerTeams(context.Background(), ListInvariantOwnerTeamsQuery{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := InvariantOwnerTeam{
+		OwnerTeam:      OwnerTeam{Org: "acme", Slug: "infra", Name: "Infra"},
+		InvariantCount: 3,
+		IsDefault:      true,
+	}
+	if len(resp.OwnerTeams) != 1 || resp.OwnerTeams[0] != want || resp.UnownedCount != 2 {
+		t.Errorf("response = %+v", resp)
+	}
+}

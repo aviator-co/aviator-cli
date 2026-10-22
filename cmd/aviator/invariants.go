@@ -40,22 +40,29 @@ var invariantsCmd = &cobra.Command{
 		"repositories applies to exactly those. Conditions narrow it further by\n" +
 		"changed file path or language.\n" +
 		"\n" +
-		"Listing and categories work with any API token, account-scoped ones\n" +
-		"included. Creating, editing, deleting and changing status act as the\n" +
-		"caller, so they need a user access token (from `aviator login` or a\n" +
-		"personal token) whose user is a maintainer or admin; an account-scoped\n" +
-		"token is refused for them.\n" +
+		"Every invariant is owned by a GitHub team: its own owner teams, or the\n" +
+		"account's default owner team when it has none.\n" +
+		"\n" +
+		"Listing, categories and owner-teams work with any API token,\n" +
+		"account-scoped ones included. The rest act as the caller, so they need\n" +
+		"a user access token (from `aviator login` or a personal token); an\n" +
+		"account-scoped token is refused for them. Any user can create;\n" +
+		"editing, deleting, changing status and changing owners also need the\n" +
+		"user to be a maintainer, an admin, or directly on the invariant's owner\n" +
+		"team.\n" +
 		"\n" +
 		"Docs: https://docs.aviator.co/verify/how-to-guides/managing-invariants-with-the-cli",
 }
 
 var invariantsListFlags struct {
-	Repo    string
-	Status  string
-	IDs     []int
-	Sources []string
-	Page    int
-	Limit   int
+	Repo       string
+	Status     string
+	IDs        []int
+	Sources    []string
+	OwnerTeams []string
+	Unowned    bool
+	Page       int
+	Limit      int
 }
 
 var invariantsListCmd = &cobra.Command{
@@ -63,18 +70,21 @@ var invariantsListCmd = &cobra.Command{
 	Short: "List baseline invariants, newest first",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		if invariantsListFlags.Page < 1 {
-			return errors.New("--page starts at 1")
+		if err := validatePageFlags(invariantsListFlags.Page, invariantsListFlags.Limit); err != nil {
+			return err
 		}
-		if invariantsListFlags.Limit < 1 {
-			return errors.New("--limit must be at least 1")
+		ownerTeams, err := parseOwnerTeams(invariantsListFlags.OwnerTeams)
+		if err != nil {
+			return err
 		}
 		query := api.ListInvariantsQuery{
-			Status:  invariantsListFlags.Status,
-			IDs:     invariantsListFlags.IDs,
-			Sources: invariantsListFlags.Sources,
-			Page:    invariantsListFlags.Page,
-			PerPage: invariantsListFlags.Limit,
+			Status:     invariantsListFlags.Status,
+			IDs:        invariantsListFlags.IDs,
+			Sources:    invariantsListFlags.Sources,
+			OwnerTeams: ownerTeamNames(ownerTeams),
+			Unowned:    invariantsListFlags.Unowned,
+			Page:       invariantsListFlags.Page,
+			PerPage:    invariantsListFlags.Limit,
 		}
 		if invariantsListFlags.Repo != "" {
 			repo, err := parseRepo(invariantsListFlags.Repo)
@@ -91,6 +101,12 @@ var invariantsListCmd = &cobra.Command{
 		resp, err := client.ListInvariants(cmd.Context(), query)
 		if err != nil {
 			return err
+		}
+		// A backend without owner teams ignores the filter and lists everything.
+		if len(query.OwnerTeams) > 0 || query.Unowned {
+			if err := requireOwnerTeams(resp.Invariants); err != nil {
+				return err
+			}
 		}
 		if invariantsFlags.JSON {
 			return printJSON(invariantListJSON{Invariants: newInvariantsJSON(resp.Invariants), HasMore: resp.HasMore})
@@ -117,6 +133,42 @@ var invariantsCategoriesCmd = &cobra.Command{
 			return printJSON(newCategoriesJSON(resp.Categories))
 		}
 		fmt.Print(formatInvariantCategories(resp))
+		return nil
+	},
+}
+
+var invariantsOwnerTeamsFlags struct {
+	Page  int
+	Limit int
+}
+
+var invariantsOwnerTeamsCmd = &cobra.Command{
+	Use:   "owner-teams",
+	Short: "List the teams invariants can be owned by, with how many each owns",
+	Long: "List the account's GitHub teams as the org/slug names that\n" +
+		"`list --owner-team`, `edit --owner-team` and `set-owner` take, with how\n" +
+		"many invariants each owns, teams that own the most first. The default\n" +
+		"owner team's count includes the invariants that fall back to it.",
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := validatePageFlags(invariantsOwnerTeamsFlags.Page, invariantsOwnerTeamsFlags.Limit); err != nil {
+			return err
+		}
+		client, err := api.NewClient()
+		if err != nil {
+			return err
+		}
+		resp, err := client.ListInvariantOwnerTeams(cmd.Context(), api.ListInvariantOwnerTeamsQuery{
+			Page:    invariantsOwnerTeamsFlags.Page,
+			PerPage: invariantsOwnerTeamsFlags.Limit,
+		})
+		if err != nil {
+			return err
+		}
+		if invariantsFlags.JSON {
+			return printJSON(newOwnerTeamsJSON(resp))
+		}
+		fmt.Print(formatInvariantOwnerTeams(resp))
 		return nil
 	},
 }
@@ -199,6 +251,8 @@ type invariantEditFlags struct {
 	NoConditions  bool
 	Enable        bool
 	Disable       bool
+	OwnerTeams    []string
+	DefaultOwner  bool
 }
 
 var invariantsEditFlags invariantEditFlags
@@ -209,7 +263,9 @@ var invariantsEditCmd = &cobra.Command{
 	Long: "Update a baseline invariant. Only the flags you pass change; the rest\n" +
 		"is left as is. --repo and --condition replace the current set wholesale,\n" +
 		"so repeat them to give the full new set. --account-scoped drops every\n" +
-		"repository link, and --no-conditions drops every condition.",
+		"repository link, and --no-conditions drops every condition.\n" +
+		"--owner-team replaces the owner teams the same way, and --default-owner\n" +
+		"drops them so the account's default owner team applies.",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id, err := parseInvariantID(args[0])
@@ -228,6 +284,11 @@ var invariantsEditCmd = &cobra.Command{
 		inv, err := client.UpdateInvariant(cmd.Context(), id, req)
 		if err != nil {
 			return err
+		}
+		if req.OwnerTeams != nil {
+			if err := requireOwnerTeams([]api.Invariant{*inv}); err != nil {
+				return err
+			}
 		}
 		if invariantsFlags.JSON {
 			return printJSON(newInvariantJSON(inv))
@@ -255,6 +316,10 @@ func registerEditFlags(fs *pflag.FlagSet, f *invariantEditFlags) {
 		"switch the invariant on (active invariants only; approve a pending one instead)")
 	fs.BoolVar(&f.Disable, "disable", false,
 		"switch the invariant off (active invariants only; it stays active but is not applied)")
+	fs.StringArrayVar(&f.OwnerTeams, "owner-team", nil,
+		"replace the owner teams with these org/team-slug entries (repeatable)")
+	fs.BoolVar(&f.DefaultOwner, "default-owner", false,
+		"drop the owner teams so the account's default owner team applies")
 }
 
 // buildUpdateRequest turns the passed edit flags into a PATCH body. A flag
@@ -294,6 +359,16 @@ func buildUpdateRequest(flags *pflag.FlagSet, f *invariantEditFlags) (api.Update
 			return req, err
 		}
 		req.Conditions = &conditions
+	}
+	switch {
+	case flags.Changed("default-owner") && f.DefaultOwner:
+		req.OwnerTeams = &[]api.OwnerTeam{}
+	case flags.Changed("owner-team"):
+		teams, err := parseOwnerTeams(f.OwnerTeams)
+		if err != nil {
+			return req, err
+		}
+		req.OwnerTeams = &teams
 	}
 	switch {
 	case flags.Changed("enable"):
@@ -368,14 +443,62 @@ var invariantsSetStatusCmd = &cobra.Command{
 	},
 }
 
-func runSetInvariantStatus(cmd *cobra.Command, status string, rawIDs []string) error {
-	ids := make([]int, 0, len(rawIDs))
-	for _, raw := range rawIDs {
-		id, err := parseInvariantID(raw)
+var invariantsSetOwnerCmd = &cobra.Command{
+	Use:   "set-owner <org/team-slug|default> <id>...",
+	Short: "Hand invariants to an owner team",
+	Long: "Make a team the sole owner of one or more invariants, or pass `default`\n" +
+		"to drop their owner teams so the account's default owner team applies.\n" +
+		"See `aviator invariants owner-teams` for the team names. You need to be\n" +
+		"able to manage every invariant you name (a maintainer, an admin, or\n" +
+		"directly on its current owner team); otherwise the whole batch is\n" +
+		"refused.",
+	Args: cobra.MinimumNArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		teams := []api.OwnerTeam{}
+		if args[0] != "default" {
+			team, err := parseOwnerTeam(args[0])
+			if err != nil {
+				return err
+			}
+			teams = append(teams, team)
+		}
+		ids, err := parseInvariantIDs(args[1:])
 		if err != nil {
 			return err
 		}
-		ids = append(ids, id)
+		client, err := api.NewClient()
+		if err != nil {
+			return err
+		}
+		resp, err := client.SetInvariantOwners(cmd.Context(), api.SetInvariantOwnersRequest{
+			InvariantIDs: ids,
+			OwnerTeams:   teams,
+		})
+		if err != nil {
+			return err
+		}
+		if invariantsFlags.JSON {
+			return printJSON(invariantListJSON{Invariants: newInvariantsJSON(resp.Invariants)})
+		}
+		// Every invariant in the batch gets the same owners, so the first one's
+		// effective owners say what happened (default may be none).
+		owner := "unowned"
+		if len(resp.Invariants) > 0 {
+			if got := resp.Invariants[0].OwnerTeams; got != nil && len(*got) > 0 {
+				owner = "owned by " + formatInvariantOwners(*got)
+			}
+		}
+		fmt.Printf("%s %s now %s\n", colors.Success("✓"),
+			english.Plural(len(resp.Invariants), "invariant", ""), owner)
+		fmt.Print(formatInvariantTable(resp.Invariants))
+		return nil
+	},
+}
+
+func runSetInvariantStatus(cmd *cobra.Command, status string, rawIDs []string) error {
+	ids, err := parseInvariantIDs(rawIDs)
+	if err != nil {
+		return err
 	}
 	client, err := api.NewClient()
 	if err != nil {
@@ -408,8 +531,16 @@ func init() {
 	lf.IntSliceVar(&invariantsListFlags.IDs, "ids", nil, "only these invariant ids (comma-separated)")
 	lf.StringSliceVar(&invariantsListFlags.Sources, "source", nil,
 		"only these sources (comma-separated: "+invariantSources+")")
+	lf.StringSliceVar(&invariantsListFlags.OwnerTeams, "owner-team", nil,
+		"only invariants these org/team-slug teams own, the default team's fallbacks included (comma-separated)")
+	lf.BoolVar(&invariantsListFlags.Unowned, "unowned", false,
+		"only invariants with no owner team and no default to fall back to")
 	lf.IntVar(&invariantsListFlags.Page, "page", 1, "page number, starting at 1")
 	lf.IntVar(&invariantsListFlags.Limit, "limit", 20, "invariants per page (max 100)")
+
+	of := invariantsOwnerTeamsCmd.Flags()
+	of.IntVar(&invariantsOwnerTeamsFlags.Page, "page", 1, "page number, starting at 1")
+	of.IntVar(&invariantsOwnerTeamsFlags.Limit, "limit", 20, "teams per page (max 100)")
 
 	cf := invariantsCreateCmd.Flags()
 	cf.StringVar(&invariantsCreateFlags.Title, "title", "", "short name for the rule")
@@ -429,16 +560,19 @@ func init() {
 	invariantsEditCmd.MarkFlagsMutuallyExclusive("repo", "account-scoped")
 	invariantsEditCmd.MarkFlagsMutuallyExclusive("condition", "no-conditions")
 	invariantsEditCmd.MarkFlagsMutuallyExclusive("enable", "disable")
+	invariantsEditCmd.MarkFlagsMutuallyExclusive("owner-team", "default-owner")
 
 	invariantsCmd.AddCommand(
 		invariantsListCmd,
 		invariantsCategoriesCmd,
+		invariantsOwnerTeamsCmd,
 		invariantsCreateCmd,
 		invariantsEditCmd,
 		invariantsDeleteCmd,
 		invariantsApproveCmd,
 		invariantsRejectCmd,
 		invariantsSetStatusCmd,
+		invariantsSetOwnerCmd,
 	)
 }
 
@@ -450,6 +584,73 @@ func parseInvariantID(arg string) (int, error) {
 		return 0, errors.Errorf("invalid invariant ID %q, expected a positive number", arg)
 	}
 	return n, nil
+}
+
+func parseInvariantIDs(rawIDs []string) ([]int, error) {
+	ids := make([]int, 0, len(rawIDs))
+	for _, raw := range rawIDs {
+		id, err := parseInvariantID(raw)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+// parseOwnerTeam reads an org/team-slug, also taking GitHub's @org/team-slug
+// mention form.
+func parseOwnerTeam(s string) (api.OwnerTeam, error) {
+	parts := strings.SplitN(strings.TrimPrefix(strings.TrimSpace(s), "@"), "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return api.OwnerTeam{}, errors.Errorf("invalid team %q, expected org/team-slug", s)
+	}
+	return api.OwnerTeam{Org: parts[0], Slug: parts[1]}, nil
+}
+
+func parseOwnerTeams(entries []string) ([]api.OwnerTeam, error) {
+	teams := make([]api.OwnerTeam, 0, len(entries))
+	for _, entry := range entries {
+		team, err := parseOwnerTeam(entry)
+		if err != nil {
+			return nil, err
+		}
+		teams = append(teams, team)
+	}
+	return teams, nil
+}
+
+func validatePageFlags(page, limit int) error {
+	if page < 1 {
+		return errors.New("--page starts at 1")
+	}
+	if limit < 1 {
+		return errors.New("--limit must be at least 1")
+	}
+	return nil
+}
+
+func ownerTeamNames(teams []api.OwnerTeam) []string {
+	names := make([]string, len(teams))
+	for i, t := range teams {
+		names[i] = t.Org + "/" + t.Slug
+	}
+	return names
+}
+
+// errNoOwnerTeams is returned when the backend predates owner teams. Such a
+// backend ignores the owner filters and edits instead of refusing them, so a
+// listing would silently cover every invariant.
+var errNoOwnerTeams = errors.Sentinel(
+	"this Aviator backend doesn't support invariant owner teams yet; owner filters and changes were not applied")
+
+func requireOwnerTeams(invariants []api.Invariant) error {
+	for i := range invariants {
+		if invariants[i].OwnerTeams == nil {
+			return errNoOwnerTeams
+		}
+	}
+	return nil
 }
 
 // parseCondition reads one --condition value: <type>=<value> to require a

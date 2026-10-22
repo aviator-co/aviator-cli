@@ -17,6 +17,14 @@ type InvariantCondition struct {
 	Negate bool   `json:"negate"`
 }
 
+// OwnerTeam names a GitHub team by org and slug. Name is the display name the
+// server returns; requests leave it empty.
+type OwnerTeam struct {
+	Org  string `json:"org"`
+	Slug string `json:"slug"`
+	Name string `json:"name,omitempty"`
+}
+
 // Invariant is a baseline invariant as returned by /api/v1/invariants. An
 // invariant with no repositories is account-scoped and applies to every repo.
 type Invariant struct {
@@ -33,8 +41,12 @@ type Invariant struct {
 	SourceRefs   []string             `json:"source_refs"`
 	Repositories []Repository         `json:"repositories"`
 	Conditions   []InvariantCondition `json:"conditions"`
-	CreatedAt    string               `json:"created_at"`
-	ModifiedAt   string               `json:"modified_at"`
+	// OwnerTeams are the effective owners: the invariant's own teams, else the
+	// account's default. Nil means the backend predates owner teams, which
+	// tells an unsupported backend apart from an unowned invariant.
+	OwnerTeams *[]OwnerTeam `json:"owner_teams"`
+	CreatedAt  string       `json:"created_at"`
+	ModifiedAt string       `json:"modified_at"`
 }
 
 // ListInvariantsQuery is the query string for GET /api/v1/invariants. A
@@ -43,13 +55,16 @@ type Invariant struct {
 // those ids and provenance values. Empty filters are omitted rather than sent
 // blank (the server reads a blank list as "no filter"), and Page and PerPage
 // are sent only when positive, so the server's defaults hold otherwise.
+// OwnerTeams (org/slug) and Unowned OR together and match the effective owner.
 type ListInvariantsQuery struct {
-	Repo    *Repository
-	Status  string
-	IDs     []int
-	Sources []string
-	Page    int
-	PerPage int
+	Repo       *Repository
+	Status     string
+	IDs        []int
+	Sources    []string
+	OwnerTeams []string
+	Unowned    bool
+	Page       int
+	PerPage    int
 }
 
 // InvariantCategory is one of the account's categories, whose slug create and
@@ -88,10 +103,11 @@ type CreateInvariantRequest struct {
 }
 
 // UpdateInvariantRequest is the body for PATCH /api/v1/invariants/<id>. Every
-// field is optional: nil leaves the current value alone. Repositories and
-// Conditions replace the current set wholesale when non-nil, so a pointer to an
-// empty slice clears them (an empty Repositories makes the invariant
-// account-scoped).
+// field is optional: nil leaves the current value alone. Repositories,
+// Conditions and OwnerTeams replace the current set wholesale when non-nil, so
+// a pointer to an empty slice clears them (an empty Repositories makes the
+// invariant account-scoped, an empty OwnerTeams falls back to the account's
+// default owner team).
 type UpdateInvariantRequest struct {
 	Title        *string               `json:"title,omitempty"`
 	Body         *string               `json:"body,omitempty"`
@@ -99,6 +115,7 @@ type UpdateInvariantRequest struct {
 	Repositories *[]Repository         `json:"repositories,omitempty"`
 	Enabled      *bool                 `json:"enabled,omitempty"`
 	Conditions   *[]InvariantCondition `json:"conditions,omitempty"`
+	OwnerTeams   *[]OwnerTeam          `json:"owner_teams,omitempty"`
 }
 
 // DeleteInvariantResponse is the response from DELETE /api/v1/invariants/<id>.
@@ -117,6 +134,47 @@ type SetInvariantStatusRequest struct {
 // SetInvariantStatusResponse carries the updated invariants.
 type SetInvariantStatusResponse struct {
 	Invariants []Invariant `json:"invariants"`
+}
+
+// SetInvariantOwnersRequest is the body for POST /api/v1/invariants/owners.
+// OwnerTeams replaces each invariant's owners; empty falls back to the
+// account's default owner team. The whole batch fails if the caller can't
+// manage every id.
+type SetInvariantOwnersRequest struct {
+	InvariantIDs []int       `json:"invariant_ids"`
+	OwnerTeams   []OwnerTeam `json:"owner_teams"`
+}
+
+// SetInvariantOwnersResponse carries the updated invariants.
+type SetInvariantOwnersResponse struct {
+	Invariants []Invariant `json:"invariants"`
+}
+
+// InvariantOwnerTeam is one of the account's teams with how many invariants
+// it owns, counting those that fall back to it as the default.
+type InvariantOwnerTeam struct {
+	OwnerTeam
+	InvariantCount int  `json:"invariant_count"`
+	IsDefault      bool `json:"is_default"`
+}
+
+// ListInvariantOwnerTeamsQuery pages GET /api/v1/invariants/owner-teams;
+// zero values leave the server's defaults.
+type ListInvariantOwnerTeamsQuery struct {
+	Page    int
+	PerPage int
+}
+
+// ListInvariantOwnerTeamsResponse is one page of
+// GET /api/v1/invariants/owner-teams, teams that own the most first.
+// UnownedCount is the invariants with no owner and no default team to fall
+// back to, the same on every page.
+type ListInvariantOwnerTeamsResponse struct {
+	OwnerTeams   []InvariantOwnerTeam `json:"owner_teams"`
+	UnownedCount int                  `json:"unowned_count"`
+	Page         int                  `json:"page"`
+	PerPage      int                  `json:"per_page"`
+	HasMore      bool                 `json:"has_more"`
 }
 
 // ListInvariants fetches one page of the account's baseline invariants.
@@ -149,13 +207,23 @@ func listInvariantsQuery(q ListInvariantsQuery) url.Values {
 	if len(q.Sources) > 0 {
 		values.Set("source", strings.Join(q.Sources, ","))
 	}
-	if q.Page > 0 {
-		values.Set("page", strconv.Itoa(q.Page))
+	if len(q.OwnerTeams) > 0 {
+		values.Set("owner_team", strings.Join(q.OwnerTeams, ","))
 	}
-	if q.PerPage > 0 {
-		values.Set("per_page", strconv.Itoa(q.PerPage))
+	if q.Unowned {
+		values.Set("unowned", "true")
 	}
+	setPage(values, q.Page, q.PerPage)
 	return values
+}
+
+func setPage(values url.Values, page, perPage int) {
+	if page > 0 {
+		values.Set("page", strconv.Itoa(page))
+	}
+	if perPage > 0 {
+		values.Set("per_page", strconv.Itoa(perPage))
+	}
 }
 
 // ListInvariantCategories fetches the account's invariant categories.
@@ -164,6 +232,20 @@ func (c *Client) ListInvariantCategories(
 ) (*ListInvariantCategoriesResponse, error) {
 	var out ListInvariantCategoriesResponse
 	if err := c.getJSON(ctx, "/api/v1/invariants/categories", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListInvariantOwnerTeams fetches one page of the account's teams with their
+// invariant counts — the org/slug names the owner filters and edits take.
+func (c *Client) ListInvariantOwnerTeams(
+	ctx context.Context, q ListInvariantOwnerTeamsQuery,
+) (*ListInvariantOwnerTeamsResponse, error) {
+	var out ListInvariantOwnerTeamsResponse
+	values := url.Values{}
+	setPage(values, q.Page, q.PerPage)
+	if err := c.getJSON(ctx, "/api/v1/invariants/owner-teams", values, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -210,6 +292,17 @@ func (c *Client) SetInvariantStatus(
 ) (*SetInvariantStatusResponse, error) {
 	var out SetInvariantStatusResponse
 	if err := c.postJSON(ctx, "/api/v1/invariants/status", req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SetInvariantOwners replaces the owner teams of invariants in bulk.
+func (c *Client) SetInvariantOwners(
+	ctx context.Context, req SetInvariantOwnersRequest,
+) (*SetInvariantOwnersResponse, error) {
+	var out SetInvariantOwnersResponse
+	if err := c.postJSON(ctx, "/api/v1/invariants/owners", req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
