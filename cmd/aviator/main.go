@@ -7,9 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/config"
+	"github.com/aviator-co/aviator-cli/internal/update"
 	"github.com/aviator-co/aviator-cli/internal/utils/colors"
 	"github.com/spf13/cobra"
 )
@@ -69,11 +71,34 @@ func main() {
 }
 
 func run() int {
-	if err := rootCmd.Execute(); err != nil {
+	var notices chan string
+	if update.Enabled() {
+		notices = make(chan string, 1)
+		go func() { notices <- update.Notice() }()
+	}
+
+	err := rootCmd.Execute()
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s %s\n", colors.Failure("error:"), err)
+	}
+	if notices != nil {
+		printUpdateNotice(notices)
+	}
+	if err != nil {
 		return 1
 	}
 	return 0
+}
+
+// printUpdateNotice waits briefly so a once-a-day cache miss can still land before the process exits.
+func printUpdateNotice(notices <-chan string) {
+	select {
+	case notice := <-notices:
+		if notice != "" {
+			fmt.Fprintf(os.Stderr, "\n%s\n", colors.Faint(notice))
+		}
+	case <-time.After(time.Second):
+	}
 }
 
 // discoverRepoConfigDir best-effort locates a repo-local config dir

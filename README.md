@@ -64,6 +64,7 @@ Environment variables override the config file:
 
 - `AVIATOR_API_TOKEN`
 - `AVIATOR_API_HOST`
+- `AVIATOR_NO_UPDATE_NOTIFIER`: set to anything to stop the new-version notice
 
 ## Usage
 
