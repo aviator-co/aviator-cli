@@ -18,7 +18,7 @@ func TestExperimentalCommandsHidden(t *testing.T) {
 		if err := rootCmd.Execute(); err != nil {
 			t.Fatalf("%v: %v", args, err)
 		}
-		for _, name := range []string{"actor"} {
+		for _, name := range []string{"actor", "decision"} {
 			if strings.Contains(strings.ToLower(out.String()), name) {
 				t.Errorf("%v lists %q:\n%s", args, name, out.String())
 			}

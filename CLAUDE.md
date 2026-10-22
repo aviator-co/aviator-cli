@@ -30,6 +30,8 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   invariants.go     # `aviator invariants <list|categories|create|edit|delete|approve|reject|set-status>`
   invariants_format.go  # text rendering for the invariants commands
   actors.go         # `aviator actors <list|edit>` (experimental build only)
+  decisions.go      # `aviator decisions <list|show|create|edit|comment|settle|reopen|apply>` (experimental)
+  decisions_format.go  # text rendering for the decisions commands
   version.go        # `aviator version`
   helpers.go        # parseRepo(s), readSpecFile, collectCriteria, collectBody
 internal/
@@ -187,6 +189,36 @@ The CLI targets endpoints in the `mergeit` backend:
   `~/.config/aviator/actors.yaml` (`{actors: [{name, role, description}]}`,
   agents only) is edited by hand or by `aviator actors edit`, never sent to
   the API, and reconciled by the server.
+
+- `/api/v1/verify/<n>/decisions` — experimental build only. Every body
+  rejects unknown keys, and every actor is `{role, name}` on the wire (found or
+  created by the server), but a bare name in batch files and `--actor`, which
+  the CLI resolves against the local actors file before sending. People never
+  go in that file: the built-in actor `person` is the signed-in user, sent as
+  `{role: "person"}` with no name, and the server names it after the Aviator
+  user behind the token.
+  - `GET` — `{decisions: [...]}`, open first. `GET /<id>` — one decision.
+  - `POST` — `{decisions: [{type, title, actor, summary?, anchor?,
+    outcome?}]}`, creates only, all-or-nothing, in request order. An `outcome`
+    creates it settled.
+  - `PATCH /<id>` — `{actor, type?, title?, summary?, anchor?, outcome?}`;
+    only keys present change, and `outcome` settles. `outcome: null` reopens a
+    settled decision, the only change a settled one accepts (409 otherwise).
+  - `POST /<id>/comments` — `{via: "aviator-cli", model_metadata?: {model},
+    comments: [{actor, body}]}`, all-or-nothing. `via` and `model_metadata`
+    live only here. `PATCH /<id>/comments/<comment_id>` — `{body}`.
+  - Permission is on the user behind the token, not the actor: only the user
+    who raised a decision can patch it, and only the comment's writer can edit
+    it (403). Settling writes no comment, so a reason is a separate comments
+    POST.
+  - `aviator decisions apply` keeps the CLI's own batch file shape
+    (`{model_metadata?, decisions: [{decision: {id?, ...}, comments?,
+    settlement?: {outcome, actor, body?}}]}`) and `applyBatch` splits it: one
+    create POST (settled ones with their outcome), a PATCH per existing
+    decision changed or settled, then a comments POST per decision, with the
+    settlement body last as a comment from its actor. That's not atomic: a
+    refusal stops the rest and the error lists what was already recorded. The
+    single-decision commands build the same batch.
 
 `POST` and `PATCH /api/v1/verify`, dismissals, and the listing are gated on
 `role="user"`: an account-scoped API token resolves to no role and gets a 403,
