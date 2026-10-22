@@ -171,11 +171,12 @@ func indentContinuation(s string, width int) string {
 // counts, marking the default, then how many invariants nobody owns.
 func formatInvariantOwnerTeams(resp *api.ListInvariantOwnerTeamsResponse) string {
 	var b strings.Builder
-	if len(resp.OwnerTeams) == 0 && resp.Page > 1 {
+	switch {
+	case len(resp.OwnerTeams) == 0 && resp.Page > 1:
 		fmt.Fprintf(&b, "Nothing on page %d, the listing ends before it. Try a lower --page.\n", resp.Page)
-	} else if len(resp.OwnerTeams) == 0 {
+	case len(resp.OwnerTeams) == 0:
 		b.WriteString(colors.Warning("no teams yet") + ": Aviator has not synced any GitHub teams for this account\n")
-	} else {
+	default:
 		w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "TEAM\tINVARIANTS\tNAME")
 		for _, t := range resp.OwnerTeams {
