@@ -167,11 +167,13 @@ func indentContinuation(s string, width int) string {
 	return strings.ReplaceAll(s, "\n", "\n"+strings.Repeat(" ", width))
 }
 
-// formatInvariantOwnerTeams renders the teams with their invariant counts,
-// marking the default, then how many invariants nobody owns.
+// formatInvariantOwnerTeams renders one page of teams with their invariant
+// counts, marking the default, then how many invariants nobody owns.
 func formatInvariantOwnerTeams(resp *api.ListInvariantOwnerTeamsResponse) string {
 	var b strings.Builder
-	if len(resp.OwnerTeams) == 0 {
+	if len(resp.OwnerTeams) == 0 && resp.Page > 1 {
+		fmt.Fprintf(&b, "Nothing on page %d, the listing ends before it. Try a lower --page.\n", resp.Page)
+	} else if len(resp.OwnerTeams) == 0 {
 		b.WriteString(colors.Warning("no teams yet") + ": Aviator has not synced any GitHub teams for this account\n")
 	} else {
 		w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
@@ -184,6 +186,9 @@ func formatInvariantOwnerTeams(resp *api.ListInvariantOwnerTeamsResponse) string
 			fmt.Fprintf(w, "%s/%s\t%d\t%s\n", t.Org, t.Slug, t.InvariantCount, name)
 		}
 		_ = w.Flush()
+		if resp.HasMore {
+			fmt.Fprintf(&b, "\nSee more teams --page %d\n", max(resp.Page, 1)+1)
+		}
 	}
 	if resp.UnownedCount > 0 {
 		fmt.Fprintf(&b, "\n%s with no owner team (see list --unowned)\n",
@@ -255,6 +260,7 @@ type ownerTeamJSON struct {
 type ownerTeamsJSON struct {
 	OwnerTeams   []ownerTeamJSON `json:"owner_teams"`
 	UnownedCount int             `json:"unowned_count"`
+	HasMore      bool            `json:"has_more"`
 }
 
 type categoryJSON struct {
@@ -311,6 +317,7 @@ func newOwnerTeamsJSON(resp *api.ListInvariantOwnerTeamsResponse) ownerTeamsJSON
 	out := ownerTeamsJSON{
 		OwnerTeams:   make([]ownerTeamJSON, 0, len(resp.OwnerTeams)),
 		UnownedCount: resp.UnownedCount,
+		HasMore:      resp.HasMore,
 	}
 	for _, t := range resp.OwnerTeams {
 		out.OwnerTeams = append(out.OwnerTeams, ownerTeamJSON{

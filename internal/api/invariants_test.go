@@ -310,7 +310,7 @@ func TestListInvariantOwnerTeams(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp, err := newTestClient(srv).ListInvariantOwnerTeams(context.Background())
+	resp, err := newTestClient(srv).ListInvariantOwnerTeams(context.Background(), ListInvariantOwnerTeamsQuery{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

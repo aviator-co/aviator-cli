@@ -158,12 +158,23 @@ type InvariantOwnerTeam struct {
 	IsDefault      bool `json:"is_default"`
 }
 
-// ListInvariantOwnerTeamsResponse is the response from
-// GET /api/v1/invariants/owner-teams. UnownedCount is the invariants with no
-// owner and no default team to fall back to.
+// ListInvariantOwnerTeamsQuery pages GET /api/v1/invariants/owner-teams;
+// zero values leave the server's defaults.
+type ListInvariantOwnerTeamsQuery struct {
+	Page    int
+	PerPage int
+}
+
+// ListInvariantOwnerTeamsResponse is one page of
+// GET /api/v1/invariants/owner-teams, teams that own the most first.
+// UnownedCount is the invariants with no owner and no default team to fall
+// back to, the same on every page.
 type ListInvariantOwnerTeamsResponse struct {
 	OwnerTeams   []InvariantOwnerTeam `json:"owner_teams"`
 	UnownedCount int                  `json:"unowned_count"`
+	Page         int                  `json:"page"`
+	PerPage      int                  `json:"per_page"`
+	HasMore      bool                 `json:"has_more"`
 }
 
 // ListInvariants fetches one page of the account's baseline invariants.
@@ -202,13 +213,17 @@ func listInvariantsQuery(q ListInvariantsQuery) url.Values {
 	if q.Unowned {
 		values.Set("unowned", "true")
 	}
-	if q.Page > 0 {
-		values.Set("page", strconv.Itoa(q.Page))
-	}
-	if q.PerPage > 0 {
-		values.Set("per_page", strconv.Itoa(q.PerPage))
-	}
+	setPage(values, q.Page, q.PerPage)
 	return values
+}
+
+func setPage(values url.Values, page, perPage int) {
+	if page > 0 {
+		values.Set("page", strconv.Itoa(page))
+	}
+	if perPage > 0 {
+		values.Set("per_page", strconv.Itoa(perPage))
+	}
 }
 
 // ListInvariantCategories fetches the account's invariant categories.
@@ -222,13 +237,15 @@ func (c *Client) ListInvariantCategories(
 	return &out, nil
 }
 
-// ListInvariantOwnerTeams fetches the account's teams with their invariant
-// counts — the org/slug names the owner filters and edits take.
+// ListInvariantOwnerTeams fetches one page of the account's teams with their
+// invariant counts — the org/slug names the owner filters and edits take.
 func (c *Client) ListInvariantOwnerTeams(
-	ctx context.Context,
+	ctx context.Context, q ListInvariantOwnerTeamsQuery,
 ) (*ListInvariantOwnerTeamsResponse, error) {
 	var out ListInvariantOwnerTeamsResponse
-	if err := c.getJSON(ctx, "/api/v1/invariants/owner-teams", nil, &out); err != nil {
+	values := url.Values{}
+	setPage(values, q.Page, q.PerPage)
+	if err := c.getJSON(ctx, "/api/v1/invariants/owner-teams", values, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

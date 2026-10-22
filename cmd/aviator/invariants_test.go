@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -367,7 +368,7 @@ func TestBuildUpdateRequestOwnerTeams(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	want := []api.OwnerTeam{{Org: "acme", Slug: "payments"}, {Org: "acme", Slug: "infra"}}
-	if req.OwnerTeams == nil || len(*req.OwnerTeams) != 2 || (*req.OwnerTeams)[1] != want[1] {
+	if req.OwnerTeams == nil || !reflect.DeepEqual(*req.OwnerTeams, want) {
 		t.Errorf("owner teams = %v, want %v", req.OwnerTeams, want)
 	}
 

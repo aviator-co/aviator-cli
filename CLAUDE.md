@@ -164,8 +164,9 @@ so they need a user token or an `aviator login` session.
 
 - `/api/v1/invariants` — `GET` (list; `org`+`repo`, `status`, comma-separated
   `ids`, `source` and `owner_team` (`org/slug`), `unowned`, `page`, `per_page`
-  query), `GET /categories`, `GET /owner-teams` (the account's teams with
-  `invariant_count` and `is_default`, plus `unowned_count`), `POST` (create),
+  query), `GET /categories`, `GET /owner-teams` (paged like the list, the
+  account's teams with `invariant_count` and `is_default`, most-owning first,
+  plus `unowned_count`), `POST` (create),
   `PATCH /<id>` (partial update; `repositories`, `conditions` and
   `owner_teams` (`[{org, slug}]`) replace wholesale when present, `[]` clears,
   which for owners means the default owner team applies; `enabled` is refused
@@ -174,8 +175,9 @@ so they need a user token or an `aviator login` session.
   (`{invariant_ids, owner_teams}` bulk owner change). Each invariant carries
   its effective `owner_teams`; a backend that predates owner teams omits the
   key and ignores the owner filters and fields, so the CLI refuses owner
-  operations when it is missing. Reads need any member; writes need a
-  maintainer or someone directly on the invariant's owner team.
+  operations when it is missing. Reads need any member; create needs any
+  user token; other writes need a maintainer, an admin, or someone directly
+  on the invariant's owner team.
 
 When changing a request/response shape, keep it in sync with the backend
 schemas (`src/api/verify.py`, `src/api/runbook.py`, `src/api/invariants.py` in

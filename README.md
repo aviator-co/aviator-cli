@@ -186,10 +186,11 @@ aviator dismiss r/123 --criteria-json \
 Baseline invariants are standing rules every verification checks on top of a
 session's own criteria. Each one is owned by a GitHub team: its own owner
 teams, or the account's default owner team when it has none. Listing works with
-any API token, account-scoped ones included. Creating, editing, deleting,
-approving, and changing owners act as the caller, so they need a user access
-token (`aviator login` or a personal token) whose user is a maintainer, an
-admin, or directly on the invariant's owner team.
+any API token, account-scoped ones included. Everything else acts as the
+caller, so it needs a user access token (`aviator login` or a personal token).
+Any user can create; editing, deleting, approving, and changing owners also
+need the user to be a maintainer, an admin, or directly on the invariant's
+owner team.
 
 ```bash
 aviator invariants list                          # newest first, 20 per page (--limit, --page)
@@ -200,7 +201,7 @@ aviator invariants list --ids 42,43              # specific rules by id
 aviator invariants list --owner-team acme/payments   # what one team owns
 aviator invariants list --unowned                # no owner team and no default
 aviator invariants categories                    # slugs that --category accepts
-aviator invariants owner-teams                   # teams, with how many invariants each owns
+aviator invariants owner-teams                   # teams by invariants owned, 20 per page (--limit, --page)
 
 aviator invariants create \
   --title "Webhook handlers verify signatures" \
