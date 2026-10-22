@@ -29,6 +29,7 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   evidence.go       # `aviator evidence`  -> signed URL / download of one evidence file
   invariants.go     # `aviator invariants <list|categories|create|edit|delete|approve|reject|set-status>`
   invariants_format.go  # text rendering for the invariants commands
+  actors.go         # `aviator actors <list|edit>` (experimental build only)
   version.go        # `aviator version`
   helpers.go        # parseRepo(s), readSpecFile, collectCriteria, collectBody
 internal/
@@ -179,6 +180,13 @@ The CLI targets endpoints in the `mergeit` backend:
 - `GET /api/v1/verify/evidence/<id>` — 302 to a short-lived signed storage URL.
   The CLI doesn't follow it with the bearer token: `EvidenceURL` stops at the
   redirect and the download is a plain unauthenticated GET.
+
+- `GET /api/v1/verify/actors` — `{actors: [{id, name, role}]}`, the caller's
+  actors, for `aviator actors list`. Experimental build only. (The backend's
+  find-or-create `POST` exists but the CLI doesn't call it.) The local
+  `~/.config/aviator/actors.yaml` (`{actors: [{name, role, description}]}`,
+  agents only) is edited by hand or by `aviator actors edit`, never sent to
+  the API, and reconciled by the server.
 
 `POST` and `PATCH /api/v1/verify`, dismissals, and the listing are gated on
 `role="user"`: an account-scoped API token resolves to no role and gets a 403,
