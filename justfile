@@ -5,9 +5,14 @@ default:
 build:
     go build -o aviator ./cmd/aviator
 
-# Run all tests with vet
+# Build ./aviator with the experimental (internal-only) commands
+build-experimental:
+    go build -tags experimental -o aviator ./cmd/aviator
+
+# Run all tests with vet, with and without the experimental tag
 test:
     go test --vet=all ./...
+    go test --vet=all -tags experimental ./...
 
 # Check formatting and run golangci-lint (golangci-lint must be installed)
 lint:

@@ -29,6 +29,9 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   evidence.go       # `aviator evidence`  -> signed URL / download of one evidence file
   invariants.go     # `aviator invariants <list|categories|owner-teams|create|edit|delete|approve|reject|set-status|set-owner>`
   invariants_format.go  # text rendering for the invariants commands
+  actors.go         # `aviator actors <list|edit>` (experimental build only)
+  decisions.go      # `aviator decisions <list|show|create|edit|comment|settle|reopen|apply>` (experimental)
+  decisions_format.go  # text rendering for the decisions commands
   version.go        # `aviator version`
   helpers.go        # parseRepo(s), readSpecFile, collectCriteria, collectBody
 internal/
@@ -94,6 +97,28 @@ Equivalent raw commands: `go build ./...`, `go test --vet=all ./...`,
   no `formatters` block: golangci-lint bundles its own older copies of both, and
   two copies grading the same files is how CI deadlocks.
 
+## Experimental features
+
+New features that are only for internal dogfooding sit behind the
+`experimental` Go build tag, so they are left out of stable binaries entirely.
+Nobody can switch them on with a flag or env var.
+
+- A new command goes in its own file that starts with `//go:build experimental`
+  and registers itself: `func init() { rootCmd.AddCommand(fooCmd) }`. Don't
+  list it in `main.go`.
+- Mark a new top-level command `Hidden: true`, so even experimental builds
+  leave it out of `--help`, `aviator help`, and shell completion. It still runs
+  when called by name.
+- A new flag or branch inside an existing command is gated on
+  `config.Experimental` (a const, so the stable build drops the dead code).
+- No release (stable or nightly) is built with the tag; both are public. The
+  team builds its own binary with `just build-experimental` or
+  `go run -tags experimental ./cmd/aviator`.
+- CI builds, tests, and smoke-tests both variants; golangci-lint runs with the
+  tag on.
+- To ship a feature to everyone, delete the build tag or the `config.Experimental`
+  check.
+
 ## CI and releases
 
 - `.github/workflows/go.yml` — build, test, smoke test, golangci-lint on PRs.
@@ -157,6 +182,43 @@ The CLI targets endpoints in the `mergeit` backend:
 - `GET /api/v1/verify/evidence/<id>` — 302 to a short-lived signed storage URL.
   The CLI doesn't follow it with the bearer token: `EvidenceURL` stops at the
   redirect and the download is a plain unauthenticated GET.
+
+- `GET /api/v1/verify/actors` — `{actors: [{id, name, role}]}`, the caller's
+  actors, for `aviator actors list`. Experimental build only. (The backend's
+  find-or-create `POST` exists but the CLI doesn't call it.) The local
+  `~/.config/aviator/actors.yaml` (`{actors: [{name, role, description}]}`,
+  agents only) is edited by hand or by `aviator actors edit`, never sent to
+  the API, and reconciled by the server.
+
+- `/api/v1/verify/<n>/decisions` — experimental build only. Every body
+  rejects unknown keys, and every actor is `{role, name}` on the wire (found or
+  created by the server), but a bare name in batch files and `--actor`, which
+  the CLI resolves against the local actors file before sending. People never
+  go in that file: the built-in actor `person` is the signed-in user, sent as
+  `{role: "person"}` with no name, and the server names it after the Aviator
+  user behind the token.
+  - `GET` — `{decisions: [...]}`, open first. `GET /<id>` — one decision.
+  - `POST` — `{decisions: [{type, title, actor, summary?, anchor?,
+    outcome?}]}`, creates only, all-or-nothing, in request order. An `outcome`
+    creates it settled.
+  - `PATCH /<id>` — `{actor, type?, title?, summary?, anchor?, outcome?}`;
+    only keys present change, and `outcome` settles. `outcome: null` reopens a
+    settled decision, the only change a settled one accepts (409 otherwise).
+  - `POST /<id>/comments` — `{via: "aviator-cli", model_metadata?: {model},
+    comments: [{actor, body}]}`, all-or-nothing. `via` and `model_metadata`
+    live only here. `PATCH /<id>/comments/<comment_id>` — `{body}`.
+  - Permission is on the user behind the token, not the actor: only the user
+    who raised a decision can patch it, and only the comment's writer can edit
+    it (403). Settling writes no comment, so a reason is a separate comments
+    POST.
+  - `aviator decisions apply` keeps the CLI's own batch file shape
+    (`{model_metadata?, decisions: [{decision: {id?, ...}, comments?,
+    settlement?: {outcome, actor, body?}}]}`) and `applyBatch` splits it: one
+    create POST (settled ones with their outcome), a PATCH per existing
+    decision changed or settled, then a comments POST per decision, with the
+    settlement body last as a comment from its actor. That's not atomic: a
+    refusal stops the rest and the error lists what was already recorded. The
+    single-decision commands build the same batch.
 
 `POST` and `PATCH /api/v1/verify`, dismissals, and the listing are gated on
 `role="user"`: an account-scoped API token resolves to no role and gets a 403,
