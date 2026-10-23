@@ -54,6 +54,7 @@ func TestTriggerVerifyRunSendsFlags(t *testing.T) {
 		body, _ := io.ReadAll(r.Body)
 		for _, want := range []string{
 			`"evaluator_only":true`, `"force":true`, `"preview_config_name":"docs"`,
+			`"regenerate_feedback":"route to runtime"`,
 		} {
 			if !strings.Contains(string(body), want) {
 				t.Errorf("body = %s, missing %s", body, want)
@@ -64,8 +65,10 @@ func TestTriggerVerifyRunSendsFlags(t *testing.T) {
 	defer srv.Close()
 
 	_, err := newTestClient(srv).TriggerVerifyRun(
-		context.Background(), 7,
-		TriggerVerifyRunRequest{EvaluatorOnly: true, Force: true, PreviewConfigName: "docs"},
+		context.Background(), 7, TriggerVerifyRunRequest{
+			EvaluatorOnly: true, Force: true, PreviewConfigName: "docs",
+			RegenerateFeedback: "route to runtime",
+		},
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -22,6 +22,7 @@ var verifyFlags struct {
 	ScenarioGuidance string
 	EvaluatorOnly    bool
 	Force            bool
+	RegenScenarios   string
 	Preview          string
 	JSON             bool
 }
@@ -33,7 +34,7 @@ var verifySubmitOnlyFlags = []string{
 	"working-branch", "target-branch", "spec", "scenario-guidance",
 }
 
-var verifyTriggerOnlyFlags = []string{"evaluator-only", "force"}
+var verifyTriggerOnlyFlags = []string{"evaluator-only", "force", "regen-scenarios"}
 
 // noWorkingBranchWarning covers the one thing a submission gives up without
 // --working-branch: with no branch to match on, the session can only reach a PR
@@ -76,6 +77,17 @@ var verifyCmd = &cobra.Command{
 		"it is changed again (here or with aviator edit --preview). Without a\n" +
 		"choice, the first run saves the repo default by name, so going back to\n" +
 		"the repo default later means passing that config's name.\n" +
+		"\n" +
+		"The scenarios each criterion is checked by (in a preview, or by code\n" +
+		"scan) are written once, on the first run, and --force reuses them.\n" +
+		"--regen-scenarios \"<feedback>\" writes them again before the run (say,\n" +
+		"after changing the preview's skill): every criterion goes back through\n" +
+		"planning, with the feedback saying what the new scenarios should do\n" +
+		"differently. Once scenarios exist, --scenario-guidance from the\n" +
+		"submission isn't read again, so restate anything from it that still\n" +
+		"matters. It needs a preview, and is capped at a few per session in any\n" +
+		"24 hours (dashboard regenerations count too), except on accounts that\n" +
+		"bring their own model key.\n" +
 		"\n" +
 		"Coding agents: use the /verify-submit skill from\n" +
 		pluginRepo + ", which drafts the intent and\n" +
@@ -186,6 +198,17 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 		}
 	}
 
+	var regenFeedback string
+	if cmd.Flags().Changed("regen-scenarios") {
+		regenFeedback = strings.TrimSpace(verifyFlags.RegenScenarios)
+		if regenFeedback == "" {
+			return errors.New("--regen-scenarios needs feedback saying what the new scenarios should do differently")
+		}
+		if verifyFlags.EvaluatorOnly {
+			return errors.New("--regen-scenarios replaces the scenarios, so it can't be combined with --evaluator-only")
+		}
+	}
+
 	runbookNumber, err := parseRunbookID(arg)
 	if err != nil {
 		return err
@@ -194,11 +217,13 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := client.TriggerVerifyRun(cmd.Context(), runbookNumber, api.TriggerVerifyRunRequest{
-		EvaluatorOnly:     verifyFlags.EvaluatorOnly,
-		Force:             verifyFlags.Force,
-		PreviewConfigName: verifyFlags.Preview,
-	})
+	req := api.TriggerVerifyRunRequest{
+		EvaluatorOnly:      verifyFlags.EvaluatorOnly,
+		Force:              verifyFlags.Force,
+		PreviewConfigName:  verifyFlags.Preview,
+		RegenerateFeedback: regenFeedback,
+	}
+	resp, err := client.TriggerVerifyRun(cmd.Context(), runbookNumber, req)
 	if err != nil {
 		return err
 	}
@@ -243,6 +268,8 @@ func init() {
 		"start a fresh full run even if an equivalent run already exists (trigger mode only)")
 	f.StringVar(&verifyFlags.Preview, "preview", "",
 		"preview config the session's runs use instead of the repo default; sticks until changed")
+	f.StringVar(&verifyFlags.RegenScenarios, "regen-scenarios", "",
+		"rewrite the scenarios before running, with feedback on what to change (trigger mode only)")
 	f.BoolVar(&verifyFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 }
 
