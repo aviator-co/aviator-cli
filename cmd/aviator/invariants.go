@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
@@ -51,24 +52,35 @@ var invariantsCmd = &cobra.Command{
 		"user to be a maintainer, an admin, or directly on the invariant's owner\n" +
 		"team.\n" +
 		"\n" +
-		"Docs: https://docs.aviator.co/verify/how-to-guides/managing-invariants-with-the-cli",
+		"Docs: " + docsInvariants,
 }
 
 var invariantsListFlags struct {
-	Repo       string
-	Status     string
-	IDs        []int
-	Sources    []string
-	OwnerTeams []string
-	Unowned    bool
-	Page       int
-	Limit      int
+	Repo         string
+	Status       string
+	IDs          []int
+	Sources      []string
+	OwnerTeams   []string
+	Unowned      bool
+	Usage        bool
+	Sort         string
+	NeverApplied bool
+	Since        string
+	Page         int
+	Limit        int
 }
 
 var invariantsListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List baseline invariants, newest first",
-	Args:  cobra.NoArgs,
+	Long: "List baseline invariants, newest first. With --usage each row also\n" +
+		"says how many reviews applied, failed and waived it; the listing then\n" +
+		"covers active invariants unless --status says otherwise, and --sort,\n" +
+		"--never-applied and --since narrow or order it. Counts are per review\n" +
+		"session, all-time unless --since.\n" +
+		"\n" +
+		"Docs: " + docsInvariants,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := validatePageFlags(invariantsListFlags.Page, invariantsListFlags.Limit); err != nil {
 			return err
@@ -93,6 +105,15 @@ var invariantsListCmd = &cobra.Command{
 			}
 			query.Repo = &repo
 		}
+		if err := checkUsageOnlyFlags(cmd.Flags(), invariantsListFlags.Usage); err != nil {
+			return err
+		}
+		var usage *invariantListUsage
+		if invariantsListFlags.Usage {
+			if usage, err = applyUsageFlags(&query, time.Now()); err != nil {
+				return err
+			}
+		}
 
 		client, err := api.NewClient()
 		if err != nil {
@@ -108,12 +129,56 @@ var invariantsListCmd = &cobra.Command{
 				return err
 			}
 		}
+		if usage != nil {
+			if err := requireUsage(resp.Invariants); err != nil {
+				return err
+			}
+		}
 		if invariantsFlags.JSON {
 			return printJSON(invariantListJSON{Invariants: newInvariantsJSON(resp.Invariants), HasMore: resp.HasMore})
 		}
-		fmt.Print(formatInvariantList(resp))
+		fmt.Print(formatInvariantList(resp, usage))
 		return nil
 	},
+}
+
+// usageOnlyFlags are the list flags that only mean something with --usage.
+var usageOnlyFlags = []string{"sort", "never-applied", "since"}
+
+// checkUsageOnlyFlags refuses a usage-only flag passed without --usage,
+// since the server would answer 400 with less to go on.
+func checkUsageOnlyFlags(flags *pflag.FlagSet, usage bool) error {
+	if usage {
+		return nil
+	}
+	for _, name := range usageOnlyFlags {
+		if flags.Changed(name) {
+			return errors.Errorf("--%s needs --usage", name)
+		}
+	}
+	return nil
+}
+
+// applyUsageFlags puts the --usage, --sort, --never-applied and --since
+// values on the query and returns what the footer should say. An absent
+// --status becomes active, the only status whose counts mean anything.
+func applyUsageFlags(query *api.ListInvariantsQuery, now time.Time) (*invariantListUsage, error) {
+	sort, err := parseUsageSort(invariantsListFlags.Sort)
+	if err != nil {
+		return nil, err
+	}
+	since, err := parseSince(invariantsListFlags.Since, now)
+	if err != nil {
+		return nil, err
+	}
+	if query.Status == "" {
+		query.Status = "active"
+	}
+	query.IncludeUsage = true
+	query.Sort = sort
+	query.NeverApplied = invariantsListFlags.NeverApplied
+	query.Since = since.Param
+	return &invariantListUsage{Status: query.Status, Window: since.Label}, nil
 }
 
 var invariantsCategoriesCmd = &cobra.Command{
@@ -490,7 +555,7 @@ var invariantsSetOwnerCmd = &cobra.Command{
 		}
 		fmt.Printf("%s %s now %s\n", colors.Success("✓"),
 			english.Plural(len(resp.Invariants), "invariant", ""), owner)
-		fmt.Print(formatInvariantTable(resp.Invariants))
+		fmt.Print(formatInvariantTable(resp.Invariants, false))
 		return nil
 	},
 }
@@ -516,7 +581,7 @@ func runSetInvariantStatus(cmd *cobra.Command, status string, rawIDs []string) e
 	}
 	fmt.Printf("%s %s now %s\n", colors.Success("✓"),
 		english.Plural(len(resp.Invariants), "invariant", ""), status)
-	fmt.Print(formatInvariantTable(resp.Invariants))
+	fmt.Print(formatInvariantTable(resp.Invariants, false))
 	return nil
 }
 
@@ -535,6 +600,13 @@ func init() {
 		"only invariants these org/team-slug teams own, the default team's fallbacks included (comma-separated)")
 	lf.BoolVar(&invariantsListFlags.Unowned, "unowned", false,
 		"only invariants with no owner team and no default to fall back to")
+	lf.BoolVar(&invariantsListFlags.Usage, "usage", false,
+		"add how many reviews applied, failed and waived each invariant (active ones unless --status)")
+	lf.StringVar(&invariantsListFlags.Sort, "sort", "",
+		"with --usage, order by this count, highest first ("+usageSorts+")")
+	lf.BoolVar(&invariantsListFlags.NeverApplied, "never-applied", false,
+		"with --usage, only invariants no review has applied")
+	registerSinceFlag(lf, &invariantsListFlags.Since)
 	lf.IntVar(&invariantsListFlags.Page, "page", 1, "page number, starting at 1")
 	lf.IntVar(&invariantsListFlags.Limit, "limit", 20, "invariants per page (max 100)")
 
@@ -564,6 +636,10 @@ func init() {
 
 	invariantsCmd.AddCommand(
 		invariantsListCmd,
+		invariantsShowCmd,
+		invariantsInsightsCmd,
+		invariantsReviewsCmd,
+		invariantsWaiversCmd,
 		invariantsCategoriesCmd,
 		invariantsOwnerTeamsCmd,
 		invariantsCreateCmd,
@@ -648,6 +724,21 @@ func requireOwnerTeams(invariants []api.Invariant) error {
 	for i := range invariants {
 		if invariants[i].OwnerTeams == nil {
 			return errNoOwnerTeams
+		}
+	}
+	return nil
+}
+
+// errNoUsage is returned when the backend predates invariant analytics: it
+// ignores include=usage and answers 200 without counts, so the table would
+// show every invariant as never applied.
+var errNoUsage = errors.Sentinel(
+	"your Aviator backend does not support invariant analytics yet (GET /api/v1/invariants returned no usage)")
+
+func requireUsage(invariants []api.Invariant) error {
+	for i := range invariants {
+		if invariants[i].Usage == nil {
+			return errNoUsage
 		}
 	}
 	return nil
