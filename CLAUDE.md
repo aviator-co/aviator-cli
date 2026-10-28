@@ -122,10 +122,14 @@ Equivalent raw commands: `go build ./...`, `go test --vet=all ./...`,
 The CLI targets endpoints in the `mergeit` backend:
 
 - `POST /api/v1/verify` — `{repository:{org,name}, intent, acceptance_criteria,
-  working_branch?, target_branch?, spec_file?, preview_config_name?}`. Creates a
-  verify-only runbook session, owned by the caller, seeded with the criteria.
-  `preview_config_name` (`--preview`) names one of the repo's preview configs;
-  unknown names are a 400 `invalid-input`.
+  working_branch?, target_branch?, spec_file?, preview_config_name?,
+  scenario_guidance?}`. Creates a verify-only runbook session, owned by the
+  caller, seeded with the criteria. `preview_config_name` (`--preview`) names
+  one of the repo's preview configs; unknown names are a 400 `invalid-input`.
+  `scenario_guidance` (`--scenario-guidance`) is held on the session and read
+  by the prepass until the session's first scenarios are written. The backend
+  treats blank as none and caps it at 4000 characters; the CLI also refuses a
+  blank flag. It isn't returned or editable, and never reaches the evaluator.
 - `POST /api/v1/runbook` — `{repository, intent, oneshot, target_branch?,
   spec_file?, acceptance_criteria?, ...}`. Creates a runbook from an intent
   (`prompt` is a deprecated backend alias; the CLI sends `intent`); criteria
@@ -140,9 +144,17 @@ The CLI targets endpoints in the `mergeit` backend:
   `stale-runbook-version` when it's behind). Returns the session with its
   `url`, `version`, and `preview_config_name`. Starts no run.
 - `POST /api/v1/verify/<n>/runs` — `{evaluator_only?, force?,
-  preview_config_name?}`. Triggers a verification run, deduplicated against an
-  equivalent run unless `force` or the preview config changes. A preview config
-  set on submit, edit, or trigger sticks to the session for later runs.
+  preview_config_name?, regenerate_feedback?}`. Triggers a verification run,
+  deduplicated against an equivalent run unless `force`, `regenerate_feedback`,
+  or the preview config changes. A preview config set on submit, edit, or
+  trigger sticks to the session for later runs. `regenerate_feedback`
+  (`--regenerate-scenarios`) rewrites the scenarios first, every criterion
+  back through the prepass, which `force` alone never re-runs; it is the
+  dashboard's regenerate-with-feedback. While the session has no scenarios
+  the prepass also reads the submit-time `scenario_guidance`, with the
+  feedback winning on conflicts. It needs non-blank feedback and a preview,
+  doesn't combine with `evaluator_only`, and the backend caps it per session
+  for non-BYOK accounts (429 `scenario-regen-limit-reached`).
 - `POST /api/v1/verify/<n>/dismissals` — `{criteria: [{stable_key} |
   {baseline_invariant_id, category, justification}]}`. Deletes task criteria
   and waives invariants; the handles come from the detail endpoint. Starts no

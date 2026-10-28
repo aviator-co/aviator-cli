@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
@@ -11,27 +12,29 @@ import (
 )
 
 var verifyFlags struct {
-	Repo          string
-	Intent        string
-	Criteria      []string
-	CriteriaFile  string
-	WorkingBranch string
-	TargetBranch  string
-	Spec          string
-	EvaluatorOnly bool
-	Force         bool
-	Preview       string
-	JSON          bool
+	Repo                string
+	Intent              string
+	Criteria            []string
+	CriteriaFile        string
+	WorkingBranch       string
+	TargetBranch        string
+	Spec                string
+	ScenarioGuidance    string
+	EvaluatorOnly       bool
+	Force               bool
+	RegenerateScenarios string
+	Preview             string
+	JSON                bool
 }
 
 // verifySubmitOnlyFlags are meaningless when triggering a run on an existing
 // session, so trigger mode rejects them by name.
 var verifySubmitOnlyFlags = []string{
 	"repo", "intent", "criteria", "criteria-file",
-	"working-branch", "target-branch", "spec",
+	"working-branch", "target-branch", "spec", "scenario-guidance",
 }
 
-var verifyTriggerOnlyFlags = []string{"evaluator-only", "force"}
+var verifyTriggerOnlyFlags = []string{"evaluator-only", "force", "regenerate-scenarios"}
 
 // noWorkingBranchWarning covers the one thing a submission gives up without
 // --working-branch: with no branch to match on, the session can only reach a PR
@@ -53,6 +56,12 @@ var verifyCmd = &cobra.Command{
 		"one submission per PR, each with its own --working-branch, intent, and\n" +
 		"acceptance criteria. A single submission cannot cover a stack.\n" +
 		"\n" +
+		"--scenario-guidance is a note on how to verify the change (say, which\n" +
+		"seeded user to log in as). It is read until the session's first\n" +
+		"scenarios are written, normally on its first run; later plans build on\n" +
+		"those scenarios instead of reading it again. It can't be changed.\n" +
+		"The evaluator that grades the criteria never sees it.\n" +
+		"\n" +
 		"With a session ID (aviator verify r/123), trigger a verification run on\n" +
 		"that existing session — including its first run. If an equivalent\n" +
 		"non-error run already exists for the current head commit and criteria,\n" +
@@ -68,6 +77,10 @@ var verifyCmd = &cobra.Command{
 		"it is changed again (here or with aviator edit --preview). Without a\n" +
 		"choice, the first run saves the repo default by name, so going back to\n" +
 		"the repo default later means passing that config's name.\n" +
+		"\n" +
+		"--force reuses the session's scenarios. --regenerate-scenarios\n" +
+		"\"<feedback>\" rewrites them before the run, with the feedback saying\n" +
+		"what the new ones should do differently.\n" +
 		"\n" +
 		"Coding agents: use the /verify-submit skill from\n" +
 		pluginRepo + ", which drafts the intent and\n" +
@@ -113,6 +126,11 @@ func runVerifySubmit(cmd *cobra.Command) error {
 		return errors.New("at least one --criteria (or --criteria-file) is required")
 	}
 
+	guidance := strings.TrimSpace(verifyFlags.ScenarioGuidance)
+	if cmd.Flags().Changed("scenario-guidance") && guidance == "" {
+		return errors.New("--scenario-guidance can't be blank")
+	}
+
 	var spec *api.SpecFile
 	if verifyFlags.Spec != "" {
 		spec, err = readSpecFile(verifyFlags.Spec)
@@ -134,6 +152,7 @@ func runVerifySubmit(cmd *cobra.Command) error {
 		TargetBranch:       verifyFlags.TargetBranch,
 		SpecFile:           spec,
 		PreviewConfigName:  verifyFlags.Preview,
+		ScenarioGuidance:   guidance,
 	})
 	if err != nil {
 		return err
@@ -172,6 +191,15 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 		}
 	}
 
+	if cmd.Flags().Changed("regenerate-scenarios") {
+		if strings.TrimSpace(verifyFlags.RegenerateScenarios) == "" {
+			return errors.New("--regenerate-scenarios needs feedback saying what the new scenarios should do differently")
+		}
+		if verifyFlags.EvaluatorOnly {
+			return errors.New("--regenerate-scenarios replaces the scenarios, so it can't be combined with --evaluator-only")
+		}
+	}
+
 	runbookNumber, err := parseRunbookID(arg)
 	if err != nil {
 		return err
@@ -180,11 +208,13 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := client.TriggerVerifyRun(cmd.Context(), runbookNumber, api.TriggerVerifyRunRequest{
-		EvaluatorOnly:     verifyFlags.EvaluatorOnly,
-		Force:             verifyFlags.Force,
-		PreviewConfigName: verifyFlags.Preview,
-	})
+	req := api.TriggerVerifyRunRequest{
+		EvaluatorOnly:      verifyFlags.EvaluatorOnly,
+		Force:              verifyFlags.Force,
+		PreviewConfigName:  verifyFlags.Preview,
+		RegenerateFeedback: strings.TrimSpace(verifyFlags.RegenerateScenarios),
+	}
+	resp, err := client.TriggerVerifyRun(cmd.Context(), runbookNumber, req)
 	if err != nil {
 		return err
 	}
@@ -221,12 +251,16 @@ func init() {
 	f.StringVar(&verifyFlags.WorkingBranch, "working-branch", "", "branch the work lives on (optional)")
 	f.StringVar(&verifyFlags.TargetBranch, "target-branch", "", "base branch to verify against (defaults to the repo default)")
 	f.StringVar(&verifyFlags.Spec, "spec", "", "path to an optional spec file")
+	f.StringVar(&verifyFlags.ScenarioGuidance, "scenario-guidance", "",
+		"note on how to verify the change, read when the first scenarios are written (submit mode only)")
 	f.BoolVar(&verifyFlags.EvaluatorOnly, "evaluator-only", false,
 		"re-judge the evidence an earlier run collected instead of collecting it again (trigger mode only)")
 	f.BoolVar(&verifyFlags.Force, "force", false,
 		"start a fresh full run even if an equivalent run already exists (trigger mode only)")
 	f.StringVar(&verifyFlags.Preview, "preview", "",
 		"preview config the session's runs use instead of the repo default; sticks until changed")
+	f.StringVar(&verifyFlags.RegenerateScenarios, "regenerate-scenarios", "",
+		"rewrite the scenarios before running, with feedback on what to change (trigger mode only)")
 	f.BoolVar(&verifyFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 }
 

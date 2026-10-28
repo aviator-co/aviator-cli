@@ -113,6 +113,10 @@ runs instead of the repo default. It works on `aviator verify r/123` and
 `aviator edit r/123` too, and sticks: later runs on the session, automatic ones
 included, keep using it until it's changed again.
 
+`--scenario-guidance "<note>"` tells Verify how to check the change (say, which
+seeded user to log in as). It's read when the session's first scenarios are
+written, normally on its first run, and can't be changed or read back after.
+
 One review tracks exactly one PR. Stacked or multi-PR work needs one
 submission per PR, each with its own `--working-branch`, intent, and criteria.
 To update the intent or criteria on a session that already exists, use `aviator edit`
