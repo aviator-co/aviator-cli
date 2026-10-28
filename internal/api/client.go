@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -40,6 +41,23 @@ type apiError struct {
 	Err     string   `json:"error"`
 	Message string   `json:"message"`
 	Issues  []string `json:"issues,omitempty"`
+}
+
+// Error is a non-2xx response. Code is the `error` field of the API's
+// {error, message} envelope, and empty when the body had none, which is how
+// a bare framework 404 or 405 from a backend without the route is told apart
+// from a JSON not-found. Message is the text after the status, hints
+// included; Method and Path name the request, Path without its query.
+type Error struct {
+	Status  int
+	Code    string
+	Message string
+	Method  string
+	Path    string
+}
+
+func (e *Error) Error() string {
+	return fmt.Sprintf("aviator API error (%d): %s", e.Status, e.Message)
 }
 
 // postJSON sends body as JSON to path and decodes a successful response into
@@ -87,7 +105,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, out any)
 		return err
 	}
 	if status >= 400 {
-		return c.statusError(status, data)
+		return c.statusError(method, path, status, data)
 	}
 	if out != nil {
 		if err := json.Unmarshal(data, out); err != nil {
@@ -158,7 +176,7 @@ func (c *Client) send(
 	return resp.StatusCode, resp.Header, data, nil
 }
 
-func (c *Client) statusError(status int, data []byte) error {
+func (c *Client) statusError(method, path string, status int, data []byte) error {
 	var ae apiError
 	_ = json.Unmarshal(data, &ae)
 	msg := ae.Message
@@ -179,7 +197,8 @@ func (c *Client) statusError(status int, data []byte) error {
 	if _, ok := c.tokens.(refresher); status == http.StatusForbidden && !ok {
 		msg += "; run `aviator login` to act as yourself"
 	}
-	return errors.Errorf("aviator API error (%d): %s", status, msg)
+	path, _, _ = strings.Cut(path, "?")
+	return &Error{Status: status, Code: ae.Err, Message: msg, Method: method, Path: path}
 }
 
 func (c *Client) reauthHint() string {

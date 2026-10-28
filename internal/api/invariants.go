@@ -45,8 +45,23 @@ type Invariant struct {
 	// account's default. Nil means the backend predates owner teams, which
 	// tells an unsupported backend apart from an unowned invariant.
 	OwnerTeams *[]OwnerTeam `json:"owner_teams"`
-	CreatedAt  string       `json:"created_at"`
-	ModifiedAt string       `json:"modified_at"`
+	// Version is the current version number; only GET /<id> returns it.
+	Version *int `json:"version"`
+	// Usage is the row's counts when the listing asked for include=usage.
+	Usage      *InvariantUsage `json:"usage"`
+	CreatedAt  string          `json:"created_at"`
+	ModifiedAt string          `json:"modified_at"`
+}
+
+// InvariantUsage is one invariant's counts over review sessions, as
+// GET /api/v1/invariants attaches with include=usage. Rates are nil when the
+// denominator is zero.
+type InvariantUsage struct {
+	TimesApplied int      `json:"times_applied"`
+	TimesFailed  int      `json:"times_failed"`
+	FailureRate  *float64 `json:"failure_rate"`
+	TotalWaives  int      `json:"total_waives"`
+	WaiveRate    *float64 `json:"waive_rate"`
 }
 
 // ListInvariantsQuery is the query string for GET /api/v1/invariants. A
@@ -56,15 +71,23 @@ type Invariant struct {
 // blank (the server reads a blank list as "no filter"), and Page and PerPage
 // are sent only when positive, so the server's defaults hold otherwise.
 // OwnerTeams (org/slug) and Unowned OR together and match the effective owner.
+// IncludeUsage attaches each row's Usage; Sort (applied, failed,
+// failure_rate, waived), NeverApplied and Since (an RFC 3339 instant) are
+// only valid with it, and the server defaults Status to active when
+// IncludeUsage is set and Status is empty.
 type ListInvariantsQuery struct {
-	Repo       *Repository
-	Status     string
-	IDs        []int
-	Sources    []string
-	OwnerTeams []string
-	Unowned    bool
-	Page       int
-	PerPage    int
+	Repo         *Repository
+	Status       string
+	IDs          []int
+	Sources      []string
+	OwnerTeams   []string
+	Unowned      bool
+	IncludeUsage bool
+	Sort         string
+	NeverApplied bool
+	Since        string
+	Page         int
+	PerPage      int
 }
 
 // InvariantCategory is one of the account's categories, whose slug create and
@@ -190,10 +213,7 @@ func (c *Client) ListInvariants(
 
 func listInvariantsQuery(q ListInvariantsQuery) url.Values {
 	values := url.Values{}
-	if q.Repo != nil {
-		values.Set("org", q.Repo.Org)
-		values.Set("repo", q.Repo.Name)
-	}
+	setRepo(values, q.Repo)
 	if q.Status != "" {
 		values.Set("status", q.Status)
 	}
@@ -213,8 +233,31 @@ func listInvariantsQuery(q ListInvariantsQuery) url.Values {
 	if q.Unowned {
 		values.Set("unowned", "true")
 	}
+	if q.IncludeUsage {
+		values.Set("include", "usage")
+	}
+	if q.Sort != "" {
+		values.Set("sort", q.Sort)
+	}
+	if q.NeverApplied {
+		values.Set("never_applied", "true")
+	}
+	setSince(values, q.Since)
 	setPage(values, q.Page, q.PerPage)
 	return values
+}
+
+func setRepo(values url.Values, repo *Repository) {
+	if repo != nil {
+		values.Set("org", repo.Org)
+		values.Set("repo", repo.Name)
+	}
+}
+
+func setSince(values url.Values, since string) {
+	if since != "" {
+		values.Set("since", since)
+	}
 }
 
 func setPage(values url.Values, page, perPage int) {

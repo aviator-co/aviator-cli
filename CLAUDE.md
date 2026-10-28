@@ -29,6 +29,8 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   evidence.go       # `aviator evidence`  -> signed URL / download of one evidence file
   invariants.go     # `aviator invariants <list|categories|owner-teams|create|edit|delete|approve|reject|set-status|set-owner>`
   invariants_format.go  # text rendering for the invariants commands
+  invariants_insights.go        # `aviator invariants <insights|show|reviews|waivers>` and the `list --usage` flags
+  invariants_insights_format.go # text rendering + `--json` structs for the analytics commands
   version.go        # `aviator version`
   helpers.go        # parseRepo(s), readSpecFile, collectCriteria, collectBody
 internal/
@@ -42,7 +44,8 @@ internal/
 Commands are **flat**: `aviator verify` and `aviator runbook` are the actions
 themselves — there is no second verb (no `submit`/`create` subcommand). The one
 resource group is `aviator invariants`, whose subcommands are the CRUD verbs
-over `/api/v1/invariants`.
+over `/api/v1/invariants` plus read-only analytics views (`insights`, `show`,
+`reviews`, `waivers`, and `list --usage`).
 
 ## Commands
 
@@ -190,6 +193,19 @@ so they need a user token or an `aviator login` session.
   operations when it is missing. Reads need any member; create needs any
   user token; other writes need a maintainer, an admin, or someone directly
   on the invariant's owner team.
+- Invariant analytics, all `GET`, any token, `since` an ISO-8601 datetime
+  (absent means all-time): `/api/v1/invariants/insights` (`limit`, `status`
+  defaulting to `active`, `org`+`repo`; ranked `most_applied`,
+  `failure_ratio`, `most_waived`, `waive_rate`, plus `never_applied` and
+  `reasons`), `GET /<id>` (the invariant with `version`, `usage`,
+  `by_version`, and `by_repo` with `include=by_repo`), `GET /<id>/waivers`
+  and `GET /<id>/reviews` (paged; reviews take `outcome`), `GET /waivers`
+  (account-wide; `invariant`, `user` (`me` needs a user token, else an
+  email), `category`), and `include=usage` on the list with `sort`
+  (`applied|failed|failure_rate|waived`) and `never_applied`, which default
+  `status` to `active`. A backend without these answers the new paths with
+  a bare 404/405 (no JSON `error` code) and ignores `include=usage`; the
+  commands report that as unsupported instead of printing empty counts.
 
 When changing a request/response shape, keep it in sync with the backend
 schemas (`src/api/verify.py`, `src/api/runbook.py`, `src/api/invariants.py` in
