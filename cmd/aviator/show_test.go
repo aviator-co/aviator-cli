@@ -231,7 +231,7 @@ func TestResultsJSON(t *testing.T) {
 				{Criterion: "no secrets", Status: "fail", Reason: ptr("nope"), IsInvariant: true, BaselineInvariantID: ptr(42)},
 			},
 		},
-	}, nil))
+	}))
 	if got["id"] != "r/123" || got["version"] != float64(4) {
 		t.Errorf("top level = %v", got)
 	}
@@ -249,12 +249,12 @@ func TestResultsJSON(t *testing.T) {
 }
 
 func TestResultsJSONForRun(t *testing.T) {
-	got := decodeJSON(t, newResultsJSON(
+	got := decodeJSON(t, newResultsRunJSON(
 		&api.RunbookDetail{RunbookNumber: 123, LatestVerification: &api.VerificationRun{ID: 900, Status: "passed"}},
 		&api.VerificationRun{ID: 887, Status: "failed", FailedResults: []api.FailedResult{{Criterion: "no secrets"}}},
 	))
-	if v := got["latest_verification"].(map[string]any); v["run_id"] != float64(900) {
-		t.Errorf("latest_verification = %v", v)
+	if _, ok := got["latest_verification"]; ok {
+		t.Errorf("latest_verification should be absent with --run: %v", got)
 	}
 	run := got["run"].(map[string]any)
 	if run["run_id"] != float64(887) || run["status"] != "failed" {
