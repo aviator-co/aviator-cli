@@ -1,9 +1,4 @@
 version: "2"
-run:
-  # Lint the files behind the experimental build tag too; the !experimental
-  # stubs are trivial and covered by the untagged build.
-  build-tags:
-    - experimental
 linters:
   enable:
     - asasalint

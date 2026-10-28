@@ -29,7 +29,7 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   evidence.go       # `aviator evidence`  -> signed URL / download of one evidence file
   invariants.go     # `aviator invariants <list|categories|create|edit|delete|approve|reject|set-status>`
   invariants_format.go  # text rendering for the invariants commands
-  decisions.go      # `aviator decisions <list|show|create|edit|comment|settle|reopen|apply>` (experimental build only)
+  decisions.go      # `aviator decisions <list|show|create|edit|comment|settle|reopen|apply>` (hidden)
   decisions_format.go  # text rendering for the decisions commands
   version.go        # `aviator version`
   helpers.go        # parseRepo(s), readSpecFile, collectCriteria, collectBody
@@ -96,28 +96,6 @@ Equivalent raw commands: `go build ./...`, `go test --vet=all ./...`,
   no `formatters` block: golangci-lint bundles its own older copies of both, and
   two copies grading the same files is how CI deadlocks.
 
-## Experimental features
-
-New features that are only for internal dogfooding sit behind the
-`experimental` Go build tag, so they are left out of stable binaries entirely.
-Nobody can switch them on with a flag or env var.
-
-- A new command goes in its own file that starts with `//go:build experimental`
-  and registers itself: `func init() { rootCmd.AddCommand(fooCmd) }`. Don't
-  list it in `main.go`.
-- Mark a new top-level command `Hidden: true`, so even experimental builds
-  leave it out of `--help`, `aviator help`, and shell completion. It still runs
-  when called by name.
-- A new flag or branch inside an existing command is gated on
-  `config.Experimental` (a const, so the stable build drops the dead code).
-- No release (stable or nightly) is built with the tag; both are public. The
-  team builds its own binary with `just build-experimental` or
-  `go run -tags experimental ./cmd/aviator`.
-- CI builds, tests, and smoke-tests both variants; golangci-lint runs with the
-  tag on.
-- To ship a feature to everyone, delete the build tag or the `config.Experimental`
-  check.
-
 ## CI and releases
 
 - `.github/workflows/go.yml` — build, test, smoke test, golangci-lint on PRs.
@@ -182,8 +160,9 @@ The CLI targets endpoints in the `mergeit` backend:
   The CLI doesn't follow it with the bearer token: `EvidenceURL` stops at the
   redirect and the download is a plain unauthenticated GET.
 
-- `/api/v1/verify/<n>/decisions` — experimental build only. Every body
-  rejects unknown keys.
+- `/api/v1/verify/<n>/decisions` — for `aviator decisions`, which is
+  `Hidden: true` while it changes (out of help and completion, but it runs
+  when called by name). Every body rejects unknown keys.
   - `GET` — `{decisions: [...]}`, open first. `GET /<id>` — one decision.
     Reads take any API token.
   - `POST /batch` — `{decisions: [{id?, author, type?, title?, summary?,

@@ -1,5 +1,3 @@
-//go:build experimental
-
 package api
 
 import (
@@ -42,6 +40,17 @@ func TestListDecisions(t *testing.T) {
 	if d.ID != 7 || d.Outcome != "accepted_risk" || d.Resolution != "Rare enough to ship" ||
 		d.Anchor.EndLine != 52 || d.RaisedBy.Name != "Theo" || d.Author.Harness != "claude-code" ||
 		len(d.Comments) != 1 || d.Comments[0].User.Name != "Theo" || d.Comments[0].Author.Role != "person" {
+		t.Errorf("decision = %+v", d)
+	}
+}
+
+func TestDecisionNullAuthors(t *testing.T) {
+	var d Decision
+	if err := json.Unmarshal([]byte(`{"id":7,"raised_by":null,"author":null,`+
+		`"comments":[{"id":1,"user":null,"author":null,"body":"b"}]}`), &d); err != nil {
+		t.Fatal(err)
+	}
+	if d.RaisedBy != nil || d.Author != nil || d.Comments[0].User != nil || d.Comments[0].Author != nil {
 		t.Errorf("decision = %+v", d)
 	}
 }

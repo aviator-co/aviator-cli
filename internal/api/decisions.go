@@ -1,5 +1,3 @@
-//go:build experimental
-
 package api
 
 import (
@@ -33,21 +31,21 @@ type DecisionAnchor struct {
 }
 
 // DecisionComment is one entry in a decision's thread. User is the account
-// that wrote it; Author is the role it was written as.
+// that wrote it; Author is the role it was written as. Either can be null.
 type DecisionComment struct {
-	ID         int            `json:"id"`
-	User       DecisionUser   `json:"user"`
-	Author     DecisionAuthor `json:"author"`
-	Body       string         `json:"body"`
-	CreatedAt  string         `json:"created_at"`
-	ModifiedAt string         `json:"modified_at"`
+	ID         int             `json:"id"`
+	User       *DecisionUser   `json:"user"`
+	Author     *DecisionAuthor `json:"author"`
+	Body       string          `json:"body"`
+	CreatedAt  string          `json:"created_at"`
+	ModifiedAt string          `json:"modified_at"`
 }
 
 // Decision is a question, possible bug, risk, or choice raised about a
 // runbook's pull request. Status is open or settled; Outcome, SettledAt, and
 // Resolution are set once it is settled. RaisedBy is the user who created it
-// and never changes; Author is the author of the latest change. Comments are
-// in creation order.
+// and never changes; Author is the author of the latest change. Either can be
+// null. Comments are in creation order.
 type Decision struct {
 	ID         int               `json:"id"`
 	Type       string            `json:"type"`
@@ -58,8 +56,8 @@ type Decision struct {
 	SettledAt  string            `json:"settled_at"`
 	Resolution string            `json:"resolution"`
 	Anchor     *DecisionAnchor   `json:"anchor"`
-	RaisedBy   DecisionUser      `json:"raised_by"`
-	Author     DecisionAuthor    `json:"author"`
+	RaisedBy   *DecisionUser     `json:"raised_by"`
+	Author     *DecisionAuthor   `json:"author"`
 	Comments   []DecisionComment `json:"comments"`
 }
 

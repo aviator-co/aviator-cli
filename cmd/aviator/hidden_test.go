@@ -1,5 +1,3 @@
-//go:build experimental
-
 package main
 
 import (
@@ -8,9 +6,9 @@ import (
 	"testing"
 )
 
-// TestExperimentalCommandsHidden keeps the experimental commands out of help
+// TestDecisionsCommandHidden keeps the decisions command out of help
 // and shell completion, which Homebrew builds from `aviator completion`.
-func TestExperimentalCommandsHidden(t *testing.T) {
+func TestDecisionsCommandHidden(t *testing.T) {
 	for _, args := range [][]string{{"--help"}, {"help"}, {"__complete", ""}} {
 		var out bytes.Buffer
 		rootCmd.SetOut(&out)

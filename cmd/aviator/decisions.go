@@ -1,5 +1,3 @@
-//go:build experimental
-
 package main
 
 import (
@@ -48,7 +46,8 @@ var decisionsCmd = &cobra.Command{
 	Use:     "decisions",
 	Aliases: []string{"decision"},
 	Short:   "Read and record the decisions on a session's pull request",
-	// Experimental: left out of help and completion.
+	// Still changing, so left out of help and completion; it runs when called
+	// by name.
 	Hidden: true,
 	Long: "A decision is a question, possible bug, risk, or choice raised about a\n" +
 		"session's pull request. Each one has a comment thread and is either open\n" +
@@ -151,7 +150,7 @@ var decisionsCreateCmd = &cobra.Command{
 		if body == "" {
 			return errors.New("--body (or --body-file) is required")
 		}
-		anchor, err := buildAnchor(f.Path, f.Lines, f.Commit)
+		anchor, err := buildAnchor(nil, f.Path, f.Lines, f.Commit)
 		if err != nil {
 			return err
 		}
@@ -183,8 +182,10 @@ var decisionsEditCmd = &cobra.Command{
 	Use:   "edit <id> <decision-id>...",
 	Short: "Change open decisions; every listed one gets the same changes",
 	Long: "Change the type, title, summary, or anchor of open decisions as\n" +
-		"--role. --body also adds a comment to each one's thread. Only the user\n" +
-		"who raised a decision can edit it, and settled decisions can't be edited.",
+		"--role. --path, --lines, and --commit change only those parts of each\n" +
+		"decision's current anchor. --body also adds a comment to each one's\n" +
+		"thread. Only the user who raised a decision can edit it, and settled\n" +
+		"decisions can't be edited.",
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		f := &decisionsEditFlags
@@ -192,12 +193,15 @@ var decisionsEditCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		anchor, err := buildAnchor(f.Path, f.Lines, f.Commit)
-		if err != nil {
-			return err
-		}
-		if f.Type == "" && f.Title == "" && f.Summary == "" && anchor.IsZero() && body == "" {
+		anchorSet := f.Path != "" || f.Lines != "" || f.Commit != ""
+		if f.Type == "" && f.Title == "" && f.Summary == "" && !anchorSet && body == "" {
 			return errors.New("nothing to change: pass --type, --title, --summary, an anchor, or --body")
+		}
+		anchors := map[int]api.Nullable[api.DecisionAnchor]{}
+		if anchorSet {
+			if anchors, err = mergedAnchors(cmd, args, f.Path, f.Lines, f.Commit); err != nil {
+				return err
+			}
 		}
 		author := f.Author.author()
 		return recordForEach(cmd, args, func(id int) api.DecisionBatchItem {
@@ -207,7 +211,7 @@ var decisionsEditCmd = &cobra.Command{
 				Type:    f.Type,
 				Title:   f.Title,
 				Summary: f.Summary,
-				Anchor:  anchor,
+				Anchor:  anchors[id],
 			}
 			if body != "" {
 				item.Comments = []api.DecisionCommentInput{{Author: author, Body: body}}
@@ -432,22 +436,68 @@ func editDecisionComment(cmd *cobra.Command, args []string, commentID int, body 
 	return nil
 }
 
-// buildAnchor turns the anchor flags into an anchor, left out when none were
-// passed.
-func buildAnchor(path, lines, commit string) (api.Nullable[api.DecisionAnchor], error) {
+// mergedAnchors fetches the session in args[0] once and returns, for each
+// decision ID in args[1:], its current anchor with the anchor flags laid over
+// it. An ID the session doesn't have gets the flags alone; the batch then
+// reports it as not found.
+func mergedAnchors(
+	cmd *cobra.Command, args []string, path, lines, commit string,
+) (map[int]api.Nullable[api.DecisionAnchor], error) {
+	runbookNumber, err := parseRunbookID(args[0])
+	if err != nil {
+		return nil, err
+	}
+	client, err := api.NewClient()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.ListDecisions(cmd.Context(), runbookNumber)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to fetch the current anchors")
+	}
+	current := make(map[int]*api.DecisionAnchor, len(resp.Decisions))
+	for _, d := range resp.Decisions {
+		current[d.ID] = d.Anchor
+	}
+	anchors := make(map[int]api.Nullable[api.DecisionAnchor], len(args)-1)
+	for _, arg := range args[1:] {
+		id, err := parseDecisionID(arg)
+		if err != nil {
+			return nil, err
+		}
+		if anchors[id], err = buildAnchor(current[id], path, lines, commit); err != nil {
+			return nil, errors.Wrapf(err, "#%d", id)
+		}
+	}
+	return anchors, nil
+}
+
+// buildAnchor lays the anchor flags over base (nil when there is none), so a
+// flag left out keeps base's value: the server replaces an anchor as a whole.
+// The anchor is left out when no flags were passed.
+func buildAnchor(base *api.DecisionAnchor, path, lines, commit string) (api.Nullable[api.DecisionAnchor], error) {
 	if path == "" && lines == "" && commit == "" {
 		return api.Nullable[api.DecisionAnchor]{}, nil
 	}
-	if lines != "" && path == "" {
-		return api.Nullable[api.DecisionAnchor]{}, errors.New("--lines needs --path")
+	var anchor api.DecisionAnchor
+	if base != nil {
+		anchor = *base
 	}
-	anchor := api.DecisionAnchor{FilePath: path, CommitSHA: commit}
+	if path != "" {
+		anchor.FilePath = path
+	}
+	if commit != "" {
+		anchor.CommitSHA = commit
+	}
 	if lines != "" {
 		start, end, err := parseLineRange(lines)
 		if err != nil {
 			return api.Nullable[api.DecisionAnchor]{}, err
 		}
 		anchor.StartLine, anchor.EndLine = start, end
+	}
+	if anchor.StartLine > 0 && anchor.FilePath == "" {
+		return api.Nullable[api.DecisionAnchor]{}, errors.New("--lines needs --path")
 	}
 	return api.ValueOf(anchor), nil
 }

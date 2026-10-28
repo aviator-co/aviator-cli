@@ -1,5 +1,3 @@
-//go:build experimental
-
 package main
 
 import (
@@ -35,16 +33,31 @@ func TestParseLineRange(t *testing.T) {
 }
 
 func TestBuildAnchor(t *testing.T) {
-	if a, err := buildAnchor("", "", ""); !a.IsZero() || err != nil {
+	base := &api.DecisionAnchor{FilePath: "a.go", StartLine: 40, EndLine: 52, CommitSHA: "abc"}
+	if a, err := buildAnchor(base, "", "", ""); !a.IsZero() || err != nil {
 		t.Errorf("no flags: %+v, %v", a, err)
 	}
-	if _, err := buildAnchor("", "4", ""); err == nil {
+	if _, err := buildAnchor(nil, "", "4", ""); err == nil {
 		t.Error("--lines without --path: want an error")
 	}
-	a, err := buildAnchor("a.go", "40-52", "abc")
-	if err != nil || a.Value == nil ||
-		*a.Value != (api.DecisionAnchor{FilePath: "a.go", StartLine: 40, EndLine: 52, CommitSHA: "abc"}) {
-		t.Errorf("anchor = %+v, %v", a, err)
+	for _, c := range []struct {
+		base                *api.DecisionAnchor
+		path, lines, commit string
+		want                api.DecisionAnchor
+	}{
+		{nil, "a.go", "40-52", "abc", *base},
+		// A flag changes only its part; the rest comes from the current anchor.
+		{base, "", "", "def", api.DecisionAnchor{FilePath: "a.go", StartLine: 40, EndLine: 52, CommitSHA: "def"}},
+		{base, "", "7", "", api.DecisionAnchor{FilePath: "a.go", StartLine: 7, EndLine: 7, CommitSHA: "abc"}},
+		{base, "b.go", "", "", api.DecisionAnchor{FilePath: "b.go", StartLine: 40, EndLine: 52, CommitSHA: "abc"}},
+	} {
+		a, err := buildAnchor(c.base, c.path, c.lines, c.commit)
+		if err != nil || a.Value == nil || *a.Value != c.want {
+			t.Errorf("%+v: anchor = %+v, %v", c, a.Value, err)
+		}
+	}
+	if *base != (api.DecisionAnchor{FilePath: "a.go", StartLine: 40, EndLine: 52, CommitSHA: "abc"}) {
+		t.Errorf("base was changed: %+v", *base)
 	}
 }
 
@@ -57,7 +70,9 @@ func TestDecisionCommandBodies(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		data, _ := io.ReadAll(r.Body)
 		got = append(got, r.Method+" "+r.URL.Path+" "+string(data))
-		_, _ = w.Write([]byte(`{"decisions":[{"id":7,"status":"open"},{"id":8,"status":"open"}]}`))
+		_, _ = w.Write([]byte(`{"decisions":[{"id":7,"status":"open",` +
+			`"anchor":{"commit_sha":"abc","file_path":"a.go","start_line":40,"end_line":52}},` +
+			`{"id":8,"status":"open","anchor":null}]}`))
 	}))
 	defer srv.Close()
 	host, token := config.Av.Aviator.APIHost, config.Av.Aviator.APIToken
@@ -84,6 +99,16 @@ func TestDecisionCommandBodies(t *testing.T) {
 				`"outcome":"fixed","resolution":"why"}]}`,
 		},
 		{
+			// The anchor flags are merged into each decision's current anchor,
+			// read in one GET, and the change is still one batch.
+			decisionsEditCmd,
+			[]string{"r/4", "7", "8", "--commit", "def", "--role", "person"},
+			"GET /api/v1/verify/4/decisions \n" +
+				`POST /api/v1/verify/4/decisions/batch {"decisions":[` +
+				`{"id":7,"author":{"role":"person"},"anchor":{"commit_sha":"def","file_path":"a.go","start_line":40,"end_line":52}},` +
+				`{"id":8,"author":{"role":"person"},"anchor":{"commit_sha":"def"}}]}`,
+		},
+		{
 			decisionsReopenCmd,
 			[]string{"r/4", "7", "--role", "person", "--body", "not fixed"},
 			`POST /api/v1/verify/4/decisions/batch {"decisions":[{"id":7,"author":{"role":"person"},` +
@@ -108,7 +133,7 @@ func TestDecisionCommandBodies(t *testing.T) {
 		if err := c.cmd.RunE(c.cmd, c.cmd.Flags().Args()); err != nil {
 			t.Fatalf("%v: %v", c.args, err)
 		}
-		if len(got) != 1 || got[0] != c.want {
+		if strings.Join(got, "\n") != c.want {
 			t.Errorf("%v: requests =\n%s\nwant\n%s", c.args, strings.Join(got, "\n"), c.want)
 		}
 	}
@@ -169,19 +194,32 @@ func TestFormatDecisionAnchor(t *testing.T) {
 func TestFormatDecisionDetail(t *testing.T) {
 	got := formatDecisionDetail(&api.Decision{
 		ID: 7, Type: "risk", Title: "T", Status: "settled", Outcome: "accepted_risk", Resolution: "Rare enough",
-		RaisedBy: api.DecisionUser{Name: "Theo"},
-		Author:   api.DecisionAuthor{Role: "coding_agent", Model: "m", Harness: "claude-code"},
-		Comments: []api.DecisionComment{{
-			ID: 1, User: api.DecisionUser{Name: "Theo"}, Author: api.DecisionAuthor{Role: "person"}, Body: "hi",
-		}},
+		RaisedBy: &api.DecisionUser{Name: "Theo"},
+		Author:   &api.DecisionAuthor{Role: "coding_agent", Model: "m", Harness: "claude-code"},
+		Comments: []api.DecisionComment{
+			{ID: 1, User: &api.DecisionUser{Name: "Theo"}, Author: &api.DecisionAuthor{Role: "person"}, Body: "hi"},
+			{ID: 2, User: &api.DecisionUser{Name: "Theo"}, Body: "no author"},
+		},
 	})
 	for _, want := range []string{
-		"raised by Theo · last changed as coding_agent (m, claude-code)",
+		"risk · settled (accepted_risk) · raised by Theo · last changed as coding_agent (m, claude-code)\n",
 		"Resolution:\n    Rare enough",
 		"Theo as person",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("detail lacks %q:\n%s", want, got)
 		}
+	}
+	// A null comment author leaves out the role instead of printing it blank.
+	for _, line := range strings.Split(got, "\n") {
+		if strings.Contains(line, "#2") && strings.Contains(line, " as ") {
+			t.Errorf("comment with no author: %q", line)
+		}
+	}
+
+	// raised_by and author can be null; they're left out rather than blank.
+	got = formatDecisionDetail(&api.Decision{ID: 7, Type: "risk", Title: "T", Status: "open"})
+	if !strings.Contains(got, "  risk · open\n") {
+		t.Errorf("null raised_by and author:\n%s", got)
 	}
 }

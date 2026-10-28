@@ -30,12 +30,6 @@ jobs:
         run: go test -v --vet=all ./...
       - name: CLI smoke test
         run: go run ./cmd/aviator --help
-      - name: Build (experimental)
-        run: go build -v -tags experimental ./...
-      - name: Test (experimental)
-        run: go test -v --vet=all -tags experimental ./...
-      - name: CLI smoke test (experimental)
-        run: go run -tags experimental ./cmd/aviator --help
 
   golangci-lint:
     runs-on: ubuntu-latest

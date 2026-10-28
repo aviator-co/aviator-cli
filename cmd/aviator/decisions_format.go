@@ -1,5 +1,3 @@
-//go:build experimental
-
 package main
 
 import (
@@ -38,8 +36,14 @@ func formatDecisionStatus(d *api.Decision) string {
 func formatDecisionDetail(d *api.Decision) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s %s\n", colors.Bold(fmt.Sprintf("#%d", d.ID)), colors.Bold(d.Title))
-	fmt.Fprintf(&b, "  %s · %s · raised by %s · last changed as %s\n",
-		d.Type, formatDecisionStatus(d), d.RaisedBy.Name, formatDecisionAuthor(d.Author))
+	parts := []string{d.Type, formatDecisionStatus(d)}
+	if d.RaisedBy != nil {
+		parts = append(parts, "raised by "+d.RaisedBy.Name)
+	}
+	if d.Author != nil {
+		parts = append(parts, "last changed as "+formatDecisionAuthor(*d.Author))
+	}
+	fmt.Fprintf(&b, "  %s\n", strings.Join(parts, " · "))
 	if d.Anchor != nil {
 		fmt.Fprintf(&b, "  at %s\n", formatDecisionAnchor(d.Anchor))
 	}
@@ -54,11 +58,24 @@ func formatDecisionDetail(d *api.Decision) string {
 	}
 	fmt.Fprintf(&b, "\n%s\n", english.Plural(len(d.Comments), "comment", ""))
 	for _, c := range d.Comments {
-		fmt.Fprintf(&b, "  %s %s as %s %s\n", colors.Faint(fmt.Sprintf("#%d", c.ID)),
-			c.User.Name, formatDecisionAuthor(c.Author), colors.Faint(c.CreatedAt))
+		fmt.Fprintf(&b, "  %s %s %s\n", colors.Faint(fmt.Sprintf("#%d", c.ID)),
+			formatCommentBy(&c), colors.Faint(c.CreatedAt))
 		fmt.Fprintf(&b, "%s\n", indent(strings.TrimSpace(c.Body), "    "))
 	}
 	return b.String()
+}
+
+// formatCommentBy names who wrote a comment and as what role, leaving out
+// whichever the server sent as null.
+func formatCommentBy(c *api.DecisionComment) string {
+	var parts []string
+	if c.User != nil {
+		parts = append(parts, c.User.Name)
+	}
+	if c.Author != nil {
+		parts = append(parts, "as "+formatDecisionAuthor(*c.Author))
+	}
+	return strings.Join(parts, " ")
 }
 
 // formatDecisionAuthor renders a role, with its model and harness when known.
@@ -118,12 +135,12 @@ type decisionAnchorJSON struct {
 }
 
 type decisionCommentJSON struct {
-	ID         int                `json:"id"`
-	User       decisionUserJSON   `json:"user"`
-	Author     decisionAuthorJSON `json:"author"`
-	Body       string             `json:"body"`
-	CreatedAt  string             `json:"created_at"`
-	ModifiedAt string             `json:"modified_at"`
+	ID         int                 `json:"id"`
+	User       *decisionUserJSON   `json:"user"`
+	Author     *decisionAuthorJSON `json:"author"`
+	Body       string              `json:"body"`
+	CreatedAt  string              `json:"created_at"`
+	ModifiedAt string              `json:"modified_at"`
 }
 
 type decisionJSON struct {
@@ -136,14 +153,30 @@ type decisionJSON struct {
 	SettledAt  string                `json:"settled_at"`
 	Resolution string                `json:"resolution"`
 	Anchor     *decisionAnchorJSON   `json:"anchor"`
-	RaisedBy   decisionUserJSON      `json:"raised_by"`
-	Author     decisionAuthorJSON    `json:"author"`
+	RaisedBy   *decisionUserJSON     `json:"raised_by"`
+	Author     *decisionAuthorJSON   `json:"author"`
 	Comments   []decisionCommentJSON `json:"comments"`
 }
 
 type decisionListJSON struct {
 	Session   string         `json:"session"`
 	Decisions []decisionJSON `json:"decisions"`
+}
+
+func newDecisionUserJSON(u *api.DecisionUser) *decisionUserJSON {
+	if u == nil {
+		return nil
+	}
+	out := decisionUserJSON(*u)
+	return &out
+}
+
+func newDecisionAuthorJSON(a *api.DecisionAuthor) *decisionAuthorJSON {
+	if a == nil {
+		return nil
+	}
+	out := decisionAuthorJSON(*a)
+	return &out
 }
 
 func newDecisionJSON(d *api.Decision) decisionJSON {
@@ -156,8 +189,8 @@ func newDecisionJSON(d *api.Decision) decisionJSON {
 		Outcome:    d.Outcome,
 		SettledAt:  d.SettledAt,
 		Resolution: d.Resolution,
-		RaisedBy:   decisionUserJSON(d.RaisedBy),
-		Author:     decisionAuthorJSON(d.Author),
+		RaisedBy:   newDecisionUserJSON(d.RaisedBy),
+		Author:     newDecisionAuthorJSON(d.Author),
 		Comments:   make([]decisionCommentJSON, 0, len(d.Comments)),
 	}
 	if d.Anchor != nil {
@@ -173,8 +206,8 @@ func newDecisionJSON(d *api.Decision) decisionJSON {
 func newDecisionCommentJSON(c *api.DecisionComment) decisionCommentJSON {
 	return decisionCommentJSON{
 		ID:         c.ID,
-		User:       decisionUserJSON(c.User),
-		Author:     decisionAuthorJSON(c.Author),
+		User:       newDecisionUserJSON(c.User),
+		Author:     newDecisionAuthorJSON(c.Author),
 		Body:       c.Body,
 		CreatedAt:  c.CreatedAt,
 		ModifiedAt: c.ModifiedAt,
