@@ -29,7 +29,7 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   evidence.go       # `aviator evidence`  -> signed URL / download of one evidence file
   invariants.go     # `aviator invariants <list|categories|create|edit|delete|approve|reject|set-status>`
   invariants_format.go  # text rendering for the invariants commands
-  decisions.go      # `aviator decisions <list|show|create|edit|comment|settle|reopen|apply>` (hidden)
+  decisions.go      # `aviator decisions <list|show|apply>` (hidden)
   decisions_format.go  # text rendering for the decisions commands
   version.go        # `aviator version`
   helpers.go        # parseRepo(s), readSpecFile, collectCriteria, collectBody
@@ -161,33 +161,15 @@ The CLI targets endpoints in the `mergeit` backend:
   redirect and the download is a plain unauthenticated GET.
 
 - `/api/v1/verify/<n>/decisions` — for `aviator decisions`, which is
-  `Hidden: true` while it changes (out of help and completion, but it runs
-  when called by name). Every body rejects unknown keys.
-  - `GET` — `{decisions: [...]}`, open first. `GET /<id>` — one decision.
-    Reads take any API token.
-  - `POST /batch` — `{decisions: [{id?, author, type?, title?, summary?,
-    anchor?, outcome?, resolution?, comments?: [{author, body,
-    model_metadata?}]}]}`, all-or-nothing, decisions returned in request
-    order. No `id` creates (`type` and `title` required); an `id` changes only
-    the keys sent. `outcome` settles, `outcome: null` reopens (and clears
-    `resolution`), `anchor: null` clears the anchor. A settled decision
-    accepts only reopening and comments (409 otherwise). The same `id` can't
-    appear twice. The CLI models the three-state keys with `api.Nullable`.
-  - `author` is `{role, model?, harness?, skills?}` on every item and comment;
-    `role` is `person`, `coding_agent`, `review_agent`, or `external_bot`. The
-    CLI's `--role`, `--model`, `--harness`, and `--skill` fill it.
-    `model_metadata` is free-form, per comment, stored but not returned.
-  - No `via`: the server credits an `aviator login` token to `aviator-cli` and
-    a personal token to `api`.
-  - `PATCH /<id>/comments/<comment_id>` — `{body}`.
-  - Writes need a user token on an account with Verify. Only the user who
-    raised a decision can change it (403); anyone in the account can comment.
-  - Responses carry `raised_by` (the user who created it), `author` (of the
-    latest change), `resolution`, and per comment a `user` (the account) and
-    an `author` (the role).
-  - Every command sends one batch: `aviator decisions apply` sends its file
-    as the batch body, and the single-decision commands build one, an item per
-    decision ID.
+  `Hidden: true` while it changes. `GET` lists in id order without comments
+  (`comment_count` instead), `?status=open|settled&page=&per_page=`, with
+  `has_more`; `GET /<id>` is one decision with its comments. `POST` takes
+  `{decisions: [...]}` and applies it all or nothing: no `id` creates, an `id`
+  changes only the keys sent, `outcome` settles (needs `resolution`),
+  `outcome: null` reopens (needs a comment), and a comment with an `id` edits
+  it. Anyone can settle, reopen, or comment; only the raiser can change type,
+  title, summary, or anchor. `aviator decisions apply` sends its file as the
+  body unchanged and the server's strict models validate it.
 
 `POST` and `PATCH /api/v1/verify`, dismissals, and the listing are gated on
 `role="user"`: an account-scoped API token resolves to no role and gets a 403,

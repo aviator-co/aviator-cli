@@ -18,7 +18,7 @@ func formatDecisionTable(decisions []api.Decision) string {
 	fmt.Fprintln(w, "ID\tSTATUS\tTYPE\tCOMMENTS\tTITLE")
 	for i := range decisions {
 		d := &decisions[i]
-		fmt.Fprintf(w, "#%d\t%s\t%s\t%d\t%s\n", d.ID, formatDecisionStatus(d), d.Type, len(d.Comments), d.Title)
+		fmt.Fprintf(w, "#%d\t%s\t%s\t%d\t%s\n", d.ID, formatDecisionStatus(d), d.Type, d.NumComments(), d.Title)
 	}
 	_ = w.Flush()
 	return b.String()
@@ -144,23 +144,27 @@ type decisionCommentJSON struct {
 }
 
 type decisionJSON struct {
-	ID         int                   `json:"id"`
-	Type       string                `json:"type"`
-	Title      string                `json:"title"`
-	Summary    string                `json:"summary"`
-	Status     string                `json:"status"`
-	Outcome    string                `json:"outcome"`
-	SettledAt  string                `json:"settled_at"`
-	Resolution string                `json:"resolution"`
-	Anchor     *decisionAnchorJSON   `json:"anchor"`
-	RaisedBy   *decisionUserJSON     `json:"raised_by"`
-	Author     *decisionAuthorJSON   `json:"author"`
-	Comments   []decisionCommentJSON `json:"comments"`
+	ID         int                 `json:"id"`
+	Type       string              `json:"type"`
+	Title      string              `json:"title"`
+	Summary    string              `json:"summary"`
+	Status     string              `json:"status"`
+	Outcome    string              `json:"outcome"`
+	SettledAt  string              `json:"settled_at"`
+	Resolution string              `json:"resolution"`
+	Anchor     *decisionAnchorJSON `json:"anchor"`
+	RaisedBy   *decisionUserJSON   `json:"raised_by"`
+	Author     *decisionAuthorJSON `json:"author"`
+	// Comments is left out of list, which doesn't carry the thread.
+	CommentCount int                   `json:"comment_count"`
+	Comments     []decisionCommentJSON `json:"comments,omitzero"`
 }
 
 type decisionListJSON struct {
-	Session   string         `json:"session"`
+	ID        string         `json:"id"`
 	Decisions []decisionJSON `json:"decisions"`
+	// HasMore is set by list, the one paged command.
+	HasMore *bool `json:"has_more,omitempty"`
 }
 
 func newDecisionUserJSON(u *api.DecisionUser) *decisionUserJSON {
@@ -181,21 +185,24 @@ func newDecisionAuthorJSON(a *api.DecisionAuthor) *decisionAuthorJSON {
 
 func newDecisionJSON(d *api.Decision) decisionJSON {
 	out := decisionJSON{
-		ID:         d.ID,
-		Type:       d.Type,
-		Title:      d.Title,
-		Summary:    d.Summary,
-		Status:     d.Status,
-		Outcome:    d.Outcome,
-		SettledAt:  d.SettledAt,
-		Resolution: d.Resolution,
-		RaisedBy:   newDecisionUserJSON(d.RaisedBy),
-		Author:     newDecisionAuthorJSON(d.Author),
-		Comments:   make([]decisionCommentJSON, 0, len(d.Comments)),
+		ID:           d.ID,
+		Type:         d.Type,
+		Title:        d.Title,
+		Summary:      d.Summary,
+		Status:       d.Status,
+		Outcome:      d.Outcome,
+		SettledAt:    d.SettledAt,
+		Resolution:   d.Resolution,
+		RaisedBy:     newDecisionUserJSON(d.RaisedBy),
+		Author:       newDecisionAuthorJSON(d.Author),
+		CommentCount: d.NumComments(),
 	}
 	if d.Anchor != nil {
 		anchor := decisionAnchorJSON(*d.Anchor)
 		out.Anchor = &anchor
+	}
+	if d.Comments != nil {
+		out.Comments = make([]decisionCommentJSON, 0, len(d.Comments))
 	}
 	for i := range d.Comments {
 		out.Comments = append(out.Comments, newDecisionCommentJSON(&d.Comments[i]))
@@ -215,7 +222,7 @@ func newDecisionCommentJSON(c *api.DecisionComment) decisionCommentJSON {
 }
 
 func newDecisionListJSON(runbookNumber int, decisions []api.Decision) decisionListJSON {
-	out := decisionListJSON{Session: formatRunbookID(runbookNumber), Decisions: make([]decisionJSON, 0, len(decisions))}
+	out := decisionListJSON{ID: formatRunbookID(runbookNumber), Decisions: make([]decisionJSON, 0, len(decisions))}
 	for i := range decisions {
 		out.Decisions = append(out.Decisions, newDecisionJSON(&decisions[i]))
 	}
