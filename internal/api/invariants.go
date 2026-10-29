@@ -73,9 +73,9 @@ type InvariantUsage struct {
 // blank (the server reads a blank list as "no filter"), and Page and PerPage
 // are sent only when positive, so the server's defaults hold otherwise.
 // OwnerTeams (org/slug) and Unowned OR together and match the effective owner.
-// IncludeUsage attaches each row's Usage; Sort (applied, failed,
-// failure_rate, waived), NeverApplied and Since (an RFC 3339 instant) are
-// only valid with it. The server has no status default here; the CLI sends
+// IncludeUsage attaches each row's all-time Usage; Sort (applied, failed,
+// failure_rate, waived) and NeverApplied are only valid with it, and not
+// together. The server has no status default here; the CLI sends
 // Status active itself when --status is absent.
 type ListInvariantsQuery struct {
 	Repo         *Repository
@@ -87,7 +87,6 @@ type ListInvariantsQuery struct {
 	IncludeUsage bool
 	Sort         string
 	NeverApplied bool
-	Since        string
 	Page         int
 	PerPage      int
 }
@@ -244,7 +243,6 @@ func listInvariantsQuery(q ListInvariantsQuery) url.Values {
 	if q.NeverApplied {
 		values.Set("never_applied", "true")
 	}
-	setSince(values, q.Since)
 	setPage(values, q.Page, q.PerPage)
 	return values
 }
@@ -253,12 +251,6 @@ func setRepo(values url.Values, repo *Repository) {
 	if repo != nil {
 		values.Set("org", repo.Org)
 		values.Set("repo", repo.Name)
-	}
-}
-
-func setSince(values url.Values, since string) {
-	if since != "" {
-		values.Set("since", since)
 	}
 }
 

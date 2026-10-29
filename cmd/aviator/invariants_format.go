@@ -12,10 +12,9 @@ import (
 )
 
 // invariantListUsage is what a --usage listing's footer says: the status
-// the counts cover and the window they span. Nil is the plain listing.
+// the counts cover. Nil is the plain listing.
 type invariantListUsage struct {
 	Status string
-	Window string
 }
 
 // formatInvariantList renders one page of invariants as a table.
@@ -33,7 +32,7 @@ func formatInvariantList(resp *api.ListInvariantsResponse, usage *invariantListU
 	case usage != nil:
 		// The status is in the footer because --usage defaults it to active,
 		// which the rows alone would not show.
-		fmt.Fprintf(&b, "%s invariants · %s", strings.ToUpper(usage.Status[:1])+usage.Status[1:], usage.Window)
+		fmt.Fprintf(&b, "%s invariants · all time", strings.ToUpper(usage.Status[:1])+usage.Status[1:])
 		if more != "" {
 			b.WriteString(" · " + more)
 		}

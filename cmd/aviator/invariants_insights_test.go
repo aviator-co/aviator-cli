@@ -90,72 +90,52 @@ func TestAnalyticsError(t *testing.T) {
 func TestUsageOnlyFlags(t *testing.T) {
 	previous := invariantsListFlags
 	t.Cleanup(func() { invariantsListFlags = previous })
-	now := time.Date(2026, 10, 27, 0, 0, 0, 0, time.UTC)
 
-	invariantsListFlags.Sort, invariantsListFlags.NeverApplied, invariantsListFlags.Since = "", false, ""
-	if usage, err := applyUsageFlags(&api.ListInvariantsQuery{}, false, now); err != nil || usage != nil {
+	invariantsListFlags.Sort, invariantsListFlags.NeverApplied = "", false
+	if usage, err := applyUsageFlags(&api.ListInvariantsQuery{}, false); err != nil || usage != nil {
 		t.Errorf("nothing passed: usage = %+v, err = %v", usage, err)
-	}
-	invariantsListFlags.Since = "all"
-	if _, err := applyUsageFlags(&api.ListInvariantsQuery{}, false, now); err != nil {
-		t.Errorf("--since all without --usage: %v", err)
 	}
 	for name, set := range map[string]func(){
 		"sort":          func() { invariantsListFlags.Sort = "applied" },
 		"never-applied": func() { invariantsListFlags.NeverApplied = true },
-		"since":         func() { invariantsListFlags.Since = "30d" },
 	} {
-		invariantsListFlags.Sort, invariantsListFlags.NeverApplied, invariantsListFlags.Since = "", false, ""
+		invariantsListFlags.Sort, invariantsListFlags.NeverApplied = "", false
 		set()
-		_, err := applyUsageFlags(&api.ListInvariantsQuery{}, false, now)
+		_, err := applyUsageFlags(&api.ListInvariantsQuery{}, false)
 		if err == nil || !strings.Contains(err.Error(), "--"+name) || !strings.Contains(err.Error(), "--usage") {
 			t.Errorf("--%s without --usage: err = %v", name, err)
 		}
 	}
-	invariantsListFlags.Sort, invariantsListFlags.NeverApplied, invariantsListFlags.Since = "", false, "yesterday"
-	if _, err := applyUsageFlags(&api.ListInvariantsQuery{}, false, now); err == nil || !strings.Contains(err.Error(), "invalid --since") {
-		t.Errorf("bad --since without --usage: err = %v", err)
-	}
 }
 
 // TestApplyUsageFlags pins what --usage puts on the query: active when no
-// status was given, the sort as given, and the since instant.
+// status was given, and the sort as given.
 func TestApplyUsageFlags(t *testing.T) {
 	previous := invariantsListFlags
 	t.Cleanup(func() { invariantsListFlags = previous })
-	now := time.Date(2026, 10, 27, 0, 0, 0, 0, time.UTC)
 
-	invariantsListFlags.Sort, invariantsListFlags.NeverApplied, invariantsListFlags.Since = "failure_rate", true, "7d"
+	invariantsListFlags.Sort, invariantsListFlags.NeverApplied = "failure_rate", false
 	query := api.ListInvariantsQuery{Page: 2, PerPage: 50}
-	usage, err := applyUsageFlags(&query, true, now)
+	usage, err := applyUsageFlags(&query, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := api.ListInvariantsQuery{
-		Status: "active", IncludeUsage: true, Sort: "failure_rate", NeverApplied: true,
-		Since: "2026-10-20T00:00:00Z", Page: 2, PerPage: 50,
+	if query.Status != "active" || !query.IncludeUsage || query.Sort != "failure_rate" || query.NeverApplied ||
+		query.Page != 2 || query.PerPage != 50 {
+		t.Errorf("query = %+v", query)
 	}
-	if query.Status != want.Status || !query.IncludeUsage || query.Sort != want.Sort ||
-		query.NeverApplied != want.NeverApplied || query.Since != want.Since || query.Page != 2 {
-		t.Errorf("query = %+v, want %+v", query, want)
-	}
-	if *usage != (invariantListUsage{Status: "active", Window: "last 7 days"}) {
+	if *usage != (invariantListUsage{Status: "active"}) {
 		t.Errorf("footer = %+v", usage)
 	}
 
 	// An explicit status is kept, so pending drafts can be inspected too.
-	invariantsListFlags.Sort, invariantsListFlags.NeverApplied, invariantsListFlags.Since = "", false, "all"
+	invariantsListFlags.Sort, invariantsListFlags.NeverApplied = "", true
 	query = api.ListInvariantsQuery{Status: "pending"}
-	if usage, err = applyUsageFlags(&query, true, now); err != nil {
+	if usage, err = applyUsageFlags(&query, true); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if query.Status != "pending" || query.Sort != "" || query.Since != "" || usage.Window != "all time" {
+	if query.Status != "pending" || query.Sort != "" || !query.NeverApplied || usage.Status != "pending" {
 		t.Errorf("query = %+v, footer = %+v", query, usage)
-	}
-
-	invariantsListFlags.Since = "yesterday"
-	if _, err := applyUsageFlags(&api.ListInvariantsQuery{}, true, now); err == nil {
-		t.Error("bad since: expected error")
 	}
 }
 
@@ -191,7 +171,7 @@ func TestFormatInvariantListUsage(t *testing.T) {
 			},
 		},
 	}
-	out := formatInvariantList(resp, &invariantListUsage{Status: "active", Window: "all time"})
+	out := formatInvariantList(resp, &invariantListUsage{Status: "active"})
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	if len(lines) != 5 {
 		t.Fatalf("want header, 2 rows, 1 reason row, footer; got %d lines:\n%s", len(lines), out)
@@ -219,8 +199,8 @@ func TestFormatInvariantListUsage(t *testing.T) {
 	}
 
 	resp.HasMore = false
-	out = formatInvariantList(resp, &invariantListUsage{Status: "pending", Window: "last 30 days"})
-	if !strings.HasSuffix(out, "Pending invariants · last 30 days\n") {
+	out = formatInvariantList(resp, &invariantListUsage{Status: "pending"})
+	if !strings.HasSuffix(out, "Pending invariants · all time\n") {
 		t.Errorf("last page footer:\n%s", out)
 	}
 }
@@ -282,7 +262,7 @@ var insightsResponse = &api.InvariantInsightsResponse{
 }
 
 func TestFormatInvariantInsights(t *testing.T) {
-	out := formatInvariantInsights(insightsResponse, "last 30 days", "all repos", "aviator invariants list --usage --never-applied --since 30d")
+	out := formatInvariantInsights(insightsResponse, "last 30 days", "all repos", "aviator invariants list --usage --never-applied")
 	for _, want := range []string{
 		"Invariant insights · active invariants · last 30 days · all repos\n",
 		"\nMost applied\nID   APPLIED  FAILED  WAIVED  TITLE\n#42  143      31      18      HTTP handlers authenticate\n",
@@ -291,7 +271,7 @@ func TestFormatInvariantInsights(t *testing.T) {
 		// An empty table says so rather than printing a bare header.
 		"\nHighest waive rate\nnone\n",
 		"\nNever applied (7)\nID   CREATED     TITLE\n#71  2026-09-02  Feature flags have a removal ticket\n" +
-			"See all: aviator invariants list --usage --never-applied --since 30d\n",
+			"See all: aviator invariants list --usage --never-applied\n",
 		"\nWaiver reasons: 61 · false positive 34 · doesn't apply 12 · accepted risk 10 · fix in follow-up 5\n",
 	} {
 		if !strings.Contains(out, want) {
@@ -309,16 +289,15 @@ func TestFormatInvariantInsights(t *testing.T) {
 	}
 }
 
-// TestNeverAppliedHint pins that the hinted listing covers the same window,
-// repo and status the never-applied count does.
+// TestNeverAppliedHint pins that the hinted listing covers the same repo and
+// status the never-applied count does.
 func TestNeverAppliedHint(t *testing.T) {
 	base := "aviator invariants list --usage --never-applied"
-	if got := neverAppliedHint(sinceWindow{Label: "all time"}, "all", nil, ""); got != base {
+	if got := neverAppliedHint(nil, ""); got != base {
 		t.Errorf("hint = %q, want %q", got, base)
 	}
-	got := neverAppliedHint(sinceWindow{Param: "2026-09-27T00:00:00Z", Label: "last 30 days"}, " 30d ",
-		&api.Repository{Org: "acme", Name: "web"}, "pending")
-	if want := base + " --since 30d --repo acme/web --status pending"; got != want {
+	got := neverAppliedHint(&api.Repository{Org: "acme", Name: "web"}, "pending")
+	if want := base + " --repo acme/web --status pending"; got != want {
 		t.Errorf("hint = %q, want %q", got, want)
 	}
 }
@@ -358,7 +337,7 @@ var waiverRows = []api.InvariantWaiverRow{{
 }}
 
 func TestFormatInvariantShow(t *testing.T) {
-	out := formatInvariantShow(showDetail, &api.InvariantWaiversResponse{Waivers: waiverRows, Page: 1, HasMore: true}, "all time")
+	out := formatInvariantShow(showDetail, &api.InvariantWaiversResponse{Waivers: waiverRows, Page: 1, HasMore: true})
 	for _, want := range []string{
 		"#42 HTTP handlers authenticate\n  Category: security\n",
 		"  Owner: @acme/platform\n  Version: 3\n  Body: Call the auth middleware first.\n",
@@ -385,9 +364,9 @@ func TestFormatInvariantShow(t *testing.T) {
 		Repository:     api.Repository{Org: "acme", Name: "web"},
 		InvariantUsage: api.InvariantUsage{TimesApplied: 100, TimesFailed: 28, FailureRate: rate(0.28), TotalWaives: 17},
 	}}
-	out = formatInvariantShow(&withRepos, &api.InvariantWaiversResponse{Page: 1}, "last 30 days")
+	out = formatInvariantShow(&withRepos, &api.InvariantWaiversResponse{Page: 1})
 	for _, want := range []string{
-		"\nUsage · last 30 days\n",
+		"\nUsage · all time\n",
 		"\nBy repo\n  REPO      APPLIED  FAILED  RATE  WAIVED\n  acme/web  100      28      28%   17\n",
 		"\nWaivers (18)\n  none\n",
 	} {
@@ -400,14 +379,14 @@ func TestFormatInvariantShow(t *testing.T) {
 	}
 
 	// Past the last waiver the empty page says so instead of "none".
-	out = formatInvariantShow(showDetail, &api.InvariantWaiversResponse{Page: 4}, "all time")
+	out = formatInvariantShow(showDetail, &api.InvariantWaiversResponse{Page: 4})
 	if want := "\nWaivers (18)\n  Nothing on page 4, the listing ends before it. Try a lower --page.\n"; !strings.HasSuffix(out, want) {
 		t.Errorf("output missing %q\n---\n%s", want, out)
 	}
 
 	// Nothing applied yet: no rates, no waive breakdown, an empty version table.
 	bare := &api.InvariantDetail{Invariant: api.Invariant{ID: 5, Title: "New", Source: "manual"}}
-	out = formatInvariantShow(bare, &api.InvariantWaiversResponse{Page: 1}, "all time")
+	out = formatInvariantShow(bare, &api.InvariantWaiversResponse{Page: 1})
 	if !strings.Contains(out, "  Applied 0 · Failed 0 (-) · Waived 0 of 0 failures (-)\n") ||
 		strings.Contains(out, "Waived as") || strings.Contains(out, "Version:") ||
 		!strings.Contains(out, "\nBy version\n  none\n") {
@@ -564,14 +543,7 @@ func TestInvariantShowJSON(t *testing.T) {
 	if got["id"] != float64(42) || got["title"] != "HTTP handlers authenticate" || got["version"] != float64(3) {
 		t.Errorf("invariant fields = %v", got)
 	}
-	// since sits beside usage, as on insights, not inside it.
-	if v, ok := got["since"]; !ok || v != nil {
-		t.Errorf("since = %v (present %t), want null", v, ok)
-	}
 	usage := got["usage"].(map[string]any)
-	if _, ok := usage["since"]; ok {
-		t.Errorf("usage should carry no since: %v", usage)
-	}
 	if usage["times_applied"] != float64(143) || usage["waived_failures"] != float64(18) || usage["waive_rate"] != 0.581 {
 		t.Errorf("usage = %v", usage)
 	}

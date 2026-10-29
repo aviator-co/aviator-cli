@@ -114,23 +114,20 @@ func TestGetInvariantInsightsDefaultQuery(t *testing.T) {
 
 func TestGetInvariant(t *testing.T) {
 	detail := strings.TrimSuffix(invariantJSON, "}") + `,"owner_teams":[{"org":"acme","slug":"platform"}],"version":3,` +
-		`"since":"2026-09-27T00:00:00Z","usage":{` + usageJSON(143, 31, "0.217", 18, 18, "0.581", 11) + `},` +
+		`"usage":{` + usageJSON(143, 31, "0.217", 18, 18, "0.581", 11) + `},` +
 		`"by_version":[{"version":3,"created_at":"2026-10-02T00:00:00Z",` + usageJSON(40, 4, "0.1", 1, 1, "0.25", 1) + `},` +
 		`{"version":null,"created_at":null,` + usageJSON(25, 6, "0.24", 3, 3, "0.5", 3) + `}],` +
 		`"by_repo":[{"repository":{"org":"acme","name":"web"},` + usageJSON(100, 28, "0.28", 17, 16, "0.571", 9) + `}]}`
 	srv, got := newInvariantAnalyticsServer(t, detail)
 
-	resp, err := newTestClient(srv).GetInvariant(context.Background(), 7, GetInvariantQuery{
-		Since:  "2026-09-27T00:00:00Z",
-		ByRepo: true,
-	})
+	resp, err := newTestClient(srv).GetInvariant(context.Background(), 7, GetInvariantQuery{ByRepo: true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got.URL.Path != "/api/v1/invariants/7" {
 		t.Errorf("path = %q", got.URL.Path)
 	}
-	if want := "include=by_repo&since=2026-09-27T00%3A00%3A00Z"; got.URL.RawQuery != want {
+	if want := "include=by_repo"; got.URL.RawQuery != want {
 		t.Errorf("query = %q, want %q", got.URL.RawQuery, want)
 	}
 	// The plain invariant fields still decode through the embedded struct.
@@ -139,9 +136,6 @@ func TestGetInvariant(t *testing.T) {
 	}
 	if resp.Version == nil || *resp.Version != 3 {
 		t.Errorf("version = %v", resp.Version)
-	}
-	if resp.Since == nil || *resp.Since != "2026-09-27T00:00:00Z" {
-		t.Errorf("since = %v", resp.Since)
 	}
 	if u := resp.Usage; u == nil || u.TimesApplied != 143 || u.WaivedFailures != 18 || u.FailureRate == nil ||
 		*u.FailureRate != 0.217 || u.WaiveRate == nil || *u.WaiveRate != 0.581 || u.WaivesByCategory.FalsePositive != 11 {
@@ -164,7 +158,7 @@ func TestGetInvariant(t *testing.T) {
 // that an omitted by_repo decodes as nil rather than empty.
 func TestGetInvariantDefaultQuery(t *testing.T) {
 	srv, got := newInvariantAnalyticsServer(t, strings.TrimSuffix(invariantJSON, "}")+`,"version":null,`+
-		`"since":null,"usage":{`+usageJSON(0, 0, "null", 0, 0, "null", 0)+`},"by_version":[]}`)
+		`"usage":{`+usageJSON(0, 0, "null", 0, 0, "null", 0)+`},"by_version":[]}`)
 
 	resp, err := newTestClient(srv).GetInvariant(context.Background(), 7, GetInvariantQuery{})
 	if err != nil {
@@ -173,7 +167,7 @@ func TestGetInvariantDefaultQuery(t *testing.T) {
 	if got.URL.RawQuery != "" {
 		t.Errorf("query = %q, want empty", got.URL.RawQuery)
 	}
-	if resp.Version != nil || resp.Since != nil || resp.Usage.FailureRate != nil || resp.ByRepo != nil || len(resp.ByVersion) != 0 {
+	if resp.Version != nil || resp.Usage.FailureRate != nil || resp.ByRepo != nil || len(resp.ByVersion) != 0 {
 		t.Errorf("response = %+v", resp)
 	}
 }
@@ -189,7 +183,6 @@ func TestListInvariantReviews(t *testing.T) {
 		`],"page":1,"per_page":20,"has_more":false}`)
 
 	resp, err := newTestClient(srv).ListInvariantReviews(context.Background(), 42, InvariantReviewsQuery{
-		Since:   "2026-09-27T00:00:00Z",
 		Repo:    &Repository{Org: "acme", Name: "web"},
 		Outcome: "waived",
 		Page:    1,
@@ -201,7 +194,7 @@ func TestListInvariantReviews(t *testing.T) {
 	if got.URL.Path != "/api/v1/invariants/42/reviews" {
 		t.Errorf("path = %q", got.URL.Path)
 	}
-	if want := "org=acme&outcome=waived&page=1&per_page=20&repo=web&since=2026-09-27T00%3A00%3A00Z"; got.URL.RawQuery != want {
+	if want := "org=acme&outcome=waived&page=1&per_page=20&repo=web"; got.URL.RawQuery != want {
 		t.Errorf("query = %q, want %q", got.URL.RawQuery, want)
 	}
 	if resp.HasMore || len(resp.Reviews) != 2 || resp.Invariant.ID != 42 || resp.Invariant.Title != "HTTP handlers authenticate" {
@@ -230,7 +223,6 @@ func TestListAccountWaivers(t *testing.T) {
 	srv, got := newInvariantAnalyticsServer(t, `{"waivers":[`+row+`],"page":1,"per_page":20,"has_more":false}`)
 
 	resp, err := newTestClient(srv).ListAccountWaivers(context.Background(), AccountWaiversQuery{
-		Since:       "2026-09-27T00:00:00Z",
 		InvariantID: 42,
 		User:        "me",
 		Category:    "false_positive",
@@ -244,7 +236,7 @@ func TestListAccountWaivers(t *testing.T) {
 	if got.URL.Path != "/api/v1/invariants/waivers" {
 		t.Errorf("path = %q", got.URL.Path)
 	}
-	want := "category=false_positive&invariant=42&org=acme&page=1&per_page=20&repo=web&since=2026-09-27T00%3A00%3A00Z&user=me"
+	want := "category=false_positive&invariant=42&org=acme&page=1&per_page=20&repo=web&user=me"
 	if got.URL.RawQuery != want {
 		t.Errorf("query = %q, want %q", got.URL.RawQuery, want)
 	}
@@ -291,13 +283,11 @@ func TestListInvariantsUsageQuery(t *testing.T) {
 		Status:       "active",
 		IncludeUsage: true,
 		Sort:         "failure_rate",
-		NeverApplied: true,
-		Since:        "2026-09-27T00:00:00Z",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := "include=usage&never_applied=true&since=2026-09-27T00%3A00%3A00Z&sort=failure_rate&status=active"
+	want := "include=usage&sort=failure_rate&status=active"
 	if got.URL.RawQuery != want {
 		t.Errorf("query = %q, want %q", got.URL.RawQuery, want)
 	}
