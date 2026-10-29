@@ -183,6 +183,8 @@ aviator edit r/123 --intent "..."
 aviator edit r/123 --preview docs                  # switch preview config, no run
 aviator dismiss r/123 --key <key>                  # delete a task criterion
 aviator dismiss r/123 --criteria-json \
+  '[{"stable_key": "<key>", "action": "waive", "justification": "..."}]'
+aviator dismiss r/123 --criteria-json \
   '[{"baseline_invariant_id": 42, "category": "accepted_risk", "justification": "..."}]'
 ```
 

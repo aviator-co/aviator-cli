@@ -6,10 +6,12 @@ import (
 )
 
 // Dismissal names one criterion to clear off the verify gate: a task criterion
-// by StableKey (deleted), or an invariant by BaselineInvariantID (waived, which
-// requires Category and Justification).
+// by StableKey (deleted, or waived with Action "waive" and a Justification), or
+// an invariant by BaselineInvariantID (waived, which requires Category and
+// Justification).
 type Dismissal struct {
 	StableKey           string `json:"stable_key,omitempty"`
+	Action              string `json:"action,omitempty"`
 	BaselineInvariantID int    `json:"baseline_invariant_id,omitempty"`
 	Category            string `json:"category,omitempty"`
 	Justification       string `json:"justification,omitempty"`
@@ -30,7 +32,7 @@ type DismissCriteriaResponse struct {
 	CriteriaCount  int  `json:"criteria_count"`
 }
 
-// DismissCriteria deletes task criteria and waives invariants on a session.
+// DismissCriteria deletes or waives task criteria and waives invariants on a session.
 func (c *Client) DismissCriteria(
 	ctx context.Context, runbookNumber int, req DismissCriteriaRequest,
 ) (*DismissCriteriaResponse, error) {

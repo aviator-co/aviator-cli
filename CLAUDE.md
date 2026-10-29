@@ -158,9 +158,10 @@ The CLI targets endpoints in the `mergeit` backend:
   doesn't combine with `evaluator_only`, and the backend caps it per session
   for non-BYOK accounts (429 `scenario-regen-limit-reached`).
 - `POST /api/v1/verify/<n>/dismissals` — `{criteria: [{stable_key} |
-  {baseline_invariant_id, category, justification}]}`. Deletes task criteria
-  and waives invariants; the handles come from the detail endpoint. Starts no
-  run.
+  {stable_key, action: "waive", justification} |
+  {baseline_invariant_id, category, justification}]}`. Deletes or waives task
+  criteria and waives invariants; the handles come from the detail endpoint.
+  Starts no run.
 - `GET /api/v1/verify/<n>/runs` — `?page=&per_page=`. The session's
   verification runs, newest first, for the run list in `aviator show`.
 - `GET /api/v1/verify/<n>/runs/<run_id>` — one run with its failed criteria,
