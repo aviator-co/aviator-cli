@@ -45,7 +45,7 @@ type Invariant struct {
 	// account's default. Nil means the backend predates owner teams, which
 	// tells an unsupported backend apart from an unowned invariant.
 	OwnerTeams *[]OwnerTeam `json:"owner_teams"`
-	// Version is the current version number; only GET /<id> returns it.
+	// Version is the current version number, nil when it has none.
 	Version *int `json:"version"`
 	// Usage is the row's counts when the listing asked for include=usage.
 	Usage      *InvariantUsage `json:"usage"`
@@ -53,15 +53,17 @@ type Invariant struct {
 	ModifiedAt string          `json:"modified_at"`
 }
 
-// InvariantUsage is one invariant's counts over review sessions, as
-// GET /api/v1/invariants attaches with include=usage. Rates are nil when the
-// denominator is zero.
+// InvariantUsage is one invariant's counts over review sessions: a list row's
+// usage with include=usage, and the detail's usage, by-version and by-repo
+// rows. Rates are nil when the denominator is zero.
 type InvariantUsage struct {
-	TimesApplied int      `json:"times_applied"`
-	TimesFailed  int      `json:"times_failed"`
-	FailureRate  *float64 `json:"failure_rate"`
-	TotalWaives  int      `json:"total_waives"`
-	WaiveRate    *float64 `json:"waive_rate"`
+	TimesApplied     int         `json:"times_applied"`
+	TimesFailed      int         `json:"times_failed"`
+	FailureRate      *float64    `json:"failure_rate"`
+	TotalWaives      int         `json:"total_waives"`
+	WaivedFailures   int         `json:"waived_failures"`
+	WaiveRate        *float64    `json:"waive_rate"`
+	WaivesByCategory WaiveCounts `json:"waives_by_category"`
 }
 
 // ListInvariantsQuery is the query string for GET /api/v1/invariants. A
@@ -73,8 +75,8 @@ type InvariantUsage struct {
 // OwnerTeams (org/slug) and Unowned OR together and match the effective owner.
 // IncludeUsage attaches each row's Usage; Sort (applied, failed,
 // failure_rate, waived), NeverApplied and Since (an RFC 3339 instant) are
-// only valid with it, and the server defaults Status to active when
-// IncludeUsage is set and Status is empty.
+// only valid with it. The server has no status default here; the CLI sends
+// Status active itself when --status is absent.
 type ListInvariantsQuery struct {
 	Repo         *Repository
 	Status       string

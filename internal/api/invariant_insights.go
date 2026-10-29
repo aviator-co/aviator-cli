@@ -25,10 +25,10 @@ type InvariantSummary struct {
 
 // InvariantReview is the review session an invariant was applied on.
 type InvariantReview struct {
-	ReviewNumber int                 `json:"review_number"`
-	URL          string              `json:"url"`
-	Repositories []Repository        `json:"repositories"`
-	PullRequests []LinkedPullRequest `json:"pull_requests"`
+	RunbookNumber int                 `json:"runbook_number"`
+	URL           string              `json:"url"`
+	Repositories  []Repository        `json:"repositories"`
+	PullRequests  []LinkedPullRequest `json:"pull_requests"`
 }
 
 // InvariantUser is who waived an invariant.
@@ -38,7 +38,7 @@ type InvariantUser struct {
 }
 
 // InvariantWaiver is one waive of an invariant on a review. WaivedBy is nil
-// when the user was deleted; Version is the invariant version the waiver was
+// when the user row is gone; Version is the invariant version the waiver was
 // made on, nil when none was pinned.
 type InvariantWaiver struct {
 	Category      string         `json:"category"`
@@ -129,56 +129,29 @@ type GetInvariantQuery struct {
 	ByRepo bool
 }
 
-// InvariantDetail is one invariant with its usage. Usage shadows the
-// embedded row-level field, since the detail's usage carries more.
+// InvariantDetail is one invariant with its usage (on the embedded Usage)
+// over Since, nil for all time.
 type InvariantDetail struct {
 	Invariant
-	Usage     InvariantUsageDetail    `json:"usage"`
+	Since     *string                 `json:"since"`
 	ByVersion []InvariantVersionUsage `json:"by_version"`
 	// ByRepo is only present when the query asked for it.
 	ByRepo []InvariantRepoUsage `json:"by_repo"`
-}
-
-// InvariantUsageDetail is an invariant's counts over the window.
-type InvariantUsageDetail struct {
-	Since            *string     `json:"since"`
-	TimesApplied     int         `json:"times_applied"`
-	TimesFailed      int         `json:"times_failed"`
-	FailureRate      *float64    `json:"failure_rate"`
-	TotalWaives      int         `json:"total_waives"`
-	WaivedFailures   int         `json:"waived_failures"`
-	WaiveRate        *float64    `json:"waive_rate"`
-	WaivesByCategory WaiveCounts `json:"waives_by_category"`
 }
 
 // InvariantVersionUsage is the counts for one invariant version, newest
 // first. Version and CreatedAt are nil for criteria and waivers with no
 // version pinned.
 type InvariantVersionUsage struct {
-	Version          *int        `json:"version"`
-	CreatedAt        *string     `json:"created_at"`
-	TimesApplied     int         `json:"times_applied"`
-	TimesFailed      int         `json:"times_failed"`
-	FailureRate      *float64    `json:"failure_rate"`
-	TotalWaives      int         `json:"total_waives"`
-	WaivesByCategory WaiveCounts `json:"waives_by_category"`
+	Version   *int    `json:"version"`
+	CreatedAt *string `json:"created_at"`
+	InvariantUsage
 }
 
 // InvariantRepoUsage is the counts for one repository.
 type InvariantRepoUsage struct {
-	Repository   Repository `json:"repository"`
-	TimesApplied int        `json:"times_applied"`
-	TimesFailed  int        `json:"times_failed"`
-	FailureRate  *float64   `json:"failure_rate"`
-	TotalWaives  int        `json:"total_waives"`
-}
-
-// InvariantWaiversQuery pages GET /api/v1/invariants/<id>/waivers.
-type InvariantWaiversQuery struct {
-	Since   string
-	Repo    *Repository
-	Page    int
-	PerPage int
+	Repository Repository `json:"repository"`
+	InvariantUsage
 }
 
 // AccountWaiversQuery filters and pages GET /api/v1/invariants/waivers, the
@@ -195,13 +168,13 @@ type AccountWaiversQuery struct {
 	PerPage     int
 }
 
-// InvariantWaiverRow is one waive with the review it was made on. Invariant
-// is only set by the account-wide listing.
+// InvariantWaiverRow is one waive with the invariant and the review it was
+// made on.
 type InvariantWaiverRow struct {
 	ID int `json:"id"`
 	InvariantWaiver
-	Review    InvariantReview   `json:"review"`
-	Invariant *InvariantSummary `json:"invariant"`
+	Review    InvariantReview  `json:"review"`
+	Invariant InvariantSummary `json:"invariant"`
 }
 
 // InvariantWaiversResponse is one page of waives, newest first.
@@ -223,31 +196,34 @@ type InvariantReviewsQuery struct {
 }
 
 // InvariantReviewRow is one review an invariant was applied on. Result is
-// the latest run's raw status for it (pass, fail, warn, error), nil when no
-// run evaluated it; Outcome folds waivers and earlier failures in.
+// the verdict run's raw status for it (pass, fail, warn, error), nil when no
+// run concluded on it; Outcome folds waivers and earlier failures in.
 type InvariantReviewRow struct {
-	Review    InvariantReview     `json:"review"`
-	AppliedAt string              `json:"applied_at"`
-	Version   *int                `json:"version"`
-	LatestRun *InvariantReviewRun `json:"latest_run"`
-	Result    *string             `json:"result"`
-	Outcome   string              `json:"outcome"`
-	Waiver    *InvariantWaiver    `json:"waiver"`
+	Review     InvariantReview     `json:"review"`
+	AppliedAt  string              `json:"applied_at"`
+	Version    *int                `json:"version"`
+	VerdictRun *InvariantReviewRun `json:"verdict_run"`
+	Result     *string             `json:"result"`
+	Outcome    string              `json:"outcome"`
+	Waiver     *InvariantWaiver    `json:"waiver"`
 }
 
-// InvariantReviewRun is the latest run that evaluated the invariant.
+// InvariantReviewRun is the run of the latest concluded verdict for the
+// invariant, which may be older than the review's latest run.
 type InvariantReviewRun struct {
 	ID          int     `json:"id"`
 	Status      string  `json:"status"`
 	CompletedAt *string `json:"completed_at"`
 }
 
-// InvariantReviewsResponse is one page of reviews, newest applied first.
+// InvariantReviewsResponse is one page of reviews, newest applied first,
+// with the invariant they are about.
 type InvariantReviewsResponse struct {
-	Reviews []InvariantReviewRow `json:"reviews"`
-	Page    int                  `json:"page"`
-	PerPage int                  `json:"per_page"`
-	HasMore bool                 `json:"has_more"`
+	Invariant InvariantSummary     `json:"invariant"`
+	Reviews   []InvariantReviewRow `json:"reviews"`
+	Page      int                  `json:"page"`
+	PerPage   int                  `json:"per_page"`
+	HasMore   bool                 `json:"has_more"`
 }
 
 // GetInvariantInsights fetches the account-wide usage rankings.
@@ -281,21 +257,6 @@ func (c *Client) GetInvariant(
 	}
 	var out InvariantDetail
 	if err := c.getJSON(ctx, invariantPath(invariantID), values, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-// ListInvariantWaivers fetches one page of an invariant's waives.
-func (c *Client) ListInvariantWaivers(
-	ctx context.Context, invariantID int, q InvariantWaiversQuery,
-) (*InvariantWaiversResponse, error) {
-	values := url.Values{}
-	setSince(values, q.Since)
-	setRepo(values, q.Repo)
-	setPage(values, q.Page, q.PerPage)
-	var out InvariantWaiversResponse
-	if err := c.getJSON(ctx, invariantPath(invariantID)+"/waivers", values, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

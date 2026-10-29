@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,9 +11,18 @@ import (
 
 const invariantSummaryJSON = `{"id":42,"title":"HTTP handlers authenticate","category":"security","status":"active"}`
 
-const invariantReviewJSON = `{"review_number":1288,"url":"https://app.aviator.co/r/1288",` +
+const invariantReviewJSON = `{"runbook_number":1288,"url":"https://app.aviator.co/r/1288",` +
 	`"repositories":[{"org":"acme","name":"web"}],` +
-	`"pull_requests":[{"number":4821,"url":"https://github.com/acme/web/pull/4821"}]}`
+	`"pull_requests":[{"number":4821,"url":"https://github.com/acme/web/pull/4821","step_numbers":["1","2"]}]}`
+
+// usageJSON renders the seven usage keys every usage object and row carries;
+// rates are JSON literals so null can be passed.
+func usageJSON(applied, failed int, failureRate string, waives, waivedFailures int, waiveRate string, falsePositive int) string {
+	return fmt.Sprintf(`"times_applied":%d,"times_failed":%d,"failure_rate":%s,"total_waives":%d,`+
+		`"waived_failures":%d,"waive_rate":%s,"waives_by_category":{"false_positive":%d,"doesnt_apply":0,`+
+		`"accepted_risk":0,"fix_in_followup":0}`,
+		applied, failed, failureRate, waives, waivedFailures, waiveRate, falsePositive)
+}
 
 const invariantWaiverRowJSON = `{"id":9,"created_at":"2026-10-21T10:00:00Z","category":"false_positive",` +
 	`"justification":"Internal only.","waived_by":{"email":"dana@acme.com","full_name":"Dana K."},` +
@@ -104,16 +114,10 @@ func TestGetInvariantInsightsDefaultQuery(t *testing.T) {
 
 func TestGetInvariant(t *testing.T) {
 	detail := strings.TrimSuffix(invariantJSON, "}") + `,"owner_teams":[{"org":"acme","slug":"platform"}],"version":3,` +
-		`"usage":{"since":null,"times_applied":143,"times_failed":31,"failure_rate":0.217,"total_waives":18,` +
-		`"waived_failures":18,"waive_rate":0.581,` +
-		`"waives_by_category":{"false_positive":11,"doesnt_apply":4,"accepted_risk":2,"fix_in_followup":1}},` +
-		`"by_version":[{"version":3,"created_at":"2026-10-02T00:00:00Z","times_applied":40,"times_failed":4,` +
-		`"failure_rate":0.1,"total_waives":1,"waives_by_category":{"false_positive":1,"doesnt_apply":0,` +
-		`"accepted_risk":0,"fix_in_followup":0}},{"version":null,"created_at":null,"times_applied":25,` +
-		`"times_failed":6,"failure_rate":0.24,"total_waives":3,"waives_by_category":{"false_positive":3,` +
-		`"doesnt_apply":0,"accepted_risk":0,"fix_in_followup":0}}],` +
-		`"by_repo":[{"repository":{"org":"acme","name":"web"},"times_applied":100,"times_failed":28,` +
-		`"failure_rate":0.28,"total_waives":17}]}`
+		`"since":"2026-09-27T00:00:00Z","usage":{` + usageJSON(143, 31, "0.217", 18, 18, "0.581", 11) + `},` +
+		`"by_version":[{"version":3,"created_at":"2026-10-02T00:00:00Z",` + usageJSON(40, 4, "0.1", 1, 1, "0.25", 1) + `},` +
+		`{"version":null,"created_at":null,` + usageJSON(25, 6, "0.24", 3, 3, "0.5", 3) + `}],` +
+		`"by_repo":[{"repository":{"org":"acme","name":"web"},` + usageJSON(100, 28, "0.28", 17, 16, "0.571", 9) + `}]}`
 	srv, got := newInvariantAnalyticsServer(t, detail)
 
 	resp, err := newTestClient(srv).GetInvariant(context.Background(), 7, GetInvariantQuery{
@@ -136,15 +140,22 @@ func TestGetInvariant(t *testing.T) {
 	if resp.Version == nil || *resp.Version != 3 {
 		t.Errorf("version = %v", resp.Version)
 	}
-	if u := resp.Usage; u.Since != nil || u.TimesApplied != 143 || u.WaivedFailures != 18 ||
-		u.FailureRate == nil || *u.FailureRate != 0.217 || u.WaivesByCategory.DoesntApply != 4 {
+	if resp.Since == nil || *resp.Since != "2026-09-27T00:00:00Z" {
+		t.Errorf("since = %v", resp.Since)
+	}
+	if u := resp.Usage; u == nil || u.TimesApplied != 143 || u.WaivedFailures != 18 || u.FailureRate == nil ||
+		*u.FailureRate != 0.217 || u.WaiveRate == nil || *u.WaiveRate != 0.581 || u.WaivesByCategory.FalsePositive != 11 {
 		t.Errorf("usage = %+v", u)
 	}
-	if len(resp.ByVersion) != 2 || *resp.ByVersion[0].Version != 3 || resp.ByVersion[1].Version != nil ||
-		resp.ByVersion[1].CreatedAt != nil || resp.ByVersion[1].TotalWaives != 3 {
+	if len(resp.ByVersion) != 2 || *resp.ByVersion[0].Version != 3 || resp.ByVersion[0].WaivedFailures != 1 ||
+		*resp.ByVersion[0].WaiveRate != 0.25 || resp.ByVersion[1].Version != nil ||
+		resp.ByVersion[1].CreatedAt != nil || resp.ByVersion[1].TotalWaives != 3 ||
+		resp.ByVersion[1].WaivesByCategory.FalsePositive != 3 {
 		t.Errorf("by_version = %+v", resp.ByVersion)
 	}
-	if len(resp.ByRepo) != 1 || resp.ByRepo[0].Repository.Org != "acme" || resp.ByRepo[0].TimesFailed != 28 {
+	if len(resp.ByRepo) != 1 || resp.ByRepo[0].Repository.Org != "acme" || resp.ByRepo[0].TimesFailed != 28 ||
+		resp.ByRepo[0].WaivedFailures != 16 || *resp.ByRepo[0].WaiveRate != 0.571 ||
+		resp.ByRepo[0].WaivesByCategory.FalsePositive != 9 {
 		t.Errorf("by_repo = %+v", resp.ByRepo)
 	}
 }
@@ -153,9 +164,7 @@ func TestGetInvariant(t *testing.T) {
 // that an omitted by_repo decodes as nil rather than empty.
 func TestGetInvariantDefaultQuery(t *testing.T) {
 	srv, got := newInvariantAnalyticsServer(t, strings.TrimSuffix(invariantJSON, "}")+`,"version":null,`+
-		`"usage":{"since":null,"times_applied":0,"times_failed":0,"failure_rate":null,"total_waives":0,`+
-		`"waived_failures":0,"waive_rate":null,"waives_by_category":{"false_positive":0,"doesnt_apply":0,`+
-		`"accepted_risk":0,"fix_in_followup":0}},"by_version":[]}`)
+		`"since":null,"usage":{`+usageJSON(0, 0, "null", 0, 0, "null", 0)+`},"by_version":[]}`)
 
 	resp, err := newTestClient(srv).GetInvariant(context.Background(), 7, GetInvariantQuery{})
 	if err != nil {
@@ -164,58 +173,19 @@ func TestGetInvariantDefaultQuery(t *testing.T) {
 	if got.URL.RawQuery != "" {
 		t.Errorf("query = %q, want empty", got.URL.RawQuery)
 	}
-	if resp.Version != nil || resp.Usage.FailureRate != nil || resp.ByRepo != nil || len(resp.ByVersion) != 0 {
+	if resp.Version != nil || resp.Since != nil || resp.Usage.FailureRate != nil || resp.ByRepo != nil || len(resp.ByVersion) != 0 {
 		t.Errorf("response = %+v", resp)
-	}
-}
-
-func TestListInvariantWaivers(t *testing.T) {
-	srv, got := newInvariantAnalyticsServer(t, `{"waivers":[`+invariantWaiverRowJSON+`],"page":2,"per_page":1,"has_more":true}`)
-
-	resp, err := newTestClient(srv).ListInvariantWaivers(context.Background(), 42, InvariantWaiversQuery{
-		Since:   "2026-09-27T00:00:00Z",
-		Repo:    &Repository{Org: "acme", Name: "web"},
-		Page:    2,
-		PerPage: 1,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.URL.Path != "/api/v1/invariants/42/waivers" {
-		t.Errorf("path = %q", got.URL.Path)
-	}
-	if want := "org=acme&page=2&per_page=1&repo=web&since=2026-09-27T00%3A00%3A00Z"; got.URL.RawQuery != want {
-		t.Errorf("query = %q, want %q", got.URL.RawQuery, want)
-	}
-	if !resp.HasMore || resp.Page != 2 || len(resp.Waivers) != 1 {
-		t.Errorf("response = %+v", resp)
-	}
-	w := resp.Waivers[0]
-	if w.ID != 9 || w.Category != "false_positive" || w.Justification != "Internal only." ||
-		w.CreatedAt != "2026-10-21T10:00:00Z" || w.Version == nil || *w.Version != 2 {
-		t.Errorf("waiver = %+v", w)
-	}
-	if w.WaivedBy == nil || w.WaivedBy.FullName != "Dana K." || w.WaivedBy.Email != "dana@acme.com" {
-		t.Errorf("waived_by = %+v", w.WaivedBy)
-	}
-	if w.Review.ReviewNumber != 1288 || w.Review.Repositories[0].Name != "web" ||
-		w.Review.PullRequests[0].Number != 4821 || w.Review.PullRequests[0].URL == "" {
-		t.Errorf("review = %+v", w.Review)
-	}
-	// The per-invariant listing carries no invariant summary.
-	if w.Invariant != nil {
-		t.Errorf("invariant = %+v, want nil", w.Invariant)
 	}
 }
 
 func TestListInvariantReviews(t *testing.T) {
-	srv, got := newInvariantAnalyticsServer(t, `{"reviews":[`+
+	srv, got := newInvariantAnalyticsServer(t, `{"invariant":`+invariantSummaryJSON+`,"reviews":[`+
 		`{"review":`+invariantReviewJSON+`,"applied_at":"2026-10-21T09:00:00Z","version":2,`+
-		`"latest_run":{"id":9931,"status":"failed","completed_at":"2026-10-21T09:30:00Z"},"result":"fail",`+
+		`"verdict_run":{"id":9931,"status":"failed","completed_at":"2026-10-21T09:30:00Z"},"result":"fail",`+
 		`"outcome":"waived","waiver":{"category":"false_positive","justification":"Internal only.",`+
 		`"waived_by":null,"created_at":"2026-10-21T10:00:00Z","version":2}},`+
 		`{"review":`+invariantReviewJSON+`,"applied_at":"2026-10-20T09:00:00Z","version":null,`+
-		`"latest_run":null,"result":null,"outcome":"not_run","waiver":null}`+
+		`"verdict_run":null,"result":null,"outcome":"not_run","waiver":null}`+
 		`],"page":1,"per_page":20,"has_more":false}`)
 
 	resp, err := newTestClient(srv).ListInvariantReviews(context.Background(), 42, InvariantReviewsQuery{
@@ -234,23 +204,23 @@ func TestListInvariantReviews(t *testing.T) {
 	if want := "org=acme&outcome=waived&page=1&per_page=20&repo=web&since=2026-09-27T00%3A00%3A00Z"; got.URL.RawQuery != want {
 		t.Errorf("query = %q, want %q", got.URL.RawQuery, want)
 	}
-	if resp.HasMore || len(resp.Reviews) != 2 {
+	if resp.HasMore || len(resp.Reviews) != 2 || resp.Invariant.ID != 42 || resp.Invariant.Title != "HTTP handlers authenticate" {
 		t.Errorf("response = %+v", resp)
 	}
 	r := resp.Reviews[0]
-	if r.Review.ReviewNumber != 1288 || r.AppliedAt != "2026-10-21T09:00:00Z" || *r.Version != 2 ||
+	if r.Review.RunbookNumber != 1288 || r.AppliedAt != "2026-10-21T09:00:00Z" || *r.Version != 2 ||
 		r.Outcome != "waived" || r.Result == nil || *r.Result != "fail" {
 		t.Errorf("row = %+v", r)
 	}
-	if r.LatestRun == nil || r.LatestRun.ID != 9931 || r.LatestRun.Status != "failed" || r.LatestRun.CompletedAt == nil {
-		t.Errorf("latest_run = %+v", r.LatestRun)
+	if r.VerdictRun == nil || r.VerdictRun.ID != 9931 || r.VerdictRun.Status != "failed" || r.VerdictRun.CompletedAt == nil {
+		t.Errorf("verdict_run = %+v", r.VerdictRun)
 	}
-	// A deleted waiver decodes as a nil user, not as an empty one.
+	// A deleted user decodes as nil, not as an empty one.
 	if r.Waiver == nil || r.Waiver.Category != "false_positive" || r.Waiver.WaivedBy != nil {
 		t.Errorf("waiver = %+v", r.Waiver)
 	}
 	bare := resp.Reviews[1]
-	if bare.Version != nil || bare.LatestRun != nil || bare.Result != nil || bare.Waiver != nil || bare.Outcome != "not_run" {
+	if bare.Version != nil || bare.VerdictRun != nil || bare.Result != nil || bare.Waiver != nil || bare.Outcome != "not_run" {
 		t.Errorf("not_run row = %+v", bare)
 	}
 }
@@ -281,7 +251,19 @@ func TestListAccountWaivers(t *testing.T) {
 	if len(resp.Waivers) != 1 {
 		t.Fatalf("waivers = %+v", resp.Waivers)
 	}
-	if inv := resp.Waivers[0].Invariant; inv == nil || inv.ID != 42 || inv.Title != "HTTP handlers authenticate" {
+	w := resp.Waivers[0]
+	if w.ID != 9 || w.Category != "false_positive" || w.Justification != "Internal only." ||
+		w.CreatedAt != "2026-10-21T10:00:00Z" || w.Version == nil || *w.Version != 2 {
+		t.Errorf("waiver = %+v", w)
+	}
+	if w.WaivedBy == nil || w.WaivedBy.FullName != "Dana K." || w.WaivedBy.Email != "dana@acme.com" {
+		t.Errorf("waived_by = %+v", w.WaivedBy)
+	}
+	if pr := w.Review.PullRequests[0]; w.Review.RunbookNumber != 1288 || w.Review.Repositories[0].Name != "web" ||
+		pr.Number != 4821 || pr.URL == "" || len(pr.StepNumbers) != 2 {
+		t.Errorf("review = %+v", w.Review)
+	}
+	if inv := w.Invariant; inv.ID != 42 || inv.Title != "HTTP handlers authenticate" {
 		t.Errorf("invariant = %+v", inv)
 	}
 }
@@ -302,8 +284,7 @@ func TestListAccountWaiversDefaultQuery(t *testing.T) {
 // TestListInvariantsUsageQuery pins the include=usage additions' encoding and
 // that a row's usage decodes, with a null rate kept apart from zero.
 func TestListInvariantsUsageQuery(t *testing.T) {
-	row := strings.TrimSuffix(invariantJSON, "}") + `,"usage":{"times_applied":12,"times_failed":5,` +
-		`"failure_rate":0.417,"total_waives":3,"waive_rate":null}}`
+	row := strings.TrimSuffix(invariantJSON, "}") + `,"usage":{` + usageJSON(12, 5, "0.417", 3, 0, "null", 3) + `}}`
 	srv, got := newInvariantAnalyticsServer(t, `{"invariants":[`+row+`],"page":1,"per_page":20,"has_more":false}`)
 
 	resp, err := newTestClient(srv).ListInvariants(context.Background(), ListInvariantsQuery{
@@ -321,7 +302,8 @@ func TestListInvariantsUsageQuery(t *testing.T) {
 		t.Errorf("query = %q, want %q", got.URL.RawQuery, want)
 	}
 	u := resp.Invariants[0].Usage
-	if u == nil || u.TimesApplied != 12 || u.TimesFailed != 5 || u.TotalWaives != 3 {
+	if u == nil || u.TimesApplied != 12 || u.TimesFailed != 5 || u.TotalWaives != 3 ||
+		u.WaivedFailures != 0 || u.WaivesByCategory.FalsePositive != 3 {
 		t.Fatalf("usage = %+v", u)
 	}
 	if u.FailureRate == nil || *u.FailureRate != 0.417 || u.WaiveRate != nil {
