@@ -34,16 +34,16 @@ func formatInvariantList(resp *api.ListInvariantsResponse) string {
 func formatInvariantTable(invariants []api.Invariant) string {
 	var b strings.Builder
 	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tSTATUS\tCATEGORY\tSOURCE\tSCOPE\tTITLE")
+	fmt.Fprintln(w, "ID\tSTATUS\tCATEGORY\tSOURCE\tSCOPE\tOWNER\tTITLE")
 	for i := range invariants {
 		inv := &invariants[i]
-		fmt.Fprintf(w, "#%d\t%s\t%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(w, "#%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			inv.ID, formatInvariantStatus(inv), inv.Category, inv.Source,
-			formatInvariantScopeShort(inv), inv.Title)
+			formatInvariantScopeShort(inv), formatInvariantOwnerShort(inv), inv.Title)
 		if reason := strings.TrimSpace(inv.Reason); reason != "" {
 			// Same cell count as a data row so tabwriter keeps one column
 			// block; the reason lands under TITLE, unpadded.
-			fmt.Fprintf(w, "\t\t\t\t\t%s\n", colors.Faint("reason: "+strings.ReplaceAll(reason, "\n", " ")))
+			fmt.Fprintf(w, "\t\t\t\t\t\t%s\n", colors.Faint("reason: "+strings.ReplaceAll(reason, "\n", " ")))
 		}
 	}
 	_ = w.Flush()
@@ -75,6 +75,34 @@ func formatInvariantScopeShort(inv *api.Invariant) string {
 		scope += " +conditions"
 	}
 	return scope
+}
+
+// formatInvariantOwnerShort is the bounded form for the table: one team by
+// name, several by count. "-" is a backend that predates owner teams.
+func formatInvariantOwnerShort(inv *api.Invariant) string {
+	if inv.OwnerTeams == nil {
+		return "-"
+	}
+	switch teams := *inv.OwnerTeams; len(teams) {
+	case 0:
+		return "none"
+	case 1:
+		return "@" + teams[0].Org + "/" + teams[0].Slug
+	default:
+		return english.Plural(len(teams), "team", "teams")
+	}
+}
+
+// formatInvariantOwners lists every owner team as @org/slug.
+func formatInvariantOwners(teams []api.OwnerTeam) string {
+	if len(teams) == 0 {
+		return "none"
+	}
+	names := ownerTeamNames(teams)
+	for i := range names {
+		names[i] = "@" + names[i]
+	}
+	return strings.Join(names, ", ")
 }
 
 // formatInvariantScope describes in full which repos and files an invariant
@@ -121,6 +149,9 @@ func formatInvariantDetail(inv *api.Invariant) string {
 	field("Status", fmt.Sprintf("%s (enabled: %t)", inv.Status, inv.Enabled))
 	field("Source", inv.Source)
 	field("Scope", formatInvariantScope(inv))
+	if inv.OwnerTeams != nil {
+		field("Owner", formatInvariantOwners(*inv.OwnerTeams))
+	}
 	field("Body", strings.TrimSpace(inv.Body))
 	if reason := strings.TrimSpace(inv.Reason); reason != "" {
 		field("Reason", reason)
@@ -134,6 +165,37 @@ func formatInvariantDetail(inv *api.Invariant) string {
 // indentContinuation pads every line after the first by width columns.
 func indentContinuation(s string, width int) string {
 	return strings.ReplaceAll(s, "\n", "\n"+strings.Repeat(" ", width))
+}
+
+// formatInvariantOwnerTeams renders one page of teams with their invariant
+// counts, marking the default, then how many invariants nobody owns.
+func formatInvariantOwnerTeams(resp *api.ListInvariantOwnerTeamsResponse) string {
+	var b strings.Builder
+	switch {
+	case len(resp.OwnerTeams) == 0 && resp.Page > 1:
+		fmt.Fprintf(&b, "Nothing on page %d, the listing ends before it. Try a lower --page.\n", resp.Page)
+	case len(resp.OwnerTeams) == 0:
+		b.WriteString(colors.Warning("no teams yet") + ": Aviator has not synced any GitHub teams for this account\n")
+	default:
+		w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "TEAM\tINVARIANTS\tNAME")
+		for _, t := range resp.OwnerTeams {
+			name := t.Name
+			if t.IsDefault {
+				name += " " + colors.Faint("(default owner team)")
+			}
+			fmt.Fprintf(w, "%s/%s\t%d\t%s\n", t.Org, t.Slug, t.InvariantCount, name)
+		}
+		_ = w.Flush()
+		if resp.HasMore {
+			fmt.Fprintf(&b, "\nSee more teams --page %d\n", max(resp.Page, 1)+1)
+		}
+	}
+	if resp.UnownedCount > 0 {
+		fmt.Fprintf(&b, "\n%s with no owner team (see list --unowned)\n",
+			english.Plural(resp.UnownedCount, "invariant", ""))
+	}
+	return b.String()
 }
 
 // formatInvariantCategories renders the categories as slug, name and
@@ -167,8 +229,10 @@ type invariantJSON struct {
 	SourceRefs   []string        `json:"source_refs"`
 	Repositories []string        `json:"repositories"`
 	Conditions   []conditionJSON `json:"conditions"`
-	CreatedAt    string          `json:"created_at"`
-	ModifiedAt   string          `json:"modified_at"`
+	// OwnerTeams is null when the backend predates owner teams.
+	OwnerTeams *[]string `json:"owner_teams"`
+	CreatedAt  string    `json:"created_at"`
+	ModifiedAt string    `json:"modified_at"`
 }
 
 type conditionJSON struct {
@@ -185,6 +249,19 @@ type invariantListJSON struct {
 
 type invariantDeleteJSON struct {
 	ID int `json:"id"`
+}
+
+type ownerTeamJSON struct {
+	Team           string `json:"team"`
+	Name           string `json:"name"`
+	InvariantCount int    `json:"invariant_count"`
+	IsDefault      bool   `json:"is_default"`
+}
+
+type ownerTeamsJSON struct {
+	OwnerTeams   []ownerTeamJSON `json:"owner_teams"`
+	UnownedCount int             `json:"unowned_count"`
+	HasMore      bool            `json:"has_more"`
 }
 
 type categoryJSON struct {
@@ -222,6 +299,10 @@ func newInvariantJSON(inv *api.Invariant) invariantJSON {
 	for _, c := range inv.Conditions {
 		out.Conditions = append(out.Conditions, conditionJSON{Type: c.Type, Value: c.Value, Negate: c.Negate})
 	}
+	if inv.OwnerTeams != nil {
+		names := ownerTeamNames(*inv.OwnerTeams)
+		out.OwnerTeams = &names
+	}
 	return out
 }
 
@@ -229,6 +310,23 @@ func newInvariantsJSON(invariants []api.Invariant) []invariantJSON {
 	out := make([]invariantJSON, 0, len(invariants))
 	for i := range invariants {
 		out = append(out, newInvariantJSON(&invariants[i]))
+	}
+	return out
+}
+
+func newOwnerTeamsJSON(resp *api.ListInvariantOwnerTeamsResponse) ownerTeamsJSON {
+	out := ownerTeamsJSON{
+		OwnerTeams:   make([]ownerTeamJSON, 0, len(resp.OwnerTeams)),
+		UnownedCount: resp.UnownedCount,
+		HasMore:      resp.HasMore,
+	}
+	for _, t := range resp.OwnerTeams {
+		out.OwnerTeams = append(out.OwnerTeams, ownerTeamJSON{
+			Team:           t.Org + "/" + t.Slug,
+			Name:           t.Name,
+			InvariantCount: t.InvariantCount,
+			IsDefault:      t.IsDefault,
+		})
 	}
 	return out
 }

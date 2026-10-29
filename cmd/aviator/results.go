@@ -53,7 +53,10 @@ var resultsCmd = &cobra.Command{
 			}
 		}
 		if resultsFlags.JSON {
-			return printJSON(newResultsJSON(detail, run))
+			if run != nil {
+				return printJSON(newResultsRunJSON(detail, run))
+			}
+			return printJSON(newResultsJSON(detail))
 		}
 
 		fmt.Print(formatDetailHeader(detail))
@@ -71,7 +74,7 @@ var resultsCmd = &cobra.Command{
 
 func init() {
 	resultsCmd.Flags().IntVar(&resultsFlags.Run, "run", 0,
-		"show run `id` instead of the latest, run ids are in aviator show")
+		"show run `id` instead of the latest (ids in aviator show); --json returns only that run")
 	resultsCmd.Flags().BoolVar(&resultsFlags.JSON, "json", false,
 		"print the results as a single JSON object instead of the human summary")
 }
@@ -82,15 +85,29 @@ type resultsJSON struct {
 	// TODO: drop once the verify-submit skill reads version instead.
 	RunbookVersion     *int              `json:"runbook_version"`
 	LatestVerification *verificationJSON `json:"latest_verification"`
-	Run                *verificationJSON `json:"run,omitempty"`
 }
 
-func newResultsJSON(d *api.RunbookDetail, run *api.VerificationRun) resultsJSON {
+func newResultsJSON(d *api.RunbookDetail) resultsJSON {
 	return resultsJSON{
 		sessionRef:         newSessionRef(d.RunbookNumber, d.URL),
 		Version:            d.RunbookVersion,
 		RunbookVersion:     d.RunbookVersion,
 		LatestVerification: newVerificationJSON(d.LatestVerification),
-		Run:                newVerificationJSON(run),
+	}
+}
+
+type resultsRunJSON struct {
+	sessionRef
+	Version        *int              `json:"version"`
+	RunbookVersion *int              `json:"runbook_version"`
+	Run            *verificationJSON `json:"run"`
+}
+
+func newResultsRunJSON(d *api.RunbookDetail, run *api.VerificationRun) resultsRunJSON {
+	return resultsRunJSON{
+		sessionRef:     newSessionRef(d.RunbookNumber, d.URL),
+		Version:        d.RunbookVersion,
+		RunbookVersion: d.RunbookVersion,
+		Run:            newVerificationJSON(run),
 	}
 }

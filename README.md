@@ -113,6 +113,10 @@ runs instead of the repo default. It works on `aviator verify r/123` and
 `aviator edit r/123` too, and sticks: later runs on the session, automatic ones
 included, keep using it until it's changed again.
 
+`--scenario-guidance "<note>"` tells Verify how to check the change (say, which
+seeded user to log in as). It's read when the session's first scenarios are
+written, normally on its first run, and can't be changed or read back after.
+
 One review tracks exactly one PR. Stacked or multi-PR work needs one
 submission per PR, each with its own `--working-branch`, intent, and criteria.
 To update the intent or criteria on a session that already exists, use `aviator edit`
@@ -185,10 +189,13 @@ aviator dismiss r/123 --criteria-json \
 ### Manage baseline invariants
 
 Baseline invariants are standing rules every verification checks on top of a
-session's own criteria. Listing works with any API token, account-scoped ones
-included. Creating, editing, deleting, and approving act as the caller, so they
-need a user access token (`aviator login` or a personal token) whose user is a
-maintainer or admin.
+session's own criteria. Each one is owned by a GitHub team: its own owner
+teams, or the account's default owner team when it has none. Listing works with
+any API token, account-scoped ones included. Everything else acts as the
+caller, so it needs a user access token (`aviator login` or a personal token).
+Any user can create; editing, deleting, approving, and changing owners also
+need the user to be a maintainer, an admin, or directly on the invariant's
+owner team.
 
 ```bash
 aviator invariants list                          # newest first, 20 per page (--limit, --page)
@@ -196,7 +203,10 @@ aviator invariants list --repo acme/web          # what applies to one repo
 aviator invariants list --status pending         # waiting on approval
 aviator invariants list --source manual          # only hand-written rules
 aviator invariants list --ids 42,43              # specific rules by id
+aviator invariants list --owner-team acme/payments   # what one team owns
+aviator invariants list --unowned                # no owner team and no default
 aviator invariants categories                    # slugs that --category accepts
+aviator invariants owner-teams                   # teams by invariants owned, 20 per page (--limit, --page)
 
 aviator invariants create \
   --title "Webhook handlers verify signatures" \
@@ -212,14 +222,18 @@ aviator invariants edit 42 --no-conditions --disable
 aviator invariants approve 42 43                 # pending -> active
 aviator invariants reject 42                     # keeps the record, stops applying
 aviator invariants set-status pending 42         # any status, e.g. restore a rejected one
+aviator invariants edit 42 --owner-team acme/payments  # replace the owner teams
+aviator invariants edit 42 --default-owner       # fall back to the default owner team
+aviator invariants set-owner acme/infra 42 43    # hand several to one team
+aviator invariants set-owner default 42 43       # back to the default owner team
 aviator invariants delete 42
 ```
 
 ```
-ID   STATUS   CATEGORY       SOURCE             SCOPE                  TITLE
-#42  active   security       manual             2 repos                Webhook handlers verify signatures
-#41  pending  test_coverage  ai_generated_docs  all repos +conditions  Every package has a test file
-                                                                       reason: CONTRIBUTING.md asks for tests on every package.
+ID   STATUS   CATEGORY       SOURCE             SCOPE                  OWNER           TITLE
+#42  active   security       manual             2 repos                @acme/payments  Webhook handlers verify signatures
+#41  pending  test_coverage  ai_generated_docs  all repos +conditions  @acme/infra     Every package has a test file
+                                                                                       reason: CONTRIBUTING.md asks for tests on every package.
 ```
 
 The scope column is a summary; the full repo list and conditions are in the
@@ -229,8 +243,10 @@ invariant. On edit, `--repo` and `--condition` replace the current set, so
 repeat them for the full new set. `--category` takes one of the account's
 category slugs (see `aviator invariants categories`); an unknown slug is
 rejected with the valid ones listed. `--enable`/`--disable` only apply to
-active invariants; approve a pending one first. `--json` on any subcommand
-prints the result as a single JSON object.
+active invariants; approve a pending one first. The owner column shows the
+effective owner, so an invariant without its own owner teams shows the default
+owner team; `--owner-team` filters match it the same way. `--json` on any
+subcommand prints the result as a single JSON object.
 
 ## Contributing
 
