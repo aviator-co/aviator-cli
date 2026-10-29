@@ -44,8 +44,9 @@ var invariantsCmd = &cobra.Command{
 		"Every invariant is owned by a GitHub team: its own owner teams, or the\n" +
 		"account's default owner team when it has none.\n" +
 		"\n" +
-		"Listing, categories and owner-teams work with any API token,\n" +
-		"account-scoped ones included. The rest act as the caller, so they need\n" +
+		"Listing, categories, owner-teams, insights, show, reviews and waivers\n" +
+		"work with any API token, account-scoped ones included (waivers --user\n" +
+		"me aside). The rest act as the caller, so they need\n" +
 		"a user access token (from `aviator login` or a personal token); an\n" +
 		"account-scoped token is refused for them. Any user can create;\n" +
 		"editing, deleting, changing status and changing owners also need the\n" +
@@ -105,14 +106,9 @@ var invariantsListCmd = &cobra.Command{
 			}
 			query.Repo = &repo
 		}
-		if err := checkUsageOnlyFlags(cmd.Flags(), invariantsListFlags.Usage); err != nil {
+		usage, err := applyUsageFlags(&query, invariantsListFlags.Usage, time.Now())
+		if err != nil {
 			return err
-		}
-		var usage *invariantListUsage
-		if invariantsListFlags.Usage {
-			if usage, err = applyUsageFlags(&query, time.Now()); err != nil {
-				return err
-			}
 		}
 
 		client, err := api.NewClient()
@@ -142,40 +138,31 @@ var invariantsListCmd = &cobra.Command{
 	},
 }
 
-// usageOnlyFlags are the list flags that only mean something with --usage.
-var usageOnlyFlags = []string{"sort", "never-applied", "since"}
-
-// checkUsageOnlyFlags refuses a usage-only flag passed without --usage,
-// since the server would answer 400 with less to go on.
-func checkUsageOnlyFlags(flags *pflag.FlagSet, usage bool) error {
-	if usage {
-		return nil
-	}
-	for _, name := range usageOnlyFlags {
-		if flags.Changed(name) {
-			return errors.Errorf("--%s needs --usage", name)
-		}
-	}
-	return nil
-}
-
 // applyUsageFlags puts the --usage, --sort, --never-applied and --since
-// values on the query and returns what the footer should say. An absent
-// --status becomes active, the only status whose counts mean anything.
-func applyUsageFlags(query *api.ListInvariantsQuery, now time.Time) (*invariantListUsage, error) {
-	sort, err := parseUsageSort(invariantsListFlags.Sort)
-	if err != nil {
-		return nil, err
-	}
+// values on the query and returns what the footer should say, nil without
+// --usage. An absent --status becomes active, the only status whose counts
+// mean anything.
+func applyUsageFlags(query *api.ListInvariantsQuery, usage bool, now time.Time) (*invariantListUsage, error) {
 	since, err := parseSince(invariantsListFlags.Since, now)
 	if err != nil {
 		return nil, err
+	}
+	if !usage {
+		switch {
+		case invariantsListFlags.Sort != "":
+			return nil, errors.New("--sort needs --usage")
+		case invariantsListFlags.NeverApplied:
+			return nil, errors.New("--never-applied needs --usage")
+		case since.Param != "":
+			return nil, errors.New("--since needs --usage")
+		}
+		return nil, nil
 	}
 	if query.Status == "" {
 		query.Status = "active"
 	}
 	query.IncludeUsage = true
-	query.Sort = sort
+	query.Sort = invariantsListFlags.Sort
 	query.NeverApplied = invariantsListFlags.NeverApplied
 	query.Since = since.Param
 	return &invariantListUsage{Status: query.Status, Window: since.Label}, nil
@@ -605,8 +592,8 @@ func init() {
 	lf.StringVar(&invariantsListFlags.Sort, "sort", "",
 		"with --usage, order by this count, highest first ("+usageSorts+")")
 	lf.BoolVar(&invariantsListFlags.NeverApplied, "never-applied", false,
-		"with --usage, only invariants no review has applied")
-	registerSinceFlag(lf, &invariantsListFlags.Since)
+		"with --usage, only enabled invariants no review has applied")
+	registerSinceFlag(lf, &invariantsListFlags.Since, "with --usage, "+sinceReviewsHelp)
 	lf.IntVar(&invariantsListFlags.Page, "page", 1, "page number, starting at 1")
 	lf.IntVar(&invariantsListFlags.Limit, "limit", 20, "invariants per page (max 100)")
 
@@ -731,9 +718,10 @@ func requireOwnerTeams(invariants []api.Invariant) error {
 
 // errNoUsage is returned when the backend predates invariant analytics: it
 // ignores include=usage and answers 200 without counts, so the table would
-// show every invariant as never applied.
+// show every invariant as never applied. An empty page carries no rows to
+// tell by, so it goes undetected.
 var errNoUsage = errors.Sentinel(
-	"your Aviator backend does not support invariant analytics yet (GET /api/v1/invariants returned no usage)")
+	"this Aviator backend doesn't support invariant analytics yet; the listing came back without usage counts")
 
 func requireUsage(invariants []api.Invariant) error {
 	for i := range invariants {

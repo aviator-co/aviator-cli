@@ -21,10 +21,7 @@ type invariantListUsage struct {
 // formatInvariantList renders one page of invariants as a table.
 func formatInvariantList(resp *api.ListInvariantsResponse, usage *invariantListUsage) string {
 	if len(resp.Invariants) == 0 {
-		if resp.Page > 1 {
-			return fmt.Sprintf("Nothing on page %d, the listing ends before it. Try a lower --page.\n", resp.Page)
-		}
-		return "No invariants match.\n"
+		return emptyPageMessage(resp.Page, "invariants")
 	}
 	var b strings.Builder
 	b.WriteString(formatInvariantTable(resp.Invariants, usage != nil))
@@ -36,11 +33,7 @@ func formatInvariantList(resp *api.ListInvariantsResponse, usage *invariantListU
 	case usage != nil:
 		// The status is in the footer because --usage defaults it to active,
 		// which the rows alone would not show.
-		status := "all"
-		if usage.Status != "" {
-			status = usage.Status
-		}
-		fmt.Fprintf(&b, "%s invariants · %s", strings.ToUpper(status[:1])+status[1:], usage.Window)
+		fmt.Fprintf(&b, "%s invariants · %s", strings.ToUpper(usage.Status[:1])+usage.Status[1:], usage.Window)
 		if more != "" {
 			b.WriteString(" · " + more)
 		}
@@ -59,40 +52,37 @@ func formatInvariantList(resp *api.ListInvariantsResponse, usage *invariantListU
 // With usage, the provenance columns give way to each row's counts.
 func formatInvariantTable(invariants []api.Invariant, usage bool) string {
 	var b strings.Builder
-	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
-	header := "ID\tSTATUS\tCATEGORY\tSOURCE\tSCOPE\tOWNER\tTITLE"
+	header := []string{"ID", "STATUS", "CATEGORY", "SOURCE", "SCOPE", "OWNER", "TITLE"}
 	if usage {
-		header = "ID\tSTATUS\tCATEGORY\tAPPLIED\tFAILED\tRATE\tWAIVED\tTITLE"
+		header = []string{"ID", "STATUS", "CATEGORY", "APPLIED", "FAILED", "RATE", "WAIVED", "TITLE"}
 	}
-	fmt.Fprintln(w, header)
+	rows := make([][]string, 0, len(invariants))
 	for i := range invariants {
 		inv := &invariants[i]
+		row := []string{"#" + strconv.Itoa(inv.ID), formatInvariantStatus(inv), inv.Category}
 		if usage {
-			fmt.Fprintf(w, "#%d\t%s\t%s\t%s\t%s\n",
-				inv.ID, formatInvariantStatus(inv), inv.Category, formatInvariantUsageCells(inv.Usage), inv.Title)
+			row = append(row, formatInvariantUsageCells(inv.Usage)...)
 		} else {
-			fmt.Fprintf(w, "#%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
-				inv.ID, formatInvariantStatus(inv), inv.Category, inv.Source,
-				formatInvariantScopeShort(inv), formatInvariantOwnerShort(inv), inv.Title)
+			row = append(row, inv.Source, formatInvariantScopeShort(inv), formatInvariantOwnerShort(inv))
 		}
+		rows = append(rows, append(row, inv.Title))
 		if reason := strings.TrimSpace(inv.Reason); reason != "" {
 			// Same cell count as a data row so tabwriter keeps one column
 			// block; the reason lands under TITLE, unpadded.
-			fmt.Fprintf(w, "%s%s\n", strings.Repeat("\t", strings.Count(header, "\t")),
-				colors.Faint("reason: "+strings.ReplaceAll(reason, "\n", " ")))
+			reasonRow := make([]string, len(header))
+			reasonRow[len(header)-1] = colors.Faint("reason: " + strings.ReplaceAll(reason, "\n", " "))
+			rows = append(rows, reasonRow)
 		}
 	}
-	_ = w.Flush()
+	writeTable(&b, "", header, rows)
 	return b.String()
 }
 
-// formatInvariantUsageCells renders the APPLIED, FAILED, RATE and WAIVED
-// cells; a backend that sent no usage gets empty cells.
-func formatInvariantUsageCells(u *api.InvariantUsage) string {
-	if u == nil {
-		return "—\t—\t—\t—"
+// formatInvariantUsageCells renders the APPLIED, FAILED, RATE and WAIVED cells.
+func formatInvariantUsageCells(u *api.InvariantUsage) []string {
+	return []string{
+		strconv.Itoa(u.TimesApplied), strconv.Itoa(u.TimesFailed), formatRate(u.FailureRate), strconv.Itoa(u.TotalWaives),
 	}
-	return fmt.Sprintf("%d\t%d\t%s\t%d", u.TimesApplied, u.TimesFailed, formatRate(u.FailureRate), u.TotalWaives)
 }
 
 // formatInvariantStatus renders the lifecycle status, flagging the active-but-
@@ -231,7 +221,7 @@ func formatInvariantOwnerTeams(resp *api.ListInvariantOwnerTeamsResponse) string
 	var b strings.Builder
 	switch {
 	case len(resp.OwnerTeams) == 0 && resp.Page > 1:
-		fmt.Fprintf(&b, "Nothing on page %d, the listing ends before it. Try a lower --page.\n", resp.Page)
+		b.WriteString(emptyPageMessage(resp.Page, "teams"))
 	case len(resp.OwnerTeams) == 0:
 		b.WriteString(colors.Warning("no teams yet") + ": Aviator has not synced any GitHub teams for this account\n")
 	default:
@@ -289,20 +279,36 @@ type invariantJSON struct {
 	Conditions   []conditionJSON `json:"conditions"`
 	// OwnerTeams is null when the backend predates owner teams.
 	OwnerTeams *[]string `json:"owner_teams"`
-	// Version is only on `show`; Usage only on `list --usage`.
-	Version    *int                `json:"version,omitempty"`
+	// Version is null when the invariant has none; Usage is only on
+	// `list --usage` and `show`.
+	Version    *int                `json:"version"`
 	Usage      *invariantUsageJSON `json:"usage,omitempty"`
 	CreatedAt  string              `json:"created_at"`
 	ModifiedAt string              `json:"modified_at"`
 }
 
-// invariantUsageJSON mirrors the API's per-row usage.
+// invariantUsageJSON mirrors the API's usage counts, the same on list rows,
+// on show and on its by-version and by-repo rows.
 type invariantUsageJSON struct {
-	TimesApplied int      `json:"times_applied"`
-	TimesFailed  int      `json:"times_failed"`
-	FailureRate  *float64 `json:"failure_rate"`
-	TotalWaives  int      `json:"total_waives"`
-	WaiveRate    *float64 `json:"waive_rate"`
+	TimesApplied     int             `json:"times_applied"`
+	TimesFailed      int             `json:"times_failed"`
+	FailureRate      *float64        `json:"failure_rate"`
+	TotalWaives      int             `json:"total_waives"`
+	WaivedFailures   int             `json:"waived_failures"`
+	WaiveRate        *float64        `json:"waive_rate"`
+	WaivesByCategory waiveCountsJSON `json:"waives_by_category"`
+}
+
+func newInvariantUsageJSON(u *api.InvariantUsage) invariantUsageJSON {
+	return invariantUsageJSON{
+		TimesApplied:     u.TimesApplied,
+		TimesFailed:      u.TimesFailed,
+		FailureRate:      u.FailureRate,
+		TotalWaives:      u.TotalWaives,
+		WaivedFailures:   u.WaivedFailures,
+		WaiveRate:        u.WaiveRate,
+		WaivesByCategory: newWaiveCountsJSON(u.WaivesByCategory),
+	}
 }
 
 type conditionJSON struct {
@@ -374,14 +380,9 @@ func newInvariantJSON(inv *api.Invariant) invariantJSON {
 		out.OwnerTeams = &names
 	}
 	out.Version = inv.Version
-	if u := inv.Usage; u != nil {
-		out.Usage = &invariantUsageJSON{
-			TimesApplied: u.TimesApplied,
-			TimesFailed:  u.TimesFailed,
-			FailureRate:  u.FailureRate,
-			TotalWaives:  u.TotalWaives,
-			WaiveRate:    u.WaiveRate,
-		}
+	if inv.Usage != nil {
+		usage := newInvariantUsageJSON(inv.Usage)
+		out.Usage = &usage
 	}
 	return out
 }
