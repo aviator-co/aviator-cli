@@ -12,12 +12,14 @@ import (
 
 func TestBuildDismissals(t *testing.T) {
 	got, err := buildDismissals([]string{"def"},
-		`[{"stable_key":"abc"},{"baseline_invariant_id":42,"category":"accepted_risk","justification":"known"}]`, "")
+		`[{"stable_key":"abc"},{"stable_key":"ghi","action":"waive","justification":"flaky"},`+
+			`{"baseline_invariant_id":42,"category":"accepted_risk","justification":"known"}]`, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	want := []api.Dismissal{
 		{StableKey: "abc"},
+		{StableKey: "ghi", Action: "waive", Justification: "flaky"},
 		{BaselineInvariantID: 42, Category: "accepted_risk", Justification: "known"},
 		{StableKey: "def"},
 	}

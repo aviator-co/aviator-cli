@@ -20,14 +20,14 @@ var dismissFlags struct {
 
 var dismissCmd = &cobra.Command{
 	Use:   "dismiss <id>",
-	Short: "Clear criteria off a review: delete task criteria, waive invariants (e.g. aviator dismiss r/123)",
-	Long: "Delete task criteria by key, or waive baseline invariants by id, so they\n" +
-		"no longer gate the review. `aviator show` and `aviator results` print\n" +
-		"each criterion's [key ...] or [invariant ...] handle.\n" +
+	Short: "Clear criteria off a review: delete or waive task criteria, waive invariants (e.g. aviator dismiss r/123)",
+	Long: "Delete or waive task criteria by key, or waive baseline invariants by id,\n" +
+		"so they no longer gate the review. `aviator show` and `aviator results`\n" +
+		"print each criterion's [key ...] or [invariant ...] handle.\n" +
 		"\n" +
-		"--criteria-json takes a JSON array of entries, each either\n" +
+		"--criteria-json takes a JSON array of entries, each one of\n" +
 		"  {\"stable_key\": \"...\"}\n" +
-		"or\n" +
+		"  {\"stable_key\": \"...\", \"action\": \"waive\", \"justification\": \"...\"}\n" +
 		"  {\"baseline_invariant_id\": 42, \"category\": \"accepted_risk\", \"justification\": \"...\"}\n" +
 		"where category is false_positive, doesnt_apply, accepted_risk, or\n" +
 		"fix_in_followup. --key <key> is shorthand for a stable_key entry.\n" +
@@ -95,7 +95,7 @@ func buildDismissals(keys []string, inlineJSON, jsonFile string) ([]api.Dismissa
 func init() {
 	f := dismissCmd.Flags()
 	f.StringArrayVar(&dismissFlags.Keys, "key", nil, "key of a task criterion to delete (repeatable)")
-	f.StringVar(&dismissFlags.CriteriaJSON, "criteria-json", "", "JSON array of criteria to delete and invariants to waive")
+	f.StringVar(&dismissFlags.CriteriaJSON, "criteria-json", "", "JSON array of criteria to delete or waive and invariants to waive")
 	f.StringVar(&dismissFlags.CriteriaJSONFile, "criteria-json-file", "", "read the --criteria-json array from a file")
 	dismissCmd.MarkFlagsMutuallyExclusive("criteria-json", "criteria-json-file")
 	f.BoolVar(&dismissFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
