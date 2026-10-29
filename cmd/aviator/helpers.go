@@ -170,3 +170,5 @@ func warnPreviewNotApplied(sent string, got *string) {
 		fmt.Fprintf(os.Stderr, "%s %s\n", colors.Warning("warning:"), msg)
 	}
 }
+
+const scenarioSourceExternal = "external"

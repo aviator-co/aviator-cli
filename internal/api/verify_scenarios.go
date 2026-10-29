@@ -19,16 +19,21 @@ type VerifyScenarios struct {
 // ScenarioRun is one scenario's execution within a verification run. Reused
 // runs were carried over from an earlier verification run.
 type ScenarioRun struct {
-	ID                int        `json:"id"`
-	Reused            bool       `json:"reused"`
-	Status            string     `json:"status"`
-	TerminationReason *string    `json:"termination_reason"`
-	FailureReason     *string    `json:"failure_reason"`
-	ToolCallCount     int        `json:"tool_call_count"`
-	StartedAt         *string    `json:"started_at"`
-	CompletedAt       *string    `json:"completed_at"`
-	Scenario          Scenario   `json:"scenario"`
-	Evidence          []Evidence `json:"evidence"`
+	ID                int     `json:"id"`
+	Reused            bool    `json:"reused"`
+	Status            string  `json:"status"`
+	TerminationReason *string `json:"termination_reason"`
+	FailureReason     *string `json:"failure_reason"`
+	ToolCallCount     int     `json:"tool_call_count"`
+	// Source is "collector" when Aviator captured the evidence, "external"
+	// when someone submitted it from their own run.
+	Source      string     `json:"source"`
+	CommitSHA   *string    `json:"commit_sha"`
+	SubmittedBy *string    `json:"submitted_by"`
+	StartedAt   *string    `json:"started_at"`
+	CompletedAt *string    `json:"completed_at"`
+	Scenario    Scenario   `json:"scenario"`
+	Evidence    []Evidence `json:"evidence"`
 }
 
 // Scenario is what a scenario run set out to exercise.
