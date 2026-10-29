@@ -29,6 +29,8 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   evidence.go       # `aviator evidence`  -> signed URL / download of one evidence file
   invariants.go     # `aviator invariants <list|categories|owner-teams|create|edit|delete|approve|reject|set-status|set-owner>`
   invariants_format.go  # text rendering for the invariants commands
+  decisions.go      # `aviator decisions <list|show|apply>` (hidden)
+  decisions_format.go  # text rendering for the decisions commands
   version.go        # `aviator version`
   helpers.go        # parseRepo(s), readSpecFile, collectCriteria, collectBody
 internal/
@@ -169,6 +171,17 @@ The CLI targets endpoints in the `mergeit` backend:
 - `GET /api/v1/verify/evidence/<id>` — 302 to a short-lived signed storage URL.
   The CLI doesn't follow it with the bearer token: `EvidenceURL` stops at the
   redirect and the download is a plain unauthenticated GET.
+
+- `/api/v1/verify/<n>/decisions` — for `aviator decisions`, which is
+  `Hidden: true` while it changes. `GET` lists in id order without comments
+  (`comment_count` instead), `?status=open|settled&page=&per_page=`, with
+  `has_more`; `GET /<id>` is one decision with its comments. `POST` takes
+  `{decisions: [...]}` and applies it all or nothing: no `id` creates, an `id`
+  changes only the keys sent, `outcome` settles (needs `resolution`),
+  `outcome: null` reopens (needs a comment), and a comment with an `id` edits
+  it. Anyone can settle, reopen, or comment; only the raiser can change type,
+  title, summary, or anchor. `aviator decisions apply` sends its file as the
+  body unchanged and the server's strict models validate it.
 
 `POST` and `PATCH /api/v1/verify`, dismissals, and the listing are gated on
 `role="user"`: an account-scoped API token resolves to no role and gets a 403,

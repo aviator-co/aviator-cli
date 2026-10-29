@@ -1,0 +1,230 @@
+package main
+
+import (
+	"fmt"
+	"strings"
+	"text/tabwriter"
+
+	"github.com/aviator-co/aviator-cli/internal/api"
+	"github.com/aviator-co/aviator-cli/internal/utils/colors"
+	"github.com/dustin/go-humanize/english"
+)
+
+// formatDecisionTable renders decisions one per row. Title is the last column
+// so the one unpadded cell carries the long text.
+func formatDecisionTable(decisions []api.Decision) string {
+	var b strings.Builder
+	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "ID\tSTATUS\tTYPE\tCOMMENTS\tTITLE")
+	for i := range decisions {
+		d := &decisions[i]
+		fmt.Fprintf(w, "#%d\t%s\t%s\t%d\t%s\n", d.ID, formatDecisionStatus(d), d.Type, d.NumComments(), d.Title)
+	}
+	_ = w.Flush()
+	return b.String()
+}
+
+// formatDecisionStatus renders the status with the outcome once settled.
+func formatDecisionStatus(d *api.Decision) string {
+	if d.Status == "settled" && d.Outcome != "" {
+		return "settled (" + d.Outcome + ")"
+	}
+	return d.Status
+}
+
+// formatDecisionDetail renders one decision and its comment thread.
+func formatDecisionDetail(d *api.Decision) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s %s\n", colors.Bold(fmt.Sprintf("#%d", d.ID)), colors.Bold(d.Title))
+	parts := []string{d.Type, formatDecisionStatus(d)}
+	if d.RaisedBy != nil {
+		parts = append(parts, "raised by "+d.RaisedBy.Name)
+	}
+	if d.Author != nil {
+		parts = append(parts, "last changed as "+formatDecisionAuthor(*d.Author))
+	}
+	fmt.Fprintf(&b, "  %s\n", strings.Join(parts, " · "))
+	if d.Anchor != nil {
+		fmt.Fprintf(&b, "  at %s\n", formatDecisionAnchor(d.Anchor))
+	}
+	if summary := strings.TrimSpace(d.Summary); summary != "" {
+		fmt.Fprintf(&b, "\n%s\n", indent(summary, "  "))
+	}
+	if resolution := strings.TrimSpace(d.Resolution); resolution != "" {
+		fmt.Fprintf(&b, "\n  Resolution:\n%s\n", indent(resolution, "    "))
+	}
+	if len(d.Comments) == 0 {
+		return b.String()
+	}
+	fmt.Fprintf(&b, "\n%s\n", english.Plural(len(d.Comments), "comment", ""))
+	for _, c := range d.Comments {
+		fmt.Fprintf(&b, "  %s %s %s\n", colors.Faint(fmt.Sprintf("#%d", c.ID)),
+			formatCommentBy(&c), colors.Faint(c.CreatedAt))
+		fmt.Fprintf(&b, "%s\n", indent(strings.TrimSpace(c.Body), "    "))
+	}
+	return b.String()
+}
+
+// formatCommentBy names who wrote a comment and as what role, leaving out
+// whichever the server sent as null.
+func formatCommentBy(c *api.DecisionComment) string {
+	var parts []string
+	if c.User != nil {
+		parts = append(parts, c.User.Name)
+	}
+	if c.Author != nil {
+		parts = append(parts, "as "+formatDecisionAuthor(*c.Author))
+	}
+	return strings.Join(parts, " ")
+}
+
+// formatDecisionAuthor renders a role, with its model and harness when known.
+func formatDecisionAuthor(a api.DecisionAuthor) string {
+	var details []string
+	for _, s := range []string{a.Model, a.Harness} {
+		if s != "" {
+			details = append(details, s)
+		}
+	}
+	if len(details) == 0 {
+		return a.Role
+	}
+	return fmt.Sprintf("%s (%s)", a.Role, strings.Join(details, ", "))
+}
+
+// formatDecisionAnchor renders an anchor as path:start-end @ short-sha.
+func formatDecisionAnchor(a *api.DecisionAnchor) string {
+	s := a.FilePath
+	switch {
+	case a.StartLine > 0 && a.EndLine > a.StartLine:
+		s += fmt.Sprintf(":%d-%d", a.StartLine, a.EndLine)
+	case a.StartLine > 0:
+		s += fmt.Sprintf(":%d", a.StartLine)
+	}
+	if a.CommitSHA != "" {
+		sha := a.CommitSHA
+		if len(sha) > 7 {
+			sha = sha[:7]
+		}
+		s = strings.TrimSpace(s + " @ " + sha)
+	}
+	return s
+}
+
+func indent(s, prefix string) string {
+	return prefix + strings.ReplaceAll(s, "\n", "\n"+prefix)
+}
+
+type decisionAuthorJSON struct {
+	Role    string   `json:"role"`
+	Model   string   `json:"model,omitempty"`
+	Harness string   `json:"harness,omitempty"`
+	Skills  []string `json:"skills,omitempty"`
+}
+
+type decisionUserJSON struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+type decisionAnchorJSON struct {
+	CommitSHA string `json:"commit_sha,omitempty"`
+	FilePath  string `json:"file_path,omitempty"`
+	StartLine int    `json:"start_line,omitempty"`
+	EndLine   int    `json:"end_line,omitempty"`
+}
+
+type decisionCommentJSON struct {
+	ID         int                 `json:"id"`
+	User       *decisionUserJSON   `json:"user"`
+	Author     *decisionAuthorJSON `json:"author"`
+	Body       string              `json:"body"`
+	CreatedAt  string              `json:"created_at"`
+	ModifiedAt string              `json:"modified_at"`
+}
+
+type decisionJSON struct {
+	ID         int                 `json:"id"`
+	Type       string              `json:"type"`
+	Title      string              `json:"title"`
+	Summary    string              `json:"summary"`
+	Status     string              `json:"status"`
+	Outcome    string              `json:"outcome"`
+	SettledAt  string              `json:"settled_at"`
+	Resolution string              `json:"resolution"`
+	Anchor     *decisionAnchorJSON `json:"anchor"`
+	RaisedBy   *decisionUserJSON   `json:"raised_by"`
+	Author     *decisionAuthorJSON `json:"author"`
+	// Comments is left out of list, which doesn't carry the thread.
+	CommentCount int                   `json:"comment_count"`
+	Comments     []decisionCommentJSON `json:"comments,omitzero"`
+}
+
+type decisionListJSON struct {
+	ID        string         `json:"id"`
+	Decisions []decisionJSON `json:"decisions"`
+	// HasMore is set by list, the one paged command.
+	HasMore *bool `json:"has_more,omitempty"`
+}
+
+func newDecisionUserJSON(u *api.DecisionUser) *decisionUserJSON {
+	if u == nil {
+		return nil
+	}
+	out := decisionUserJSON(*u)
+	return &out
+}
+
+func newDecisionAuthorJSON(a *api.DecisionAuthor) *decisionAuthorJSON {
+	if a == nil {
+		return nil
+	}
+	out := decisionAuthorJSON(*a)
+	return &out
+}
+
+func newDecisionJSON(d *api.Decision) decisionJSON {
+	out := decisionJSON{
+		ID:           d.ID,
+		Type:         d.Type,
+		Title:        d.Title,
+		Summary:      d.Summary,
+		Status:       d.Status,
+		Outcome:      d.Outcome,
+		SettledAt:    d.SettledAt,
+		Resolution:   d.Resolution,
+		RaisedBy:     newDecisionUserJSON(d.RaisedBy),
+		Author:       newDecisionAuthorJSON(d.Author),
+		CommentCount: d.NumComments(),
+	}
+	if d.Anchor != nil {
+		anchor := decisionAnchorJSON(*d.Anchor)
+		out.Anchor = &anchor
+	}
+	if d.Comments != nil {
+		out.Comments = make([]decisionCommentJSON, 0, len(d.Comments))
+	}
+	for i := range d.Comments {
+		out.Comments = append(out.Comments, newDecisionCommentJSON(&d.Comments[i]))
+	}
+	return out
+}
+
+func newDecisionCommentJSON(c *api.DecisionComment) decisionCommentJSON {
+	return decisionCommentJSON{
+		ID:         c.ID,
+		User:       newDecisionUserJSON(c.User),
+		Author:     newDecisionAuthorJSON(c.Author),
+		Body:       c.Body,
+		CreatedAt:  c.CreatedAt,
+		ModifiedAt: c.ModifiedAt,
+	}
+}
+
+func newDecisionListJSON(runbookNumber int, decisions []api.Decision) decisionListJSON {
+	out := decisionListJSON{ID: formatRunbookID(runbookNumber), Decisions: make([]decisionJSON, 0, len(decisions))}
+	for i := range decisions {
+		out.Decisions = append(out.Decisions, newDecisionJSON(&decisions[i]))
+	}
+	return out
+}

@@ -81,7 +81,12 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, out any)
 			return errors.Wrap(err, "failed to encode request")
 		}
 	}
+	return c.doPayload(ctx, method, path, payload, out)
+}
 
+// doPayload sends payload (when non-nil), already-encoded JSON, to path using
+// method, and handles the response like doJSON.
+func (c *Client) doPayload(ctx context.Context, method, path string, payload []byte, out any) error {
 	status, _, data, err := c.do(ctx, c.http, method, path, payload)
 	if err != nil {
 		return err
