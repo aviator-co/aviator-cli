@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
@@ -66,7 +65,6 @@ var invariantsListFlags struct {
 	Usage        bool
 	Sort         string
 	NeverApplied bool
-	Since        string
 	Page         int
 	Limit        int
 }
@@ -76,9 +74,9 @@ var invariantsListCmd = &cobra.Command{
 	Short: "List baseline invariants, newest first",
 	Long: "List baseline invariants, newest first. With --usage each row also\n" +
 		"says how many reviews applied, failed and waived it; the listing then\n" +
-		"covers active invariants unless --status says otherwise, and --sort,\n" +
-		"--never-applied and --since narrow or order it. Counts are per review\n" +
-		"session, all-time unless --since.\n" +
+		"covers active invariants unless --status says otherwise, and --sort or\n" +
+		"--never-applied orders or narrows it. Counts are per review session,\n" +
+		"all-time.\n" +
 		"\n" +
 		"Docs: " + docsInvariants,
 	Args: cobra.NoArgs,
@@ -106,7 +104,7 @@ var invariantsListCmd = &cobra.Command{
 			}
 			query.Repo = &repo
 		}
-		usage, err := applyUsageFlags(&query, invariantsListFlags.Usage, time.Now())
+		usage, err := applyUsageFlags(&query, invariantsListFlags.Usage)
 		if err != nil {
 			return err
 		}
@@ -138,23 +136,16 @@ var invariantsListCmd = &cobra.Command{
 	},
 }
 
-// applyUsageFlags puts the --usage, --sort, --never-applied and --since
-// values on the query and returns what the footer should say, nil without
-// --usage. An absent --status becomes active, the only status whose counts
-// mean anything.
-func applyUsageFlags(query *api.ListInvariantsQuery, usage bool, now time.Time) (*invariantListUsage, error) {
-	since, err := parseSince(invariantsListFlags.Since, now)
-	if err != nil {
-		return nil, err
-	}
+// applyUsageFlags puts the --usage, --sort and --never-applied values on the
+// query and returns what the footer should say, nil without --usage. An
+// absent --status becomes active, the only status whose counts mean anything.
+func applyUsageFlags(query *api.ListInvariantsQuery, usage bool) (*invariantListUsage, error) {
 	if !usage {
 		switch {
 		case invariantsListFlags.Sort != "":
 			return nil, errors.New("--sort needs --usage")
 		case invariantsListFlags.NeverApplied:
 			return nil, errors.New("--never-applied needs --usage")
-		case since.Param != "":
-			return nil, errors.New("--since needs --usage")
 		}
 		return nil, nil
 	}
@@ -164,8 +155,7 @@ func applyUsageFlags(query *api.ListInvariantsQuery, usage bool, now time.Time) 
 	query.IncludeUsage = true
 	query.Sort = invariantsListFlags.Sort
 	query.NeverApplied = invariantsListFlags.NeverApplied
-	query.Since = since.Param
-	return &invariantListUsage{Status: query.Status, Window: since.Label}, nil
+	return &invariantListUsage{Status: query.Status}, nil
 }
 
 var invariantsCategoriesCmd = &cobra.Command{
@@ -593,7 +583,6 @@ func init() {
 		"with --usage, order by this count, highest first ("+usageSorts+")")
 	lf.BoolVar(&invariantsListFlags.NeverApplied, "never-applied", false,
 		"with --usage, only enabled invariants no review has applied")
-	registerSinceFlag(lf, &invariantsListFlags.Since, "with --usage, "+sinceReviewsHelp)
 	lf.IntVar(&invariantsListFlags.Page, "page", 1, "page number, starting at 1")
 	lf.IntVar(&invariantsListFlags.Limit, "limit", 20, "invariants per page (max 100)")
 

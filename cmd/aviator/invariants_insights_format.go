@@ -79,9 +79,9 @@ func formatInvariantInsights(resp *api.InvariantInsightsResponse, window, repo, 
 	return b.String()
 }
 
-// formatInvariantShow renders one invariant's fields, its counts over the
-// window, the per-version and per-repo breakdowns, and a page of waivers.
-func formatInvariantShow(d *api.InvariantDetail, waivers *api.InvariantWaiversResponse, window string) string {
+// formatInvariantShow renders one invariant's fields, its all-time counts,
+// the per-version and per-repo breakdowns, and a page of waivers.
+func formatInvariantShow(d *api.InvariantDetail, waivers *api.InvariantWaiversResponse) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "#%d %s\n", d.ID, d.Title)
 	b.WriteString(formatInvariantFields(&d.Invariant))
@@ -90,7 +90,7 @@ func formatInvariantShow(d *api.InvariantDetail, waivers *api.InvariantWaiversRe
 	if d.Usage != nil {
 		u = *d.Usage
 	}
-	fmt.Fprintf(&b, "\nUsage · %s\n", window)
+	b.WriteString("\nUsage · all time\n")
 	fmt.Fprintf(&b, "  Applied %d · Failed %d (%s) · Waived %d of %d failures (%s)\n",
 		u.TimesApplied, u.TimesFailed, formatRate(u.FailureRate),
 		u.WaivedFailures, u.TimesFailed, formatRate(u.WaiveRate))
@@ -392,12 +392,11 @@ type waiveReasonsJSON struct {
 	Counts waiveCountsJSON `json:"counts"`
 }
 
-// invariantShowJSON is `show --json`: the invariant with its usage (in the
-// embedded row's usage) over since, the per-version rows, the per-repo rows
+// invariantShowJSON is `show --json`: the invariant with its all-time usage
+// (in the embedded row's usage), the per-version rows, the per-repo rows
 // when asked for, and a page of waivers.
 type invariantShowJSON struct {
 	invariantJSON
-	Since          *string            `json:"since"`
 	ByVersion      []versionUsageJSON `json:"by_version"`
 	ByRepo         *[]repoUsageJSON   `json:"by_repo,omitempty"`
 	Waivers        []waiverRowJSON    `json:"waivers"`
@@ -536,7 +535,6 @@ func newInsightsJSON(resp *api.InvariantInsightsResponse) insightsJSON {
 func newInvariantShowJSON(d *api.InvariantDetail, waivers *api.InvariantWaiversResponse) invariantShowJSON {
 	out := invariantShowJSON{
 		invariantJSON:  newInvariantJSON(&d.Invariant),
-		Since:          d.Since,
 		ByVersion:      make([]versionUsageJSON, 0, len(d.ByVersion)),
 		Waivers:        newWaiverRowsJSON(waivers.Waivers),
 		WaiversHasMore: waivers.HasMore,

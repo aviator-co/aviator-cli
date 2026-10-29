@@ -122,18 +122,15 @@ type InvariantWaiveReasons struct {
 }
 
 // GetInvariantQuery is the query string for GET /api/v1/invariants/<id>.
-// Since is an RFC 3339 instant, empty for all time; ByRepo adds the by-repo
-// breakdown.
+// ByRepo adds the by-repo breakdown.
 type GetInvariantQuery struct {
-	Since  string
 	ByRepo bool
 }
 
-// InvariantDetail is one invariant with its usage (on the embedded Usage)
-// over Since, nil for all time.
+// InvariantDetail is one invariant with its all-time usage (on the embedded
+// Usage).
 type InvariantDetail struct {
 	Invariant
-	Since     *string                 `json:"since"`
 	ByVersion []InvariantVersionUsage `json:"by_version"`
 	// ByRepo is only present when the query asked for it.
 	ByRepo []InvariantRepoUsage `json:"by_repo"`
@@ -159,7 +156,6 @@ type InvariantRepoUsage struct {
 // (needs a user token) or an email on the account; Category is a waiver
 // reason.
 type AccountWaiversQuery struct {
-	Since       string
 	InvariantID int
 	User        string
 	Category    string
@@ -188,7 +184,6 @@ type InvariantWaiversResponse struct {
 // InvariantReviewsQuery filters and pages GET /api/v1/invariants/<id>/reviews.
 // Outcome is one of passed, failed, warned, errored, waived, fixed, not_run.
 type InvariantReviewsQuery struct {
-	Since   string
 	Repo    *Repository
 	Outcome string
 	Page    int
@@ -231,7 +226,9 @@ func (c *Client) GetInvariantInsights(
 	ctx context.Context, q InvariantInsightsQuery,
 ) (*InvariantInsightsResponse, error) {
 	values := url.Values{}
-	setSince(values, q.Since)
+	if q.Since != "" {
+		values.Set("since", q.Since)
+	}
 	setRepo(values, q.Repo)
 	if q.Limit > 0 {
 		values.Set("limit", strconv.Itoa(q.Limit))
@@ -251,7 +248,6 @@ func (c *Client) GetInvariant(
 	ctx context.Context, invariantID int, q GetInvariantQuery,
 ) (*InvariantDetail, error) {
 	values := url.Values{}
-	setSince(values, q.Since)
 	if q.ByRepo {
 		values.Set("include", "by_repo")
 	}
@@ -268,7 +264,6 @@ func (c *Client) ListInvariantReviews(
 	ctx context.Context, invariantID int, q InvariantReviewsQuery,
 ) (*InvariantReviewsResponse, error) {
 	values := url.Values{}
-	setSince(values, q.Since)
 	setRepo(values, q.Repo)
 	if q.Outcome != "" {
 		values.Set("outcome", q.Outcome)
@@ -287,7 +282,6 @@ func (c *Client) ListAccountWaivers(
 	ctx context.Context, q AccountWaiversQuery,
 ) (*InvariantWaiversResponse, error) {
 	values := url.Values{}
-	setSince(values, q.Since)
 	if q.InvariantID > 0 {
 		values.Set("invariant", strconv.Itoa(q.InvariantID))
 	}

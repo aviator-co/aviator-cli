@@ -11,7 +11,6 @@ import (
 	"github.com/aviator-co/aviator-cli/internal/api"
 	"github.com/dustin/go-humanize/english"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 // usageSorts names the --sort values `list --usage` takes. The server
@@ -27,7 +26,8 @@ const reviewOutcomes = "passed, failed, warned, errored, waived, fixed, not_run"
 const waiveCategories = "false_positive, doesnt_apply, accepted_risk, fix_in_followup"
 
 // analyticsHelp is the paragraph every analytics command's help ends with.
-const analyticsHelp = "Counts are per review session, all-time unless --since. These commands\n" +
+const analyticsHelp = "Counts are per review session; a review counts once as failed when any\n" +
+	"of its runs failed the invariant. These commands\n" +
 	"work with any API token and need a backend with the analytics endpoints.\n" +
 	"\n" +
 	"Docs: " + docsInvariants
@@ -44,7 +44,8 @@ var invariantsInsightsCmd = &cobra.Command{
 	Short: "Rank invariants by how often they apply, fail and get waived",
 	Long: "Rank the account's invariants by how often reviews apply them, how\n" +
 		"often they fail, how often failures get waived and why, plus the enabled\n" +
-		"ones no review has applied yet. Covers active invariants unless --status.\n" +
+		"ones no review has ever applied. Covers active invariants unless\n" +
+		"--status, and the last 30 days unless --since.\n" +
 		"\n" + analyticsHelp,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
@@ -81,14 +82,13 @@ var invariantsInsightsCmd = &cobra.Command{
 		if invariantsFlags.JSON {
 			return printJSON(newInsightsJSON(resp))
 		}
-		seeAll := neverAppliedHint(since, invariantsInsightsFlags.Since, query.Repo, query.Status)
+		seeAll := neverAppliedHint(query.Repo, query.Status)
 		fmt.Print(formatInvariantInsights(resp, since.Label, repoLabel, seeAll))
 		return nil
 	},
 }
 
 var invariantsShowFlags struct {
-	Since  string
 	ByRepo bool
 	Page   int
 	Limit  int
@@ -97,8 +97,8 @@ var invariantsShowFlags struct {
 var invariantsShowCmd = &cobra.Command{
 	Use:   "show <id>",
 	Short: "Show one invariant with its usage, per version, and its waivers",
-	Long: "Show one invariant's fields, how many reviews applied, failed and\n" +
-		"waived it, the same per invariant version (and per repository with\n" +
+	Long: "Show one invariant's fields, how many reviews ever applied, failed\n" +
+		"and waived it, the same per invariant version (and per repository with\n" +
 		"--by-repo), and a page of its waivers, newest first.\n" +
 		"\n" + analyticsHelp,
 	Args: cobra.ExactArgs(1),
@@ -110,24 +110,17 @@ var invariantsShowCmd = &cobra.Command{
 		if err := validatePageFlags(invariantsShowFlags.Page, invariantsShowFlags.Limit); err != nil {
 			return err
 		}
-		since, err := parseSince(invariantsShowFlags.Since, time.Now())
-		if err != nil {
-			return err
-		}
-
 		client, err := api.NewClient()
 		if err != nil {
 			return err
 		}
 		detail, err := client.GetInvariant(cmd.Context(), id, api.GetInvariantQuery{
-			Since:  since.Param,
 			ByRepo: invariantsShowFlags.ByRepo,
 		})
 		if err != nil {
 			return analyticsError(err)
 		}
 		waivers, err := client.ListAccountWaivers(cmd.Context(), api.AccountWaiversQuery{
-			Since:       since.Param,
 			InvariantID: id,
 			Page:        invariantsShowFlags.Page,
 			PerPage:     invariantsShowFlags.Limit,
@@ -138,7 +131,7 @@ var invariantsShowCmd = &cobra.Command{
 		if invariantsFlags.JSON {
 			return printJSON(newInvariantShowJSON(detail, waivers))
 		}
-		fmt.Print(formatInvariantShow(detail, waivers, since.Label))
+		fmt.Print(formatInvariantShow(detail, waivers))
 		return nil
 	},
 }
@@ -146,7 +139,6 @@ var invariantsShowCmd = &cobra.Command{
 var invariantsReviewsFlags struct {
 	Outcome string
 	Repo    string
-	Since   string
 	Page    int
 	Limit   int
 }
@@ -167,12 +159,7 @@ var invariantsReviewsCmd = &cobra.Command{
 		if err := validatePageFlags(invariantsReviewsFlags.Page, invariantsReviewsFlags.Limit); err != nil {
 			return err
 		}
-		since, err := parseSince(invariantsReviewsFlags.Since, time.Now())
-		if err != nil {
-			return err
-		}
 		query := api.InvariantReviewsQuery{
-			Since:   since.Param,
 			Outcome: invariantsReviewsFlags.Outcome,
 			Page:    invariantsReviewsFlags.Page,
 			PerPage: invariantsReviewsFlags.Limit,
@@ -206,7 +193,6 @@ var invariantsWaiversFlags struct {
 	User      string
 	Category  string
 	Repo      string
-	Since     string
 	Page      int
 	Limit     int
 }
@@ -231,12 +217,7 @@ var invariantsWaiversCmd = &cobra.Command{
 			}
 			invariantID = id
 		}
-		since, err := parseSince(invariantsWaiversFlags.Since, time.Now())
-		if err != nil {
-			return err
-		}
 		query := api.AccountWaiversQuery{
-			Since:       since.Param,
 			InvariantID: invariantID,
 			User:        invariantsWaiversFlags.User,
 			Category:    invariantsWaiversFlags.Category,
@@ -269,15 +250,14 @@ var invariantsWaiversCmd = &cobra.Command{
 
 func init() {
 	f := invariantsInsightsCmd.Flags()
-	registerSinceFlag(f, &invariantsInsightsFlags.Since, sinceReviewsHelp)
+	f.StringVar(&invariantsInsightsFlags.Since, "since", "30d",
+		"only reviews since then: <N>d (e.g. 7d), YYYY-MM-DD, or all")
 	f.StringVar(&invariantsInsightsFlags.Repo, "repo", "", "only reviews of this owner/repo")
 	f.IntVar(&invariantsInsightsFlags.Limit, "limit", 20, "rows per table (max 100)")
 	f.StringVar(&invariantsInsightsFlags.Status, "status", "",
 		"only invariants with this status ("+invariantStatuses+"; default active)")
 
 	f = invariantsShowCmd.Flags()
-	registerSinceFlag(f, &invariantsShowFlags.Since,
-		"only reviews, and waivers made, since then: "+sinceValuesHelp)
 	f.BoolVar(&invariantsShowFlags.ByRepo, "by-repo", false, "also break the counts down per repository")
 	f.IntVar(&invariantsShowFlags.Page, "page", 1, "page of waivers, starting at 1")
 	f.IntVar(&invariantsShowFlags.Limit, "limit", 20, "waivers per page (max 100)")
@@ -285,7 +265,6 @@ func init() {
 	f = invariantsReviewsCmd.Flags()
 	f.StringVar(&invariantsReviewsFlags.Outcome, "outcome", "", "only reviews with this outcome ("+reviewOutcomes+")")
 	f.StringVar(&invariantsReviewsFlags.Repo, "repo", "", "only reviews of this owner/repo")
-	registerSinceFlag(f, &invariantsReviewsFlags.Since, sinceReviewsHelp)
 	f.IntVar(&invariantsReviewsFlags.Page, "page", 1, "page number, starting at 1")
 	f.IntVar(&invariantsReviewsFlags.Limit, "limit", 20, "reviews per page (max 100)")
 
@@ -294,19 +273,8 @@ func init() {
 	f.StringVar(&invariantsWaiversFlags.User, "user", "", "only waivers by this user: me, or an email on the account")
 	f.StringVar(&invariantsWaiversFlags.Category, "category", "", "only waivers for this reason ("+waiveCategories+")")
 	f.StringVar(&invariantsWaiversFlags.Repo, "repo", "", "only waivers on reviews of this owner/repo")
-	registerSinceFlag(f, &invariantsWaiversFlags.Since, "only waivers made since then: "+sinceValuesHelp)
 	f.IntVar(&invariantsWaiversFlags.Page, "page", 1, "page number, starting at 1")
 	f.IntVar(&invariantsWaiversFlags.Limit, "limit", 20, "waivers per page (max 100)")
-}
-
-const (
-	sinceValuesHelp  = "<N>d (e.g. 30d), YYYY-MM-DD, or all (default all time)"
-	sinceReviewsHelp = "only reviews since then: " + sinceValuesHelp
-)
-
-// registerSinceFlag binds --since with the given help on an analytics command.
-func registerSinceFlag(fs *pflag.FlagSet, since *string, help string) {
-	fs.StringVar(since, "since", "", help)
 }
 
 // sinceWindow is a parsed --since: the instant the query sends (empty for
@@ -339,13 +307,9 @@ func parseSince(s string, now time.Time) (sinceWindow, error) {
 }
 
 // neverAppliedHint is the `list` command that pages through the
-// never-applied invariants insights counted, with the same window, repo and
-// status.
-func neverAppliedHint(since sinceWindow, rawSince string, repo *api.Repository, status string) string {
+// never-applied invariants insights counted, with the same repo and status.
+func neverAppliedHint(repo *api.Repository, status string) string {
 	hint := "aviator invariants list --usage --never-applied"
-	if since.Param != "" {
-		hint += " --since " + strings.TrimSpace(rawSince)
-	}
 	if repo != nil {
 		hint += " --repo " + repo.Org + "/" + repo.Name
 	}
