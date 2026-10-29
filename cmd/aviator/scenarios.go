@@ -72,7 +72,15 @@ func formatScenarios(s *api.VerifyScenarios) string {
 		if sr.Reused {
 			reused = ", reused from an earlier run"
 		}
-		fmt.Fprintf(&b, "  %s [%s, %d tool calls%s]\n", sr.Scenario.Summary, status, sr.ToolCallCount, reused)
+		work := fmt.Sprintf("%d tool calls", sr.ToolCallCount)
+		if sr.Source == scenarioSourceExternal {
+			work = "submitted by " + deref(sr.SubmittedBy)
+			if commit := deref(sr.CommitSHA); commit != "" {
+				work += " for " + shortSHA(commit)
+			}
+			reused = ""
+		}
+		fmt.Fprintf(&b, "  %s [%s, %s%s]\n", sr.Scenario.Summary, status, work, reused)
 		if reason := deref(sr.FailureReason); reason != "" {
 			fmt.Fprintf(&b, "    %s\n", reason)
 		}
@@ -116,6 +124,9 @@ type scenarioJSON struct {
 	TerminationReason *string            `json:"termination_reason"`
 	FailureReason     *string            `json:"failure_reason"`
 	ToolCallCount     int                `json:"tool_call_count"`
+	Source            string             `json:"source"`
+	SubmittedBy       *string            `json:"submitted_by"`
+	CommitSHA         *string            `json:"commit_sha"`
 	Reused            bool               `json:"reused"`
 	StartedAt         *string            `json:"started_at"`
 	CompletedAt       *string            `json:"completed_at"`
@@ -154,6 +165,9 @@ func newScenariosJSON(s *api.VerifyScenarios) scenariosJSON {
 			TerminationReason: sr.TerminationReason,
 			FailureReason:     sr.FailureReason,
 			ToolCallCount:     sr.ToolCallCount,
+			Source:            sr.Source,
+			SubmittedBy:       sr.SubmittedBy,
+			CommitSHA:         sr.CommitSHA,
 			Reused:            sr.Reused,
 			StartedAt:         sr.StartedAt,
 			CompletedAt:       sr.CompletedAt,

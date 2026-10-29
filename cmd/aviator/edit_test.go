@@ -22,5 +22,6 @@ func TestEditJSON(t *testing.T) {
 		"intent":              "new intent",
 		"version":             float64(5),
 		"preview_config_name": "docs",
+		"evidence_source":     "",
 	})
 }
