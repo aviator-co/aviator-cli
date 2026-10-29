@@ -211,6 +211,51 @@ comment, but only the user who raised a decision can change its type, title,
 summary, or anchor. There's no way to delete one. `--json` prints the result as
 a single JSON object.
 
+### Submit evidence from your own run
+
+When Aviator can't reach a preview of the change, run it yourself and submit
+what you saw. Aviator judges that evidence instead of collecting its own.
+
+```bash
+aviator verify --repo owner/repo --intent "..." --criteria "..." --external-evidence
+aviator evidence submit r/123 evidence.json
+aviator results r/123         # says when evidence is submitted and no run has started
+```
+
+`--external-evidence` creates the session as a draft that runs nothing until
+evidence arrives. The manifest is JSON:
+
+```json
+{
+  "commit_sha": "4f2c9e1a7b3d5c6e8f9a0b1c2d3e4f5a6b7c8d9e",
+  "scenarios": [
+    {
+      "summary": "Toggle the flag and reload the home page",
+      "steps": [
+        {"text": "Open the home page with the flag off"},
+        {
+          "text": "Capture the page without the banner",
+          "evidence": [
+            {"type": "screenshot", "file": "shots/home.png", "label": "Home page, no banner"}
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+File paths are relative to the manifest, and `commit_sha` is the full SHA the
+evidence was captured against (`--commit` overrides it). A run starts once
+every file is uploaded and the evidence is for the PR's head commit.
+Submitting again replaces the earlier submission and skips files that are
+already uploaded. `--json` prints one `files` entry per declared file with its
+`path`, `evidence_id` and `status`, and the command exits non-zero when any
+file didn't make it.
+
+Manifest reference:
+https://docs.aviator.co/verify/how-to-guides/submitting-evidence-from-your-own-run
+
 ### Manage baseline invariants
 
 Baseline invariants are standing rules every verification checks on top of a

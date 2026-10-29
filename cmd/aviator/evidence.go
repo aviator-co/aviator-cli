@@ -18,8 +18,12 @@ var evidenceFlags struct {
 
 var evidenceCmd = &cobra.Command{
 	Use:   "evidence <id>",
-	Short: "Download a piece of verification evidence, such as a screenshot or trace",
-	Long: "Without -o, print a signed URL for the evidence file; it expires after a\n" +
+	Short: "Download a piece of verification evidence, or submit your own with `evidence submit`",
+	Long: "Download one evidence file, such as a screenshot or trace. To send\n" +
+		"scenarios and evidence from your own run of the change instead, see\n" +
+		"`aviator evidence submit --help`.\n" +
+		"\n" +
+		"Without -o, print a signed URL for the evidence file; it expires after a\n" +
 		"few minutes. With -o, download the file to that path, or to stdout with\n" +
 		"-o -. Like curl -o, an existing file at the path is overwritten, but only\n" +
 		"once the download has started. `aviator scenarios` lists evidence ids.\n" +

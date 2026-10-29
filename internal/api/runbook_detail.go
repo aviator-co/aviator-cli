@@ -14,16 +14,18 @@ import (
 // per-field sections are only populated when requested (or when no fields are
 // specified, in which case all are returned).
 type RunbookDetail struct {
-	RunbookNumber      int                 `json:"runbook_number"`
-	URL                string              `json:"url"`
-	RunbookVersion     *int                `json:"runbook_version"`
-	Intent             *string             `json:"intent,omitempty"`
-	StepsMarkdown      *string             `json:"steps_markdown,omitempty"`
-	SpecFiles          []DetailSpecFile    `json:"spec_files,omitempty"`
-	RunbookState       *RunbookState       `json:"runbook_state,omitempty"`
-	AcceptanceCriteria []DetailCriterion   `json:"acceptance_criteria,omitempty"`
-	LatestVerification *VerificationRun    `json:"latest_verification,omitempty"`
-	PullRequests       []LinkedPullRequest `json:"pull_requests,omitempty"`
+	RunbookNumber      int               `json:"runbook_number"`
+	URL                string            `json:"url"`
+	RunbookVersion     *int              `json:"runbook_version"`
+	Intent             *string           `json:"intent,omitempty"`
+	StepsMarkdown      *string           `json:"steps_markdown,omitempty"`
+	SpecFiles          []DetailSpecFile  `json:"spec_files,omitempty"`
+	RunbookState       *RunbookState     `json:"runbook_state,omitempty"`
+	AcceptanceCriteria []DetailCriterion `json:"acceptance_criteria,omitempty"`
+	LatestVerification *VerificationRun  `json:"latest_verification,omitempty"`
+	// WaitingSubmission is the submitted evidence no run has started yet.
+	WaitingSubmission *WaitingSubmission  `json:"waiting_submission,omitempty"`
+	PullRequests      []LinkedPullRequest `json:"pull_requests,omitempty"`
 	// PreviewConfigName is the preview config the session's runs use; the
 	// latest run's config is on LatestVerification.
 	PreviewConfigName *string `json:"preview_config_name"`
@@ -31,6 +33,15 @@ type RunbookDetail struct {
 	// explicit null latest_verification (no runs yet) from one where the
 	// server omitted the key entirely.
 	LatestVerificationPresent bool `json:"-"`
+}
+
+// WaitingSubmission is evidence submitted since the latest run that no run
+// has started. Complete means every file is uploaded.
+type WaitingSubmission struct {
+	RunID       int     `json:"run_id"`
+	CommitSHA   *string `json:"commit_sha"`
+	SubmittedAt string  `json:"submitted_at"`
+	Complete    bool    `json:"complete"`
 }
 
 // DetailSpecFile is a spec document attached to a runbook.
