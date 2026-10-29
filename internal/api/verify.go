@@ -12,6 +12,9 @@ type SubmitVerifyRequest struct {
 	SpecFile           *SpecFile  `json:"spec_file,omitempty"`
 	PreviewConfigName  string     `json:"preview_config_name,omitempty"`
 	ScenarioGuidance   string     `json:"scenario_guidance,omitempty"`
+	// EvidenceSource is "aviator" (the default) or "external": on an external
+	// session Aviator never collects; scenarios and evidence are submitted.
+	EvidenceSource string `json:"evidence_source,omitempty"`
 }
 
 // SubmitVerifyResponse is the response from POST /api/v1/verify.
@@ -22,6 +25,7 @@ type SubmitVerifyResponse struct {
 	TargetBranch       string   `json:"target_branch"`
 	AcceptanceCriteria []string `json:"acceptance_criteria"`
 	PreviewConfigName  *string  `json:"preview_config_name"`
+	EvidenceSource     string   `json:"evidence_source"`
 }
 
 // SubmitVerify creates a verify submission.

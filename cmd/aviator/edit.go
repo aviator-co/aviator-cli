@@ -15,14 +15,16 @@ var editFlags struct {
 	CriteriaFile    string
 	ExpectedVersion int
 	Preview         string
+	EvidenceSource  string
 	JSON            bool
 }
 
 var editCmd = &cobra.Command{
 	Use:   "edit <id>",
-	Short: "Update a review or runbook session's intent, acceptance criteria, or preview config (e.g. aviator edit r/123)",
-	Long: "Update a session's intent, replace its acceptance criteria, or switch the\n" +
-		"preview config its runs use (--preview), in any combination.\n" +
+	Short: "Update a review or runbook session's intent, acceptance criteria, preview config, or evidence source (e.g. aviator edit r/123)",
+	Long: "Update a session's intent, replace its acceptance criteria, switch the\n" +
+		"preview config its runs use (--preview), or change where its evidence\n" +
+		"comes from (--evidence-source aviator|external), in any combination.\n" +
 		"\n" +
 		"A preview config choice sticks until changed. Going back to the repo\n" +
 		"default means passing that config's name.\n" +
@@ -43,8 +45,11 @@ var editCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if editFlags.Intent == "" && len(criteria) == 0 && editFlags.Preview == "" {
-			return errors.New("pass --intent, --criteria (or --criteria-file), or --preview")
+		if editFlags.Intent == "" && len(criteria) == 0 && editFlags.Preview == "" && editFlags.EvidenceSource == "" {
+			return errors.New("pass --intent, --criteria (or --criteria-file), --preview, or --evidence-source")
+		}
+		if err := checkEvidenceSource(editFlags.EvidenceSource); err != nil {
+			return err
 		}
 		if len(criteria) > 0 && !cmd.Flags().Changed("expected-version") {
 			return errors.New("--expected-version is required when replacing criteria")
@@ -59,6 +64,7 @@ var editCmd = &cobra.Command{
 			AcceptanceCriteria: criteria,
 			ExpectedVersion:    editFlags.ExpectedVersion,
 			PreviewConfigName:  editFlags.Preview,
+			EvidenceSource:     editFlags.EvidenceSource,
 		})
 		if err != nil {
 			return err
@@ -72,6 +78,9 @@ var editCmd = &cobra.Command{
 		fmt.Printf("%s %s updated%s\n", colors.Success("✓"), id, formatVersion(resp.Version))
 		if name := deref(resp.PreviewConfigName); editFlags.Preview != "" && name != "" {
 			fmt.Printf("  Preview config: %s\n", name)
+		}
+		if editFlags.EvidenceSource != "" {
+			fmt.Printf("  Evidence source: %s\n", resp.EvidenceSource)
 		}
 		if len(criteria) > 0 {
 			fmt.Printf("  %s\n", colors.Faint("Verify with: aviator verify "+id))
@@ -88,6 +97,8 @@ func init() {
 		"session version you expect to be editing (required with --criteria; guards against stale edits)")
 	f.StringVar(&editFlags.Preview, "preview", "",
 		"preview config the session's runs use from now on, instead of the repo default; sticks until changed")
+	f.StringVar(&editFlags.EvidenceSource, "evidence-source", "",
+		"where runtime evidence comes from: aviator, or external for evidence you submit yourself")
 	f.BoolVar(&editFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 }
 
@@ -96,6 +107,7 @@ type editJSON struct {
 	Intent            string  `json:"intent"`
 	Version           *int    `json:"version"`
 	PreviewConfigName *string `json:"preview_config_name"`
+	EvidenceSource    string  `json:"evidence_source"`
 }
 
 func newEditJSON(resp *api.VerifySession) editJSON {
@@ -104,5 +116,6 @@ func newEditJSON(resp *api.VerifySession) editJSON {
 		Intent:            resp.Intent,
 		Version:           resp.Version,
 		PreviewConfigName: resp.PreviewConfigName,
+		EvidenceSource:    resp.EvidenceSource,
 	}
 }
