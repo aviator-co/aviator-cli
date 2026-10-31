@@ -148,10 +148,11 @@ The CLI targets endpoints in the `mergeit` backend:
 - `POST /api/v1/verify/<n>/runs` — `{evaluator_only?, force?,
   preview_config_name?, regenerate_feedback?}`. Triggers a verification run,
   deduplicated against an equivalent run unless `force`, `regenerate_feedback`,
-  or the preview config changes. A preview config set on submit, edit, or
+  or the preview config changes. The `force` body field is set by the CLI's
+  `--skip-dedup` flag. A preview config set on submit, edit, or
   trigger sticks to the session for later runs. `regenerate_feedback`
   (`--regenerate-scenarios`) rewrites the scenarios first, every criterion
-  back through the prepass, which `force` alone never re-runs; it is the
+  back through the prepass, which `force` (`--skip-dedup`) alone never re-runs; it is the
   dashboard's regenerate-with-feedback. While the session has no scenarios
   the prepass also reads the submit-time `scenario_guidance`, with the
   feedback winning on conflicts. It needs non-blank feedback and a preview,
