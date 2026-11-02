@@ -79,7 +79,7 @@ func formatInvariantInsights(resp *api.InvariantInsightsResponse, window, repo, 
 }
 
 // formatInvariantShow renders one invariant's fields, its all-time counts,
-// the per-version and per-repo breakdowns, and a page of waivers.
+// the per-version and per-repo breakdowns, and its latest waivers.
 func formatInvariantShow(d *api.InvariantDetail, waivers *api.InvariantWaiversResponse) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "#%d %s\n", d.ID, d.Title)
@@ -124,14 +124,10 @@ func formatInvariantShow(d *api.InvariantDetail, waivers *api.InvariantWaiversRe
 	}
 
 	fmt.Fprintf(&b, "\nWaivers (%d)\n", u.TotalWaives)
-	if len(waivers.Waivers) == 0 && waivers.Page > 1 {
-		b.WriteString("  " + emptyPageMessage(waivers.Page, "waivers"))
-	} else {
-		header, rows := waiverTable(waivers.Waivers, false)
-		writeTable(&b, "  ", header, rows)
-	}
+	header, rows := waiverTable(waivers.Waivers, false)
+	writeTable(&b, "  ", header, rows)
 	if waivers.HasMore {
-		fmt.Fprintf(&b, "  See more waivers --page %d\n", max(waivers.Page, 1)+1)
+		fmt.Fprintf(&b, "  See all: aviator invariants waivers --invariant %d\n", d.ID)
 	}
 	return b.String()
 }
@@ -380,6 +376,7 @@ type insightWaiveRateJSON struct {
 type neverAppliedJSON struct {
 	Count      int                         `json:"count"`
 	Invariants []neverAppliedInvariantJSON `json:"invariants"`
+	HasMore    bool                        `json:"has_more"`
 }
 
 type neverAppliedInvariantJSON struct {
@@ -394,7 +391,7 @@ type waiveReasonsJSON struct {
 
 // invariantShowJSON is `show --json`: the invariant with its all-time usage
 // (in the embedded row's usage), the per-version rows, the per-repo rows
-// when asked for, and a page of waivers.
+// when asked for, and its latest waivers.
 type invariantShowJSON struct {
 	invariantJSON
 	ByVersion      []versionUsageJSON `json:"by_version"`
@@ -494,6 +491,7 @@ func newInsightsJSON(resp *api.InvariantInsightsResponse) insightsJSON {
 		NeverApplied: neverAppliedJSON{
 			Count:      resp.NeverApplied.Count,
 			Invariants: make([]neverAppliedInvariantJSON, 0, len(resp.NeverApplied.Invariants)),
+			HasMore:    resp.NeverApplied.Count > len(resp.NeverApplied.Invariants),
 		},
 		Reasons: waiveReasonsJSON{
 			TotalWaives:      resp.Reasons.TotalWaives,

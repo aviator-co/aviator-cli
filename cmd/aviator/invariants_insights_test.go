@@ -351,7 +351,7 @@ func TestFormatInvariantShow(t *testing.T) {
 			"  -        before      25       6       24%   3\n",
 		"\nWaivers (18)\n  WHEN        REVIEW  PR             REASON          BY       JUSTIFICATION\n" +
 			"  2026-10-21  r/1288  acme/web#4821  false positive  Dana K.  Endpoint is internal-only, behind the VPN gate.\n" +
-			"  See more waivers --page 2\n",
+			"  See all: aviator invariants waivers --invariant 42\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q\n---\n%s", want, out)
@@ -377,14 +377,8 @@ func TestFormatInvariantShow(t *testing.T) {
 			t.Errorf("output missing %q\n---\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "See more") {
-		t.Errorf("last page should have no footer:\n%s", out)
-	}
-
-	// Past the last waiver the empty page says so instead of "none".
-	out = formatInvariantShow(showDetail, &api.InvariantWaiversResponse{Page: 4})
-	if want := "\nWaivers (18)\n  Nothing on page 4, the listing ends before it. Try a lower --page.\n"; !strings.HasSuffix(out, want) {
-		t.Errorf("output missing %q\n---\n%s", want, out)
+	if strings.Contains(out, "See all") {
+		t.Errorf("no more waivers should have no footer:\n%s", out)
 	}
 
 	// Nothing applied yet: no rates, no waive breakdown, an empty version table.
@@ -537,7 +531,7 @@ func TestInsightsJSON(t *testing.T) {
 		t.Errorf("waive_rate = %v", got["waive_rate"])
 	}
 	never := got["never_applied"].(map[string]any)
-	if never["count"] != float64(7) || never["invariants"].([]any)[0].(map[string]any)["created_at"] != "2026-09-02T10:00:00Z" {
+	if never["count"] != float64(7) || never["has_more"] != true || never["invariants"].([]any)[0].(map[string]any)["created_at"] != "2026-09-02T10:00:00Z" {
 		t.Errorf("never_applied = %v", never)
 	}
 	if r := got["reasons"].(map[string]any); r["total_waives"] != float64(61) || r["waives_by_category"] == nil {

@@ -45,7 +45,9 @@ var invariantsInsightsCmd = &cobra.Command{
 	Long: "Rank the account's invariants by how often reviews apply them, how\n" +
 		"often they fail, how often failures get waived and why, plus the enabled\n" +
 		"ones no review has ever applied. Covers active invariants unless\n" +
-		"--status, and the last 30 days unless --since.\n" +
+		"--status, and the last 30 days unless --since. Never applied is all\n" +
+		"time, unlike the rest; page through it with\n" +
+		"`aviator invariants list --usage --never-applied`.\n" +
 		"\n" + analyticsHelp,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
@@ -90,8 +92,6 @@ var invariantsInsightsCmd = &cobra.Command{
 
 var invariantsShowFlags struct {
 	ByRepo bool
-	Page   int
-	Limit  int
 }
 
 var invariantsShowCmd = &cobra.Command{
@@ -99,15 +99,13 @@ var invariantsShowCmd = &cobra.Command{
 	Short: "Show one invariant with its usage, per version, and its waivers",
 	Long: "Show one invariant's fields, how many reviews ever applied, failed\n" +
 		"and waived it, the same per invariant version (and per repository with\n" +
-		"--by-repo), and a page of its waivers, newest first.\n" +
+		"--by-repo), and its latest waivers. Page through all of them with\n" +
+		"`aviator invariants waivers --invariant <id>`.\n" +
 		"\n" + analyticsHelp,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id, err := parseInvariantID(args[0])
 		if err != nil {
-			return err
-		}
-		if err := validatePageFlags(invariantsShowFlags.Page, invariantsShowFlags.Limit); err != nil {
 			return err
 		}
 		client, err := api.NewClient()
@@ -124,8 +122,7 @@ var invariantsShowCmd = &cobra.Command{
 		}
 		waivers, err := client.ListAccountWaivers(cmd.Context(), api.AccountWaiversQuery{
 			InvariantID: id,
-			Page:        invariantsShowFlags.Page,
-			PerPage:     invariantsShowFlags.Limit,
+			PerPage:     20,
 		})
 		if err != nil {
 			return analyticsError(err)
@@ -261,8 +258,6 @@ func init() {
 
 	f = invariantsShowCmd.Flags()
 	f.BoolVar(&invariantsShowFlags.ByRepo, "by-repo", false, "also break the counts down per repository")
-	f.IntVar(&invariantsShowFlags.Page, "page", 1, "page of waivers, starting at 1")
-	f.IntVar(&invariantsShowFlags.Limit, "limit", 20, "waivers per page (max 100)")
 
 	f = invariantsReviewsCmd.Flags()
 	f.StringVar(&invariantsReviewsFlags.Outcome, "outcome", "", "only reviews with this outcome ("+reviewOutcomes+")")

@@ -221,7 +221,7 @@ so they need a user token or an `aviator login` session.
   (`pass|fail|warn|error|waived|fixed|not_run`), carries the `invariant`
   summary and each row's `verdict_run`, a full run summary of which the CLI
   reads `id`, `status` and `completed_at`), `GET /waivers` (account-wide,
-  also what `show` pages waivers from; `invariant`, `user` (`me` needs a user
+  also where `show` gets its latest waivers from; `invariant`, `user` (`me` needs a user
   token, else an email), `category`), and `include=usage` on the list with
   `sort` (`applied|failure_rate|waived|waive_rate`) or `never_applied`, not
   both (400); `include=usage` defaults `status` to active, and `list --usage`
