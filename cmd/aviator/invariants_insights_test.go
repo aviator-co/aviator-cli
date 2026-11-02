@@ -242,14 +242,14 @@ func TestInvariantJSONUsage(t *testing.T) {
 var insightsResponse = &api.InvariantInsightsResponse{
 	Status: "active",
 	MostApplied: []api.InvariantAppliedRow{{
-		Invariant: api.InvariantSummary{ID: 42, Title: "HTTP handlers authenticate"}, TimesApplied: 143, TimesFailed: 31, TotalWaives: 18,
+		Invariant: api.InvariantSummary{ID: 42, Title: "HTTP handlers authenticate"}, TimesApplied: 143,
 	}},
 	FailureRatio: []api.InvariantFailureRow{{
 		Invariant: api.InvariantSummary{ID: 58, Title: "Background jobs are idempotent"}, TimesApplied: 12, TimesFailed: 5, FailureRate: rate(0.417),
 	}},
 	MostWaived: []api.InvariantWaivedRow{{
-		Invariant: api.InvariantSummary{ID: 42, Title: "HTTP handlers authenticate"}, Total: 18,
-		Counts: api.WaiveCounts{FalsePositive: 11, DoesntApply: 4, AcceptedRisk: 2, FixInFollowup: 1},
+		Invariant: api.InvariantSummary{ID: 42, Title: "HTTP handlers authenticate"}, TotalWaives: 18,
+		WaivesByCategory: api.WaiveCounts{FalsePositive: 11, DoesntApply: 4, AcceptedRisk: 2, FixInFollowup: 1},
 	}},
 	NeverApplied: api.InvariantNeverApplied{
 		Count: 7,
@@ -258,14 +258,17 @@ var insightsResponse = &api.InvariantInsightsResponse{
 			CreatedAt:        "2026-09-02T10:00:00Z",
 		}},
 	},
-	Reasons: api.InvariantWaiveReasons{Total: 61, Counts: api.WaiveCounts{FalsePositive: 34, DoesntApply: 12, AcceptedRisk: 10, FixInFollowup: 5}},
+	Reasons: api.InvariantWaiveReasons{
+		TotalWaives:      61,
+		WaivesByCategory: api.WaiveCounts{FalsePositive: 34, DoesntApply: 12, AcceptedRisk: 10, FixInFollowup: 5},
+	},
 }
 
 func TestFormatInvariantInsights(t *testing.T) {
 	out := formatInvariantInsights(insightsResponse, "last 30 days", "all repos", "aviator invariants list --usage --never-applied")
 	for _, want := range []string{
 		"Invariant insights · active invariants · last 30 days · all repos\n",
-		"\nMost applied\nID   APPLIED  FAILED  WAIVED  TITLE\n#42  143      31      18      HTTP handlers authenticate\n",
+		"\nMost applied\nID   APPLIED  TITLE\n#42  143      HTTP handlers authenticate\n",
 		"\nHighest failure rate\nID   APPLIED  FAILED  RATE  TITLE\n#58  12       5       42%   Background jobs are idempotent\n",
 		"\nMost waived, by reason\nID   TOTAL  FALSE+  N/A  RISK  FOLLOWUP  TITLE\n#42  18     11      4    2     1         HTTP handlers authenticate\n",
 		// An empty table says so rather than printing a bare header.
@@ -315,9 +318,9 @@ var showDetail = &api.InvariantDetail{
 	ByVersion: []api.InvariantVersionUsage{
 		{
 			Version: ptr(3), CreatedAt: ptr("2026-10-02T09:00:00Z"),
-			InvariantUsage: api.InvariantUsage{TimesApplied: 40, TimesFailed: 4, FailureRate: rate(0.1), TotalWaives: 1},
+			Usage: api.InvariantUsage{TimesApplied: 40, TimesFailed: 4, FailureRate: rate(0.1), TotalWaives: 1},
 		},
-		{InvariantUsage: api.InvariantUsage{TimesApplied: 25, TimesFailed: 6, FailureRate: rate(0.24), TotalWaives: 3}},
+		{Usage: api.InvariantUsage{TimesApplied: 25, TimesFailed: 6, FailureRate: rate(0.24), TotalWaives: 3}},
 	},
 }
 
@@ -325,7 +328,7 @@ var waiverRows = []api.InvariantWaiverRow{{
 	ID: 9,
 	InvariantWaiver: api.InvariantWaiver{
 		Category: "false_positive", Justification: "Endpoint is internal-only,\nbehind the VPN gate.",
-		WaivedBy:  &api.InvariantUser{Email: "dana@acme.com", FullName: "Dana K."},
+		WaivedBy:  &api.InvariantUser{Name: ptr("Dana K."), Email: ptr("dana@acme.com")},
 		CreatedAt: "2026-10-21T10:00:00Z", Version: ptr(2),
 	},
 	Review: api.InvariantReview{
@@ -361,8 +364,8 @@ func TestFormatInvariantShow(t *testing.T) {
 
 	withRepos := *showDetail
 	withRepos.ByRepo = []api.InvariantRepoUsage{{
-		Repository:     api.Repository{Org: "acme", Name: "web"},
-		InvariantUsage: api.InvariantUsage{TimesApplied: 100, TimesFailed: 28, FailureRate: rate(0.28), TotalWaives: 17},
+		Repository: api.Repository{Org: "acme", Name: "web"},
+		Usage:      api.InvariantUsage{TimesApplied: 100, TimesFailed: 28, FailureRate: rate(0.28), TotalWaives: 17},
 	}}
 	out = formatInvariantShow(&withRepos, &api.InvariantWaiversResponse{Page: 1})
 	for _, want := range []string{
@@ -407,14 +410,14 @@ func TestFormatInvariantReviews(t *testing.T) {
 		Page:      1,
 		HasMore:   true,
 		Reviews: []api.InvariantReviewRow{
-			{Review: review(1302, "https://github.com/acme/web/pull/6102"), AppliedAt: "2026-10-24T08:00:00Z", Version: ptr(3), Outcome: "passed"},
+			{Review: review(1302, "https://github.com/acme/web/pull/6102"), AppliedAt: "2026-10-24T08:00:00Z", Version: ptr(3), Outcome: "pass"},
 			{
 				Review: review(1296, "https://github.com/acme/web/pull/6096"), AppliedAt: "2026-10-22T08:00:00Z", Version: ptr(3),
 				Outcome: "fixed", VerdictRun: &api.InvariantReviewRun{ID: 9958, Status: "succeeded"},
 			},
 			{
 				Review: review(1288, "https://github.com/acme/web/pull/6088"), AppliedAt: "2026-10-21T08:00:00Z", Version: ptr(2),
-				Outcome: "waived", Waiver: &api.InvariantWaiver{Category: "false_positive", WaivedBy: &api.InvariantUser{FullName: "Dana K."}},
+				Outcome: "waived", Waiver: &api.InvariantWaiver{Category: "false_positive", WaivedBy: &api.InvariantUser{Name: ptr("Dana K.")}},
 			},
 			{Review: review(1270, ""), AppliedAt: "2026-10-17T08:00:00Z", Outcome: "not_run"},
 		},
@@ -422,7 +425,7 @@ func TestFormatInvariantReviews(t *testing.T) {
 	out := formatInvariantReviews(resp)
 	want := "#42 HTTP handlers authenticate\n" +
 		"WHEN        REVIEW  PR             OUTCOME  VERSION  NOTE\n" +
-		"2026-10-24  r/1302  acme/web#6102  passed   3        \n" +
+		"2026-10-24  r/1302  acme/web#6102  pass     3        \n" +
 		"2026-10-22  r/1296  acme/web#6096  fixed    3        failed earlier run, passed run 9958\n" +
 		"2026-10-21  r/1288  acme/web#6088  waived   2        false positive, Dana K.\n" +
 		"2026-10-17  r/1270  -              not_run  -        \n" +
@@ -514,7 +517,8 @@ func TestInsightsJSON(t *testing.T) {
 		t.Errorf("since = %v, status = %v", got["since"], got["status"])
 	}
 	applied := got["most_applied"].([]any)[0].(map[string]any)
-	if inv := applied["invariant"].(map[string]any); inv["id"] != float64(42) || applied["times_applied"] != float64(143) {
+	if inv := applied["invariant"].(map[string]any); inv["id"] != float64(42) || applied["times_applied"] != float64(143) ||
+		len(applied) != 2 {
 		t.Errorf("most_applied = %v", applied)
 	}
 	failure := got["failure_ratio"].([]any)[0].(map[string]any)
@@ -522,7 +526,10 @@ func TestInsightsJSON(t *testing.T) {
 		t.Errorf("failure_ratio = %v", failure)
 	}
 	waived := got["most_waived"].([]any)[0].(map[string]any)
-	assertJSONFields(t, waived["counts"].(map[string]any), map[string]any{
+	if waived["total_waives"] != float64(18) {
+		t.Errorf("most_waived = %v", waived)
+	}
+	assertJSONFields(t, waived["waives_by_category"].(map[string]any), map[string]any{
 		"false_positive": float64(11), "doesnt_apply": float64(4), "accepted_risk": float64(2), "fix_in_followup": float64(1),
 	})
 	// An empty ranking is [] so callers can range over it.
@@ -533,7 +540,7 @@ func TestInsightsJSON(t *testing.T) {
 	if never["count"] != float64(7) || never["invariants"].([]any)[0].(map[string]any)["created_at"] != "2026-09-02T10:00:00Z" {
 		t.Errorf("never_applied = %v", never)
 	}
-	if got["reasons"].(map[string]any)["total"] != float64(61) {
+	if r := got["reasons"].(map[string]any); r["total_waives"] != float64(61) || r["waives_by_category"] == nil {
 		t.Errorf("reasons = %v", got["reasons"])
 	}
 }
@@ -554,9 +561,10 @@ func TestInvariantShowJSON(t *testing.T) {
 	if len(versions) != 2 || versions[1].(map[string]any)["version"] != nil {
 		t.Errorf("by_version = %v", versions)
 	}
-	// Every usage row carries the same seven keys as usage itself.
-	if v := versions[0].(map[string]any); v["times_applied"] != float64(40) || v["failure_rate"] != 0.1 ||
-		v["waived_failures"] != float64(0) || len(v) != 9 {
+	// Every row nests the same seven keys as usage itself under its own usage.
+	v := versions[0].(map[string]any)
+	if vu, ok := v["usage"].(map[string]any); !ok || vu["times_applied"] != float64(40) || vu["failure_rate"] != 0.1 ||
+		vu["waived_failures"] != float64(0) || len(vu) != 7 || len(v) != 3 {
 		t.Errorf("by_version[0] = %v", v)
 	}
 	if _, ok := got["by_repo"]; ok {
@@ -566,7 +574,7 @@ func TestInvariantShowJSON(t *testing.T) {
 	if waiver["id"] != float64(9) || waiver["category"] != "false_positive" || waiver["version"] != float64(2) {
 		t.Errorf("waiver = %v", waiver)
 	}
-	if by := waiver["waived_by"].(map[string]any); by["full_name"] != "Dana K." {
+	if by := waiver["waived_by"].(map[string]any); by["name"] != "Dana K." || by["email"] != "dana@acme.com" {
 		t.Errorf("waived_by = %v", by)
 	}
 	review := waiver["review"].(map[string]any)
@@ -593,12 +601,13 @@ func TestInvariantShowJSON(t *testing.T) {
 		t.Errorf("by_repo should be [] when asked for and empty, got %v", got["by_repo"])
 	}
 	withRepos.ByRepo = []api.InvariantRepoUsage{{
-		Repository:     api.Repository{Org: "acme", Name: "web"},
-		InvariantUsage: api.InvariantUsage{TimesApplied: 100, WaivedFailures: 16, WaiveRate: rate(0.571)},
+		Repository: api.Repository{Org: "acme", Name: "web"},
+		Usage:      api.InvariantUsage{TimesApplied: 100, WaivedFailures: 16, WaiveRate: rate(0.571)},
 	}}
 	got = decodeJSON(t, newInvariantShowJSON(&withRepos, &api.InvariantWaiversResponse{}))
-	if r := got["by_repo"].([]any)[0].(map[string]any); r["repository"] != "acme/web" || r["times_applied"] != float64(100) ||
-		r["waived_failures"] != float64(16) || r["waive_rate"] != 0.571 || len(r) != 8 {
+	r := got["by_repo"].([]any)[0].(map[string]any)
+	if ru, ok := r["usage"].(map[string]any); r["repository"] != "acme/web" || !ok || ru["times_applied"] != float64(100) ||
+		ru["waived_failures"] != float64(16) || ru["waive_rate"] != 0.571 || len(r) != 2 {
 		t.Errorf("by_repo[0] = %v", r)
 	}
 	if waivers, ok := got["waivers"].([]any); !ok || len(waivers) != 0 {
@@ -607,7 +616,7 @@ func TestInvariantShowJSON(t *testing.T) {
 }
 
 func TestInvariantReviewsAndWaiversJSON(t *testing.T) {
-	resp := &api.InvariantReviewsResponse{Invariant: api.InvariantSummary{ID: 42, Title: "T", Category: "security", Status: "active"}, Reviews: []api.InvariantReviewRow{{
+	resp := &api.InvariantReviewsResponse{Invariant: api.InvariantSummary{ID: 42, Title: "T", Category: "security", Status: "active", Mode: "shadow"}, Reviews: []api.InvariantReviewRow{{
 		Review:     waiverRows[0].Review,
 		AppliedAt:  "2026-10-21T08:00:00Z",
 		Result:     ptr("fail"),
@@ -617,7 +626,7 @@ func TestInvariantReviewsAndWaiversJSON(t *testing.T) {
 	}}}
 	got := decodeJSON(t, newInvariantReviewsJSON(resp))
 	assertJSONFields(t, got["invariant"].(map[string]any), map[string]any{
-		"id": float64(42), "title": "T", "category": "security", "status": "active",
+		"id": float64(42), "title": "T", "category": "security", "status": "active", "mode": "shadow",
 	})
 	row := got["reviews"].([]any)[0].(map[string]any)
 	if row["outcome"] != "waived" || row["result"] != "fail" || row["version"] != nil || row["applied_at"] != "2026-10-21T08:00:00Z" {

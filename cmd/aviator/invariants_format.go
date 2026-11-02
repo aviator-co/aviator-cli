@@ -84,11 +84,16 @@ func formatInvariantUsageCells(u *api.InvariantUsage) []string {
 	}
 }
 
-// formatInvariantStatus renders the lifecycle status, flagging the active-but-
-// switched-off case since the selector skips those too.
+// formatInvariantStatus renders the lifecycle status, flagging an active rule
+// that is switched off (the selector skips it) or only in shadow mode.
 func formatInvariantStatus(inv *api.Invariant) string {
-	if inv.Status == "active" && !inv.Enabled {
+	switch {
+	case inv.Status != "active":
+		return inv.Status
+	case !inv.Enabled:
 		return "active (disabled)"
+	case inv.Mode == "shadow":
+		return "active (shadow)"
 	}
 	return inv.Status
 }
@@ -186,6 +191,9 @@ func formatInvariantFields(inv *api.Invariant) string {
 	field := func(name, value string) { writeInvariantField(&b, name, value) }
 	field("Category", inv.Category)
 	field("Status", fmt.Sprintf("%s (enabled: %t)", inv.Status, inv.Enabled))
+	if inv.Mode != "" {
+		field("Mode", inv.Mode)
+	}
 	field("Source", inv.Source)
 	field("Scope", formatInvariantScope(inv))
 	if inv.OwnerTeams != nil {
@@ -272,6 +280,7 @@ type invariantJSON struct {
 	Source       string          `json:"source"`
 	Status       string          `json:"status"`
 	Enabled      bool            `json:"enabled"`
+	Mode         string          `json:"mode"`
 	Reason       string          `json:"reason"`
 	SourceRefs   []string        `json:"source_refs"`
 	Repositories []string        `json:"repositories"`
@@ -358,6 +367,7 @@ func newInvariantJSON(inv *api.Invariant) invariantJSON {
 		Source:       inv.Source,
 		Status:       inv.Status,
 		Enabled:      inv.Enabled,
+		Mode:         inv.Mode,
 		Reason:       inv.Reason,
 		SourceRefs:   inv.SourceRefs,
 		Repositories: make([]string, 0, len(inv.Repositories)),

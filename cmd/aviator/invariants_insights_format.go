@@ -27,12 +27,9 @@ func formatInvariantInsights(resp *api.InvariantInsightsResponse, window, repo, 
 	b.WriteString("\nMost applied\n")
 	rows := make([][]string, 0, len(resp.MostApplied))
 	for _, r := range resp.MostApplied {
-		rows = append(rows, []string{
-			"#" + strconv.Itoa(r.Invariant.ID), strconv.Itoa(r.TimesApplied), strconv.Itoa(r.TimesFailed),
-			strconv.Itoa(r.TotalWaives), r.Invariant.Title,
-		})
+		rows = append(rows, []string{"#" + strconv.Itoa(r.Invariant.ID), strconv.Itoa(r.TimesApplied), r.Invariant.Title})
 	}
-	writeTable(&b, "", []string{"ID", "APPLIED", "FAILED", "WAIVED", "TITLE"}, rows)
+	writeTable(&b, "", []string{"ID", "APPLIED", "TITLE"}, rows)
 
 	b.WriteString("\nHighest failure rate\n")
 	rows = rows[:0]
@@ -48,9 +45,10 @@ func formatInvariantInsights(resp *api.InvariantInsightsResponse, window, repo, 
 	rows = rows[:0]
 	for _, r := range resp.MostWaived {
 		rows = append(rows, []string{
-			"#" + strconv.Itoa(r.Invariant.ID), strconv.Itoa(r.Total), strconv.Itoa(r.Counts.FalsePositive),
-			strconv.Itoa(r.Counts.DoesntApply), strconv.Itoa(r.Counts.AcceptedRisk),
-			strconv.Itoa(r.Counts.FixInFollowup), r.Invariant.Title,
+			"#" + strconv.Itoa(r.Invariant.ID), strconv.Itoa(r.TotalWaives),
+			strconv.Itoa(r.WaivesByCategory.FalsePositive), strconv.Itoa(r.WaivesByCategory.DoesntApply),
+			strconv.Itoa(r.WaivesByCategory.AcceptedRisk), strconv.Itoa(r.WaivesByCategory.FixInFollowup),
+			r.Invariant.Title,
 		})
 	}
 	writeTable(&b, "", []string{"ID", "TOTAL", "FALSE+", "N/A", "RISK", "FOLLOWUP", "TITLE"}, rows)
@@ -75,7 +73,8 @@ func formatInvariantInsights(resp *api.InvariantInsightsResponse, window, repo, 
 		b.WriteString("See all: " + seeAll + "\n")
 	}
 
-	fmt.Fprintf(&b, "\nWaiver reasons: %d · %s\n", resp.Reasons.Total, formatWaiveCounts(resp.Reasons.Counts))
+	fmt.Fprintf(&b, "\nWaiver reasons: %d · %s\n", resp.Reasons.TotalWaives,
+		formatWaiveCounts(resp.Reasons.WaivesByCategory))
 	return b.String()
 }
 
@@ -106,8 +105,8 @@ func formatInvariantShow(d *api.InvariantDetail, waivers *api.InvariantWaiversRe
 			since = formatDate(*v.CreatedAt)
 		}
 		rows = append(rows, []string{
-			formatOptionalInt(v.Version), since, strconv.Itoa(v.TimesApplied), strconv.Itoa(v.TimesFailed),
-			formatRate(v.FailureRate), strconv.Itoa(v.TotalWaives),
+			formatOptionalInt(v.Version), since, strconv.Itoa(v.Usage.TimesApplied), strconv.Itoa(v.Usage.TimesFailed),
+			formatRate(v.Usage.FailureRate), strconv.Itoa(v.Usage.TotalWaives),
 		})
 	}
 	writeTable(&b, "  ", []string{"VERSION", "SINCE", "APPLIED", "FAILED", "RATE", "WAIVED"}, rows)
@@ -117,8 +116,8 @@ func formatInvariantShow(d *api.InvariantDetail, waivers *api.InvariantWaiversRe
 		rows = rows[:0]
 		for _, r := range d.ByRepo {
 			rows = append(rows, []string{
-				r.Repository.Org + "/" + r.Repository.Name, strconv.Itoa(r.TimesApplied),
-				strconv.Itoa(r.TimesFailed), formatRate(r.FailureRate), strconv.Itoa(r.TotalWaives),
+				r.Repository.Org + "/" + r.Repository.Name, strconv.Itoa(r.Usage.TimesApplied),
+				strconv.Itoa(r.Usage.TimesFailed), formatRate(r.Usage.FailureRate), strconv.Itoa(r.Usage.TotalWaives),
 			})
 		}
 		writeTable(&b, "  ", []string{"REPO", "APPLIED", "FAILED", "RATE", "WAIVED"}, rows)
@@ -291,10 +290,12 @@ func formatWaivedBy(u *api.InvariantUser) string {
 	switch {
 	case u == nil:
 		return orDash("")
-	case u.FullName != "":
-		return u.FullName
+	case u.Name != nil && *u.Name != "":
+		return *u.Name
+	case u.Email != nil:
+		return orDash(*u.Email)
 	}
-	return orDash(u.Email)
+	return orDash("")
 }
 
 // formatReviewPR renders the review's PRs as #N,#M, prefixed with the repo
@@ -330,6 +331,7 @@ type invariantSummaryJSON struct {
 	Title    string `json:"title"`
 	Category string `json:"category"`
 	Status   string `json:"status"`
+	Mode     string `json:"mode"`
 }
 
 type waiveCountsJSON struct {
@@ -353,8 +355,6 @@ type insightsJSON struct {
 type insightAppliedJSON struct {
 	Invariant    invariantSummaryJSON `json:"invariant"`
 	TimesApplied int                  `json:"times_applied"`
-	TimesFailed  int                  `json:"times_failed"`
-	TotalWaives  int                  `json:"total_waives"`
 }
 
 type insightFailureJSON struct {
@@ -365,9 +365,9 @@ type insightFailureJSON struct {
 }
 
 type insightWaivedJSON struct {
-	Invariant invariantSummaryJSON `json:"invariant"`
-	Total     int                  `json:"total"`
-	Counts    waiveCountsJSON      `json:"counts"`
+	Invariant        invariantSummaryJSON `json:"invariant"`
+	TotalWaives      int                  `json:"total_waives"`
+	WaivesByCategory waiveCountsJSON      `json:"waives_by_category"`
 }
 
 type insightWaiveRateJSON struct {
@@ -388,8 +388,8 @@ type neverAppliedInvariantJSON struct {
 }
 
 type waiveReasonsJSON struct {
-	Total  int             `json:"total"`
-	Counts waiveCountsJSON `json:"counts"`
+	TotalWaives      int             `json:"total_waives"`
+	WaivesByCategory waiveCountsJSON `json:"waives_by_category"`
 }
 
 // invariantShowJSON is `show --json`: the invariant with its all-time usage
@@ -404,14 +404,14 @@ type invariantShowJSON struct {
 }
 
 type versionUsageJSON struct {
-	Version   *int    `json:"version"`
-	CreatedAt *string `json:"created_at"`
-	invariantUsageJSON
+	Version   *int               `json:"version"`
+	CreatedAt *string            `json:"created_at"`
+	Usage     invariantUsageJSON `json:"usage"`
 }
 
 type repoUsageJSON struct {
-	Repository string `json:"repository"`
-	invariantUsageJSON
+	Repository string             `json:"repository"`
+	Usage      invariantUsageJSON `json:"usage"`
 }
 
 // reviewRefJSON identifies the review a row is about, the way every other
@@ -422,9 +422,10 @@ type reviewRefJSON struct {
 	PullRequests []pullRequestJSON `json:"pull_requests"`
 }
 
+// userJSON's email is null for a deleted user, and name can be too.
 type userJSON struct {
-	Email    string `json:"email"`
-	FullName string `json:"full_name"`
+	Name  *string `json:"name"`
+	Email *string `json:"email"`
 }
 
 type waiverJSON struct {
@@ -470,7 +471,7 @@ type reviewRunJSON struct {
 }
 
 func newInvariantSummaryJSON(s *api.InvariantSummary) invariantSummaryJSON {
-	return invariantSummaryJSON{ID: s.ID, Title: s.Title, Category: s.Category, Status: s.Status}
+	return invariantSummaryJSON{ID: s.ID, Title: s.Title, Category: s.Category, Status: s.Status, Mode: s.Mode}
 }
 
 func newWaiveCountsJSON(c api.WaiveCounts) waiveCountsJSON {
@@ -494,13 +495,15 @@ func newInsightsJSON(resp *api.InvariantInsightsResponse) insightsJSON {
 			Count:      resp.NeverApplied.Count,
 			Invariants: make([]neverAppliedInvariantJSON, 0, len(resp.NeverApplied.Invariants)),
 		},
-		Reasons: waiveReasonsJSON{Total: resp.Reasons.Total, Counts: newWaiveCountsJSON(resp.Reasons.Counts)},
+		Reasons: waiveReasonsJSON{
+			TotalWaives:      resp.Reasons.TotalWaives,
+			WaivesByCategory: newWaiveCountsJSON(resp.Reasons.WaivesByCategory),
+		},
 	}
 	for i := range resp.MostApplied {
 		r := &resp.MostApplied[i]
 		out.MostApplied = append(out.MostApplied, insightAppliedJSON{
 			Invariant: newInvariantSummaryJSON(&r.Invariant), TimesApplied: r.TimesApplied,
-			TimesFailed: r.TimesFailed, TotalWaives: r.TotalWaives,
 		})
 	}
 	for i := range resp.FailureRatio {
@@ -513,7 +516,8 @@ func newInsightsJSON(resp *api.InvariantInsightsResponse) insightsJSON {
 	for i := range resp.MostWaived {
 		r := &resp.MostWaived[i]
 		out.MostWaived = append(out.MostWaived, insightWaivedJSON{
-			Invariant: newInvariantSummaryJSON(&r.Invariant), Total: r.Total, Counts: newWaiveCountsJSON(r.Counts),
+			Invariant: newInvariantSummaryJSON(&r.Invariant), TotalWaives: r.TotalWaives,
+			WaivesByCategory: newWaiveCountsJSON(r.WaivesByCategory),
 		})
 	}
 	for i := range resp.WaiveRate {
@@ -542,7 +546,7 @@ func newInvariantShowJSON(d *api.InvariantDetail, waivers *api.InvariantWaiversR
 	for i := range d.ByVersion {
 		v := &d.ByVersion[i]
 		out.ByVersion = append(out.ByVersion, versionUsageJSON{
-			Version: v.Version, CreatedAt: v.CreatedAt, invariantUsageJSON: newInvariantUsageJSON(&v.InvariantUsage),
+			Version: v.Version, CreatedAt: v.CreatedAt, Usage: newInvariantUsageJSON(&v.Usage),
 		})
 	}
 	if d.ByRepo != nil {
@@ -550,8 +554,8 @@ func newInvariantShowJSON(d *api.InvariantDetail, waivers *api.InvariantWaiversR
 		for i := range d.ByRepo {
 			r := &d.ByRepo[i]
 			repos = append(repos, repoUsageJSON{
-				Repository:         r.Repository.Org + "/" + r.Repository.Name,
-				invariantUsageJSON: newInvariantUsageJSON(&r.InvariantUsage),
+				Repository: r.Repository.Org + "/" + r.Repository.Name,
+				Usage:      newInvariantUsageJSON(&r.Usage),
 			})
 		}
 		out.ByRepo = &repos
@@ -582,7 +586,7 @@ func newWaiverJSON(w *api.InvariantWaiver) waiverJSON {
 		Version:       w.Version,
 	}
 	if w.WaivedBy != nil {
-		out.WaivedBy = &userJSON{Email: w.WaivedBy.Email, FullName: w.WaivedBy.FullName}
+		out.WaivedBy = &userJSON{Name: w.WaivedBy.Name, Email: w.WaivedBy.Email}
 	}
 	return out
 }

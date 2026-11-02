@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 // WaiveCounts tallies waivers by reason. Every reason is present, zero when
@@ -21,6 +22,7 @@ type InvariantSummary struct {
 	Title    string `json:"title"`
 	Category string `json:"category"`
 	Status   string `json:"status"`
+	Mode     string `json:"mode"`
 }
 
 // InvariantReview is the review session an invariant was applied on.
@@ -31,10 +33,11 @@ type InvariantReview struct {
 	PullRequests  []LinkedPullRequest `json:"pull_requests"`
 }
 
-// InvariantUser is who waived an invariant.
+// InvariantUser is who waived an invariant. Email is nil for a deleted user;
+// Name falls back to the email server-side, so it can be nil too.
 type InvariantUser struct {
-	Email    string `json:"email"`
-	FullName string `json:"full_name"`
+	Name  *string `json:"name"`
+	Email *string `json:"email"`
 }
 
 // InvariantWaiver is one waive of an invariant on a review. WaivedBy is nil
@@ -75,8 +78,6 @@ type InvariantInsightsResponse struct {
 type InvariantAppliedRow struct {
 	Invariant    InvariantSummary `json:"invariant"`
 	TimesApplied int              `json:"times_applied"`
-	TimesFailed  int              `json:"times_failed"`
-	TotalWaives  int              `json:"total_waives"`
 }
 
 // InvariantFailureRow is a failure-rate ranking entry.
@@ -89,9 +90,9 @@ type InvariantFailureRow struct {
 
 // InvariantWaivedRow is a most-waived ranking entry.
 type InvariantWaivedRow struct {
-	Invariant InvariantSummary `json:"invariant"`
-	Total     int              `json:"total"`
-	Counts    WaiveCounts      `json:"counts"`
+	Invariant        InvariantSummary `json:"invariant"`
+	TotalWaives      int              `json:"total_waives"`
+	WaivesByCategory WaiveCounts      `json:"waives_by_category"`
 }
 
 // InvariantWaiveRateRow is a waive-rate ranking entry.
@@ -117,38 +118,39 @@ type NeverAppliedInvariant struct {
 
 // InvariantWaiveReasons tallies every waiver in the window by reason.
 type InvariantWaiveReasons struct {
-	Total  int         `json:"total"`
-	Counts WaiveCounts `json:"counts"`
+	TotalWaives      int         `json:"total_waives"`
+	WaivesByCategory WaiveCounts `json:"waives_by_category"`
 }
 
-// GetInvariantQuery is the query string for GET /api/v1/invariants/<id>.
-// ByRepo adds the by-repo breakdown.
+// GetInvariantQuery is the query string for GET /api/v1/invariants/<id>,
+// sent as one comma-separated include; a bare GET returns only the invariant.
 type GetInvariantQuery struct {
-	ByRepo bool
+	Usage     bool
+	ByVersion bool
+	ByRepo    bool
 }
 
 // InvariantDetail is one invariant with its all-time usage (on the embedded
-// Usage).
+// Usage). Each part is only present when the query included it.
 type InvariantDetail struct {
 	Invariant
 	ByVersion []InvariantVersionUsage `json:"by_version"`
-	// ByRepo is only present when the query asked for it.
-	ByRepo []InvariantRepoUsage `json:"by_repo"`
+	ByRepo    []InvariantRepoUsage    `json:"by_repo"`
 }
 
 // InvariantVersionUsage is the counts for one invariant version, newest
 // first. Version and CreatedAt are nil for criteria and waivers with no
 // version pinned.
 type InvariantVersionUsage struct {
-	Version   *int    `json:"version"`
-	CreatedAt *string `json:"created_at"`
-	InvariantUsage
+	Version   *int           `json:"version"`
+	CreatedAt *string        `json:"created_at"`
+	Usage     InvariantUsage `json:"usage"`
 }
 
 // InvariantRepoUsage is the counts for one repository.
 type InvariantRepoUsage struct {
-	Repository Repository `json:"repository"`
-	InvariantUsage
+	Repository Repository     `json:"repository"`
+	Usage      InvariantUsage `json:"usage"`
 }
 
 // AccountWaiversQuery filters and pages GET /api/v1/invariants/waivers, the
@@ -182,7 +184,7 @@ type InvariantWaiversResponse struct {
 }
 
 // InvariantReviewsQuery filters and pages GET /api/v1/invariants/<id>/reviews.
-// Outcome is one of passed, failed, warned, errored, waived, fixed, not_run.
+// Outcome is one of pass, fail, warn, error, waived, fixed, not_run.
 type InvariantReviewsQuery struct {
 	Repo    *Repository
 	Outcome string
@@ -247,9 +249,19 @@ func (c *Client) GetInvariantInsights(
 func (c *Client) GetInvariant(
 	ctx context.Context, invariantID int, q GetInvariantQuery,
 ) (*InvariantDetail, error) {
-	values := url.Values{}
+	var include []string
+	if q.Usage {
+		include = append(include, "usage")
+	}
+	if q.ByVersion {
+		include = append(include, "by_version")
+	}
 	if q.ByRepo {
-		values.Set("include", "by_repo")
+		include = append(include, "by_repo")
+	}
+	values := url.Values{}
+	if len(include) > 0 {
+		values.Set("include", strings.Join(include, ","))
 	}
 	var out InvariantDetail
 	if err := c.getJSON(ctx, invariantPath(invariantID), values, &out); err != nil {

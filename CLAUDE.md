@@ -213,16 +213,22 @@ so they need a user token or an `aviator login` session.
   datetime the CLI defaults to 30 days back; `limit`, `status` defaulting to
   `active`, `org`+`repo`; ranked `most_applied`, `failure_ratio`,
   `most_waived`, `waive_rate`, plus `never_applied`, which ignores `since`,
-  and `reasons`), `GET /<id>` (the invariant with `usage`, `by_version`, and
-  `by_repo` with `include=by_repo`, each row with the same seven usage keys),
-  `GET /<id>/reviews` (paged, takes `outcome`, carries the `invariant`
+  and `reasons`; waive counts are `total_waives` + `waives_by_category`),
+  `GET /<id>` (bare, just the invariant; comma-separated `include` of `usage`,
+  `by_version`, `by_repo` adds each, every version/repo row nesting the same
+  seven usage keys under `usage`; `show` always sends `usage,by_version`),
+  `GET /<id>/reviews` (paged, takes `outcome`
+  (`pass|fail|warn|error|waived|fixed|not_run`), carries the `invariant`
   summary and each row's `verdict_run`, a full run summary of which the CLI
   reads `id`, `status` and `completed_at`), `GET /waivers` (account-wide,
   also what `show` pages waivers from; `invariant`, `user` (`me` needs a user
   token, else an email), `category`), and `include=usage` on the list with
-  `sort` (`applied|failed|failure_rate|waived`) or `never_applied`, not both
-  (400); the list has no `status` default, so `list --usage` sends
-  `status=active` itself when `--status` is absent. A backend without these
+  `sort` (`applied|failure_rate|waived|waive_rate`) or `never_applied`, not
+  both (400); `include=usage` defaults `status` to active, and `list --usage`
+  also sends `status=active` itself when `--status` is absent. Waivers'
+  `waived_by` is `{id, name, email}`, `email` null for a deleted user and
+  `name` possibly null. Invariants and their summaries carry `mode`
+  (`off|shadow|enforced`). A backend without these
   answers the new paths with a bare 404/405 (no JSON `error` code) and
   ignores `include=usage`; the commands report that as unsupported instead
   of printing empty counts, except on an empty `list --usage` page, which

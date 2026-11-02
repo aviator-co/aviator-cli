@@ -35,6 +35,9 @@ type Invariant struct {
 	Source   string `json:"source"`
 	Status   string `json:"status"`
 	Enabled  bool   `json:"enabled"`
+	// Mode is how an active invariant takes part in verify: off, shadow or
+	// enforced. Empty when the backend predates it.
+	Mode string `json:"mode"`
 	// Reason is why the rule was proposed; set by the AI pipelines, empty for
 	// manual ones. SourceRefs are the evidence behind it (PR URLs and such).
 	Reason       string               `json:"reason"`
@@ -47,7 +50,8 @@ type Invariant struct {
 	OwnerTeams *[]OwnerTeam `json:"owner_teams"`
 	// Version is the current version number, nil when it has none.
 	Version *int `json:"version"`
-	// Usage is the row's counts when the listing asked for include=usage.
+	// Usage is the row's counts when the listing or detail asked for
+	// include=usage.
 	Usage      *InvariantUsage `json:"usage"`
 	CreatedAt  string          `json:"created_at"`
 	ModifiedAt string          `json:"modified_at"`
@@ -73,10 +77,9 @@ type InvariantUsage struct {
 // blank (the server reads a blank list as "no filter"), and Page and PerPage
 // are sent only when positive, so the server's defaults hold otherwise.
 // OwnerTeams (org/slug) and Unowned OR together and match the effective owner.
-// IncludeUsage attaches each row's all-time Usage; Sort (applied, failed,
-// failure_rate, waived) and NeverApplied are only valid with it, and not
-// together. The server has no status default here; the CLI sends
-// Status active itself when --status is absent.
+// IncludeUsage attaches each row's all-time Usage and makes the server default
+// Status to active; Sort (applied, failure_rate, waived, waive_rate) and
+// NeverApplied are only valid with it, and not together.
 type ListInvariantsQuery struct {
 	Repo         *Repository
 	Status       string

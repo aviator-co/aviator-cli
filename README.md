@@ -210,10 +210,10 @@ aviator invariants list --unowned                # no owner team and no default
 aviator invariants categories                    # slugs that --category accepts
 aviator invariants owner-teams                   # teams by invariants owned, 20 per page (--limit, --page)
 aviator invariants insights --since 7d           # top applied, failing and waived rules (default last 30 days)
-aviator invariants list --usage --sort waived    # usage columns (--sort applied|failed|failure_rate|waived)
+aviator invariants list --usage --sort waived    # usage columns (--sort applied|failure_rate|waived|waive_rate)
 aviator invariants list --usage --never-applied  # enabled rules no review has applied
 aviator invariants show 42 --by-repo             # usage per version and repo, plus its waivers
-aviator invariants reviews 42 --outcome failed   # reviews the rule was applied on, with each outcome
+aviator invariants reviews 42 --outcome fail     # reviews the rule was applied on, with each outcome
 aviator invariants waivers --user me             # waivers across rules (--invariant, --category, --repo)
 
 aviator invariants create \

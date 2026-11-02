@@ -15,11 +15,11 @@ import (
 
 // usageSorts names the --sort values `list --usage` takes. The server
 // validates the value, so nothing is checked client-side.
-const usageSorts = "applied, failed, failure_rate, waived"
+const usageSorts = "applied, failure_rate, waived, waive_rate"
 
 // reviewOutcomes names the --outcome values `reviews` takes. The server
 // validates the value, so nothing is checked client-side.
-const reviewOutcomes = "passed, failed, warned, errored, waived, fixed, not_run"
+const reviewOutcomes = "pass, fail, warn, error, waived, fixed, not_run"
 
 // waiveCategories names the waiver reasons --category takes; the server
 // validates these too.
@@ -115,7 +115,9 @@ var invariantsShowCmd = &cobra.Command{
 			return err
 		}
 		detail, err := client.GetInvariant(cmd.Context(), id, api.GetInvariantQuery{
-			ByRepo: invariantsShowFlags.ByRepo,
+			Usage:     true,
+			ByVersion: true,
+			ByRepo:    invariantsShowFlags.ByRepo,
 		})
 		if err != nil {
 			return analyticsError(err)
@@ -147,8 +149,8 @@ var invariantsReviewsCmd = &cobra.Command{
 	Use:   "reviews <id>",
 	Short: "List the reviews an invariant was applied on, with each outcome",
 	Long: "List the reviews an invariant was applied on, newest first, with how\n" +
-		"it came out on each: passed, failed, warned, errored, waived, fixed\n" +
-		"(failed an earlier run, passed the latest), or not_run.\n" +
+		"it came out on each: pass, fail, warn, error, waived, fixed (failed\n" +
+		"an earlier run, passed the latest), or not_run.\n" +
 		"\n" + analyticsHelp,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
