@@ -29,6 +29,8 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   evidence.go       # `aviator evidence`  -> signed URL / download of one evidence file
   invariants.go     # `aviator invariants <list|categories|owner-teams|create|edit|delete|approve|reject|set-status|set-owner>`
   invariants_format.go  # text rendering for the invariants commands
+  invariants_insights.go        # `aviator invariants <insights|show|reviews|waivers>` and insights' `--since` parsing
+  invariants_insights_format.go # text rendering + `--json` structs for the analytics commands
   decisions.go      # `aviator decisions <list|show|apply>` (hidden)
   decisions_format.go  # text rendering for the decisions commands
   version.go        # `aviator version`
@@ -44,7 +46,8 @@ internal/
 Commands are **flat**: `aviator verify` and `aviator runbook` are the actions
 themselves — there is no second verb (no `submit`/`create` subcommand). The one
 resource group is `aviator invariants`, whose subcommands are the CRUD verbs
-over `/api/v1/invariants`.
+over `/api/v1/invariants` plus read-only analytics views (`insights`, `show`,
+`reviews`, `waivers`, and `list --usage`).
 
 ## Commands
 
@@ -199,11 +202,37 @@ so they need a user token or an `aviator login` session.
   unless the invariant is active), `DELETE /<id>`, `POST /status`
   (`{invariant_ids, status}` bulk approve/reject/restore), and `POST /owners`
   (`{invariant_ids, owner_teams}` bulk owner change). Each invariant carries
-  its effective `owner_teams`; a backend that predates owner teams omits the
+  its current `version` (null when it has none) and its effective
+  `owner_teams`; a backend that predates owner teams omits the
   key and ignores the owner filters and fields, so the CLI refuses owner
   operations when it is missing. Reads need any member; create needs any
   user token; other writes need a maintainer, an admin, or someone directly
   on the invariant's owner team.
+- Invariant analytics, all `GET`, any token, counts all-time:
+  `/api/v1/invariants/insights` (the only one with `since`, an ISO-8601
+  datetime the CLI defaults to 30 days back; `limit`, `status` defaulting to
+  `active`, `org`+`repo`; ranked `most_applied`, `failure_ratio`,
+  `most_waived`, `waive_rate`, plus `never_applied`, which ignores `since`,
+  and `reasons`; waive counts are `total_waives` + `waives_by_category`),
+  `GET /<id>` (bare, just the invariant; comma-separated `include` of `usage`,
+  `by_version`, `by_repo` adds each, every version/repo row nesting the same
+  seven usage keys under `usage`; `show` always sends `usage,by_version`),
+  `GET /<id>/reviews` (paged, takes `outcome`
+  (`pass|fail|warn|error|waived|fixed|not_run`), carries the `invariant`
+  summary and each row's `verdict_run`, a full run summary of which the CLI
+  reads `id`, `status` and `completed_at`), `GET /waivers` (account-wide,
+  also where `show` gets its latest waivers from; `invariant`, `user` (`me` needs a user
+  token, else an email), `category`), and `include=usage` on the list with
+  `sort` (`applied|failure_rate|waived|waive_rate`) or `never_applied`, not
+  both (400); `include=usage` defaults `status` to active, and `list --usage`
+  also sends `status=active` itself when `--status` is absent. Waivers'
+  `waived_by` is `{id, name, email}`, `email` null for a deleted user and
+  `name` possibly null. Invariants and their summaries carry `mode`
+  (`off|shadow|enforced`). A backend without these
+  answers the new paths with a bare 404/405 (no JSON `error` code) and
+  ignores `include=usage`; the commands report that as unsupported instead
+  of printing empty counts, except on an empty `list --usage` page, which
+  has no rows to tell by.
 
 When changing a request/response shape, keep it in sync with the backend
 schemas (`src/api/verify.py`, `src/api/runbook.py`, `src/api/invariants.py` in

@@ -192,3 +192,43 @@ func TestGetJSONErrorEnvelope(t *testing.T) {
 		t.Fatalf("error = %q, want to mention message and status", got)
 	}
 }
+
+// TestStatusErrorIsTyped pins the Error a non-2xx response becomes: the
+// envelope's error code when the body had one, an empty code for a bare
+// framework page, the request behind it, and the same text as before.
+func TestStatusErrorIsTyped(t *testing.T) {
+	var status int
+	var body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+	client := newTestClient(srv)
+
+	status, body = http.StatusNotFound, `{"error":"not-found","message":"Baseline invariant not found."}`
+	err := client.getJSON(context.Background(), "/api/v1/invariants/42/reviews", url.Values{"page": {"2"}}, nil)
+	var ae *Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("error = %T %v, want *Error", err, err)
+	}
+	want := &Error{
+		Status: http.StatusNotFound, Code: "not-found", Message: "Baseline invariant not found.",
+		Method: http.MethodGet, Path: "/api/v1/invariants/42/reviews",
+	}
+	if *ae != *want {
+		t.Errorf("error = %+v, want %+v", ae, want)
+	}
+	if got := err.Error(); got != "aviator API error (404): Baseline invariant not found." {
+		t.Errorf("Error() = %q", got)
+	}
+
+	status, body = http.StatusMethodNotAllowed, "<!doctype html><title>405 Method Not Allowed</title>"
+	err = client.getJSON(context.Background(), "/api/v1/invariants/42", nil, nil)
+	if !errors.As(err, &ae) || ae.Code != "" || ae.Status != http.StatusMethodNotAllowed || ae.Path != "/api/v1/invariants/42" {
+		t.Errorf("error = %+v, want an empty code for a bare page", ae)
+	}
+	if got := err.Error(); !strings.HasPrefix(got, "aviator API error (405): <!doctype html>") {
+		t.Errorf("Error() = %q", got)
+	}
+}

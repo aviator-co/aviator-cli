@@ -35,6 +35,9 @@ type Invariant struct {
 	Source   string `json:"source"`
 	Status   string `json:"status"`
 	Enabled  bool   `json:"enabled"`
+	// Mode is how an active invariant takes part in verify: off, shadow or
+	// enforced. Empty when the backend predates it.
+	Mode string `json:"mode"`
 	// Reason is why the rule was proposed; set by the AI pipelines, empty for
 	// manual ones. SourceRefs are the evidence behind it (PR URLs and such).
 	Reason       string               `json:"reason"`
@@ -45,8 +48,26 @@ type Invariant struct {
 	// account's default. Nil means the backend predates owner teams, which
 	// tells an unsupported backend apart from an unowned invariant.
 	OwnerTeams *[]OwnerTeam `json:"owner_teams"`
-	CreatedAt  string       `json:"created_at"`
-	ModifiedAt string       `json:"modified_at"`
+	// Version is the current version number, nil when it has none.
+	Version *int `json:"version"`
+	// Usage is the row's counts when the listing or detail asked for
+	// include=usage.
+	Usage      *InvariantUsage `json:"usage"`
+	CreatedAt  string          `json:"created_at"`
+	ModifiedAt string          `json:"modified_at"`
+}
+
+// InvariantUsage is one invariant's counts over review sessions: a list row's
+// usage with include=usage, and the detail's usage, by-version and by-repo
+// rows. Rates are nil when the denominator is zero.
+type InvariantUsage struct {
+	TimesApplied     int         `json:"times_applied"`
+	TimesFailed      int         `json:"times_failed"`
+	FailureRate      *float64    `json:"failure_rate"`
+	TotalWaives      int         `json:"total_waives"`
+	WaivedFailures   int         `json:"waived_failures"`
+	WaiveRate        *float64    `json:"waive_rate"`
+	WaivesByCategory WaiveCounts `json:"waives_by_category"`
 }
 
 // ListInvariantsQuery is the query string for GET /api/v1/invariants. A
@@ -56,15 +77,21 @@ type Invariant struct {
 // blank (the server reads a blank list as "no filter"), and Page and PerPage
 // are sent only when positive, so the server's defaults hold otherwise.
 // OwnerTeams (org/slug) and Unowned OR together and match the effective owner.
+// IncludeUsage attaches each row's all-time Usage and makes the server default
+// Status to active; Sort (applied, failure_rate, waived, waive_rate) and
+// NeverApplied are only valid with it, and not together.
 type ListInvariantsQuery struct {
-	Repo       *Repository
-	Status     string
-	IDs        []int
-	Sources    []string
-	OwnerTeams []string
-	Unowned    bool
-	Page       int
-	PerPage    int
+	Repo         *Repository
+	Status       string
+	IDs          []int
+	Sources      []string
+	OwnerTeams   []string
+	Unowned      bool
+	IncludeUsage bool
+	Sort         string
+	NeverApplied bool
+	Page         int
+	PerPage      int
 }
 
 // InvariantCategory is one of the account's categories, whose slug create and
@@ -190,10 +217,7 @@ func (c *Client) ListInvariants(
 
 func listInvariantsQuery(q ListInvariantsQuery) url.Values {
 	values := url.Values{}
-	if q.Repo != nil {
-		values.Set("org", q.Repo.Org)
-		values.Set("repo", q.Repo.Name)
-	}
+	setRepo(values, q.Repo)
 	if q.Status != "" {
 		values.Set("status", q.Status)
 	}
@@ -213,8 +237,24 @@ func listInvariantsQuery(q ListInvariantsQuery) url.Values {
 	if q.Unowned {
 		values.Set("unowned", "true")
 	}
+	if q.IncludeUsage {
+		values.Set("include", "usage")
+	}
+	if q.Sort != "" {
+		values.Set("sort", q.Sort)
+	}
+	if q.NeverApplied {
+		values.Set("never_applied", "true")
+	}
 	setPage(values, q.Page, q.PerPage)
 	return values
+}
+
+func setRepo(values url.Values, repo *Repository) {
+	if repo != nil {
+		values.Set("org", repo.Org)
+		values.Set("repo", repo.Name)
+	}
 }
 
 func setPage(values url.Values, page, perPage int) {

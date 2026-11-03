@@ -24,7 +24,7 @@ func (c *Client) EvidenceURL(ctx context.Context, evidenceID int) (string, error
 		return location, nil
 	}
 	if status >= 400 {
-		return "", c.statusError(status, data)
+		return "", c.statusError(http.MethodGet, path, status, data)
 	}
 	return "", errors.Errorf("expected a redirect to the evidence file, got %d", status)
 }

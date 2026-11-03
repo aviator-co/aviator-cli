@@ -1,0 +1,335 @@
+package main
+
+import (
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"emperror.dev/errors"
+	"github.com/aviator-co/aviator-cli/internal/api"
+	"github.com/dustin/go-humanize/english"
+	"github.com/spf13/cobra"
+)
+
+// usageSorts names the --sort values `list --usage` takes. The server
+// validates the value, so nothing is checked client-side.
+const usageSorts = "applied, failure_rate, waived, waive_rate"
+
+// reviewOutcomes names the --outcome values `reviews` takes. The server
+// validates the value, so nothing is checked client-side.
+const reviewOutcomes = "pass, fail, warn, error, waived, fixed, not_run"
+
+// waiveCategories names the waiver reasons --category takes; the server
+// validates these too.
+const waiveCategories = "false_positive, doesnt_apply, accepted_risk, fix_in_followup"
+
+// analyticsHelp is the paragraph every analytics command's help ends with.
+const analyticsHelp = "Counts are per review session; a review counts once as failed when any\n" +
+	"of its runs failed the invariant. These commands\n" +
+	"work with any API token and need a backend with the analytics endpoints.\n" +
+	"\n" +
+	"Docs: " + docsInvariants
+
+var invariantsInsightsFlags struct {
+	Since  string
+	Repo   string
+	Limit  int
+	Status string
+}
+
+var invariantsInsightsCmd = &cobra.Command{
+	Use:   "insights",
+	Short: "Rank invariants by how often they apply, fail and get waived",
+	Long: "Rank the account's invariants by how often reviews apply them, how\n" +
+		"often they fail, how often failures get waived and why, plus the enabled\n" +
+		"ones no review has ever applied. Covers active invariants unless\n" +
+		"--status, and the last 30 days unless --since. Never applied is all\n" +
+		"time, unlike the rest; page through it with\n" +
+		"`aviator invariants list --usage --never-applied`.\n" +
+		"\n" + analyticsHelp,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		if invariantsInsightsFlags.Limit < 1 {
+			return errors.New("--limit must be at least 1")
+		}
+		since, err := parseSince(invariantsInsightsFlags.Since, time.Now())
+		if err != nil {
+			return err
+		}
+		query := api.InvariantInsightsQuery{
+			Since:  since.Param,
+			Limit:  invariantsInsightsFlags.Limit,
+			Status: invariantsInsightsFlags.Status,
+		}
+		repoLabel := "all repos"
+		if invariantsInsightsFlags.Repo != "" {
+			repo, err := parseRepo(invariantsInsightsFlags.Repo)
+			if err != nil {
+				return err
+			}
+			query.Repo = &repo
+			repoLabel = repo.Org + "/" + repo.Name
+		}
+
+		client, err := api.NewClient()
+		if err != nil {
+			return err
+		}
+		resp, err := client.GetInvariantInsights(cmd.Context(), query)
+		if err != nil {
+			return analyticsError(err)
+		}
+		if invariantsFlags.JSON {
+			return printJSON(newInsightsJSON(resp))
+		}
+		seeAll := neverAppliedHint(query.Repo, query.Status)
+		fmt.Print(formatInvariantInsights(resp, since.Label, repoLabel, seeAll))
+		return nil
+	},
+}
+
+var invariantsShowFlags struct {
+	ByRepo bool
+}
+
+var invariantsShowCmd = &cobra.Command{
+	Use:   "show <id>",
+	Short: "Show one invariant with its usage, per version, and its waivers",
+	Long: "Show one invariant's fields, how many reviews ever applied, failed\n" +
+		"and waived it, the same per invariant version (and per repository with\n" +
+		"--by-repo), and its latest waivers. Page through all of them with\n" +
+		"`aviator invariants waivers --invariant <id>`.\n" +
+		"\n" + analyticsHelp,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, err := parseInvariantID(args[0])
+		if err != nil {
+			return err
+		}
+		client, err := api.NewClient()
+		if err != nil {
+			return err
+		}
+		detail, err := client.GetInvariant(cmd.Context(), id, api.GetInvariantQuery{
+			Usage:     true,
+			ByVersion: true,
+			ByRepo:    invariantsShowFlags.ByRepo,
+		})
+		if err != nil {
+			return analyticsError(err)
+		}
+		waivers, err := client.ListAccountWaivers(cmd.Context(), api.AccountWaiversQuery{
+			InvariantID: id,
+			PerPage:     20,
+		})
+		if err != nil {
+			return analyticsError(err)
+		}
+		if invariantsFlags.JSON {
+			return printJSON(newInvariantShowJSON(detail, waivers))
+		}
+		fmt.Print(formatInvariantShow(detail, waivers))
+		return nil
+	},
+}
+
+var invariantsReviewsFlags struct {
+	Outcome string
+	Repo    string
+	Page    int
+	Limit   int
+}
+
+var invariantsReviewsCmd = &cobra.Command{
+	Use:   "reviews <id>",
+	Short: "List the reviews an invariant was applied on, with each outcome",
+	Long: "List the reviews an invariant was applied on, newest first, with how\n" +
+		"it came out on each: pass, fail, warn, error, waived, fixed (failed\n" +
+		"an earlier run, passed the latest), or not_run.\n" +
+		"\n" + analyticsHelp,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, err := parseInvariantID(args[0])
+		if err != nil {
+			return err
+		}
+		if err := validatePageFlags(invariantsReviewsFlags.Page, invariantsReviewsFlags.Limit); err != nil {
+			return err
+		}
+		query := api.InvariantReviewsQuery{
+			Outcome: invariantsReviewsFlags.Outcome,
+			Page:    invariantsReviewsFlags.Page,
+			PerPage: invariantsReviewsFlags.Limit,
+		}
+		if invariantsReviewsFlags.Repo != "" {
+			repo, err := parseRepo(invariantsReviewsFlags.Repo)
+			if err != nil {
+				return err
+			}
+			query.Repo = &repo
+		}
+
+		client, err := api.NewClient()
+		if err != nil {
+			return err
+		}
+		resp, err := client.ListInvariantReviews(cmd.Context(), id, query)
+		if err != nil {
+			return analyticsError(err)
+		}
+		if invariantsFlags.JSON {
+			return printJSON(newInvariantReviewsJSON(resp))
+		}
+		fmt.Print(formatInvariantReviews(resp))
+		return nil
+	},
+}
+
+var invariantsWaiversFlags struct {
+	Invariant string
+	User      string
+	Category  string
+	Repo      string
+	Page      int
+	Limit     int
+}
+
+var invariantsWaiversCmd = &cobra.Command{
+	Use:   "waivers",
+	Short: "List invariant waivers across the account, newest first",
+	Long: "List every waiver of an invariant on the account, newest first: who\n" +
+		"waived which rule on which review, for what reason. --user me needs a\n" +
+		"user token (from `aviator login` or a personal token).\n" +
+		"\n" + analyticsHelp,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := validatePageFlags(invariantsWaiversFlags.Page, invariantsWaiversFlags.Limit); err != nil {
+			return err
+		}
+		invariantID := 0
+		if invariantsWaiversFlags.Invariant != "" {
+			id, err := parseInvariantID(invariantsWaiversFlags.Invariant)
+			if err != nil {
+				return err
+			}
+			invariantID = id
+		}
+		query := api.AccountWaiversQuery{
+			InvariantID: invariantID,
+			User:        invariantsWaiversFlags.User,
+			Category:    invariantsWaiversFlags.Category,
+			Page:        invariantsWaiversFlags.Page,
+			PerPage:     invariantsWaiversFlags.Limit,
+		}
+		if invariantsWaiversFlags.Repo != "" {
+			repo, err := parseRepo(invariantsWaiversFlags.Repo)
+			if err != nil {
+				return err
+			}
+			query.Repo = &repo
+		}
+
+		client, err := api.NewClient()
+		if err != nil {
+			return err
+		}
+		resp, err := client.ListAccountWaivers(cmd.Context(), query)
+		if err != nil {
+			return analyticsError(err)
+		}
+		if invariantsFlags.JSON {
+			return printJSON(newInvariantWaiversJSON(resp))
+		}
+		fmt.Print(formatAccountWaivers(resp))
+		return nil
+	},
+}
+
+func init() {
+	f := invariantsInsightsCmd.Flags()
+	f.StringVar(&invariantsInsightsFlags.Since, "since", "30d",
+		"only reviews since then: <N>d (e.g. 7d), YYYY-MM-DD, or all")
+	f.StringVar(&invariantsInsightsFlags.Repo, "repo", "", "only reviews of this owner/repo")
+	f.IntVar(&invariantsInsightsFlags.Limit, "limit", 20, "rows per table (max 100)")
+	f.StringVar(&invariantsInsightsFlags.Status, "status", "",
+		"only invariants with this status ("+invariantStatuses+"; default active)")
+
+	f = invariantsShowCmd.Flags()
+	f.BoolVar(&invariantsShowFlags.ByRepo, "by-repo", false, "also break the counts down per repository")
+
+	f = invariantsReviewsCmd.Flags()
+	f.StringVar(&invariantsReviewsFlags.Outcome, "outcome", "", "only reviews with this outcome ("+reviewOutcomes+")")
+	f.StringVar(&invariantsReviewsFlags.Repo, "repo", "", "only reviews of this owner/repo")
+	f.IntVar(&invariantsReviewsFlags.Page, "page", 1, "page number, starting at 1")
+	f.IntVar(&invariantsReviewsFlags.Limit, "limit", 20, "reviews per page (max 100)")
+
+	f = invariantsWaiversCmd.Flags()
+	f.StringVar(&invariantsWaiversFlags.Invariant, "invariant", "", "only waivers of this invariant (id or #id)")
+	f.StringVar(&invariantsWaiversFlags.User, "user", "", "only waivers by this user: me, or an email on the account")
+	f.StringVar(&invariantsWaiversFlags.Category, "category", "", "only waivers for this reason ("+waiveCategories+")")
+	f.StringVar(&invariantsWaiversFlags.Repo, "repo", "", "only waivers on reviews of this owner/repo")
+	f.IntVar(&invariantsWaiversFlags.Page, "page", 1, "page number, starting at 1")
+	f.IntVar(&invariantsWaiversFlags.Limit, "limit", 20, "waivers per page (max 100)")
+}
+
+// sinceWindow is a parsed --since: the instant the query sends (empty for
+// all time) and how the output names the window.
+type sinceWindow struct {
+	Param string
+	Label string
+}
+
+// parseSince reads a --since value: <N>d counts back from now, a date starts
+// at midnight UTC, and all (or empty) means no window.
+func parseSince(s string, now time.Time) (sinceWindow, error) {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "all" {
+		return sinceWindow{Label: "all time"}, nil
+	}
+	if days, ok := strings.CutSuffix(s, "d"); ok {
+		n, err := strconv.Atoi(days)
+		if err != nil || n <= 0 {
+			return sinceWindow{}, invalidSince(s)
+		}
+		from := now.UTC().AddDate(0, 0, -n)
+		return sinceWindow{Param: from.Format(time.RFC3339), Label: "last " + english.Plural(n, "day", "")}, nil
+	}
+	day, err := time.ParseInLocation(time.DateOnly, s, time.UTC)
+	if err != nil {
+		return sinceWindow{}, invalidSince(s)
+	}
+	return sinceWindow{Param: day.Format(time.RFC3339), Label: "since " + s}, nil
+}
+
+// neverAppliedHint is the `list` command that pages through the
+// never-applied invariants insights counted, with the same repo and status.
+func neverAppliedHint(repo *api.Repository, status string) string {
+	hint := "aviator invariants list --usage --never-applied"
+	if repo != nil {
+		hint += " --repo " + repo.Org + "/" + repo.Name
+	}
+	if status != "" {
+		hint += " --status " + status
+	}
+	return hint
+}
+
+func invalidSince(s string) error {
+	return errors.Errorf("invalid --since %q, expected <N>d, YYYY-MM-DD, or all", s)
+}
+
+// analyticsError rewrites the bare 404 a backend without the analytics
+// routes answers, and the bare 405 its PATCH/DELETE-only /<id> rule gives a
+// GET, into one message saying so. A JSON not-found is a real unknown
+// invariant and passes through unchanged.
+func analyticsError(err error) error {
+	var ae *api.Error
+	if errors.As(err, &ae) && ae.Code == "" &&
+		(ae.Status == http.StatusNotFound || ae.Status == http.StatusMethodNotAllowed) {
+		return errors.Errorf("this Aviator backend doesn't support invariant analytics yet; %s %s returned %d",
+			ae.Method, ae.Path, ae.Status)
+	}
+	return err
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -10,18 +11,34 @@ import (
 	"github.com/dustin/go-humanize/english"
 )
 
+// invariantListUsage is what a --usage listing's footer says: the status
+// the counts cover. Nil is the plain listing.
+type invariantListUsage struct {
+	Status string
+}
+
 // formatInvariantList renders one page of invariants as a table.
-func formatInvariantList(resp *api.ListInvariantsResponse) string {
+func formatInvariantList(resp *api.ListInvariantsResponse, usage *invariantListUsage) string {
 	if len(resp.Invariants) == 0 {
-		if resp.Page > 1 {
-			return fmt.Sprintf("Nothing on page %d, the listing ends before it. Try a lower --page.\n", resp.Page)
-		}
-		return "No invariants match.\n"
+		return emptyPageMessage(resp.Page, "invariants")
 	}
 	var b strings.Builder
-	b.WriteString(formatInvariantTable(resp.Invariants))
+	b.WriteString(formatInvariantTable(resp.Invariants, usage != nil))
+	more := ""
 	if resp.HasMore {
-		fmt.Fprintf(&b, "\nSee more invariants --page %d\n", max(resp.Page, 1)+1)
+		more = fmt.Sprintf("See more invariants --page %d", max(resp.Page, 1)+1)
+	}
+	switch {
+	case usage != nil:
+		// The status is in the footer because --usage defaults it to active,
+		// which the rows alone would not show.
+		fmt.Fprintf(&b, "%s invariants · all time", strings.ToUpper(usage.Status[:1])+usage.Status[1:])
+		if more != "" {
+			b.WriteString(" · " + more)
+		}
+		b.WriteString("\n")
+	case more != "":
+		b.WriteString("\n" + more + "\n")
 	}
 	return b.String()
 }
@@ -31,30 +48,52 @@ func formatInvariantList(resp *api.ListInvariantsResponse) string {
 // scope column is kept short so one narrowly scoped rule cannot widen the
 // page, and a rule proposed by an AI pipeline gets a continuation row under
 // its title with the reason, which is what an approver reads before deciding.
-func formatInvariantTable(invariants []api.Invariant) string {
+// With usage, the provenance columns give way to each row's counts.
+func formatInvariantTable(invariants []api.Invariant, usage bool) string {
 	var b strings.Builder
-	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tSTATUS\tCATEGORY\tSOURCE\tSCOPE\tOWNER\tTITLE")
+	header := []string{"ID", "STATUS", "CATEGORY", "SOURCE", "SCOPE", "OWNER", "TITLE"}
+	if usage {
+		header = []string{"ID", "STATUS", "CATEGORY", "APPLIED", "FAILED", "RATE", "WAIVED", "TITLE"}
+	}
+	rows := make([][]string, 0, len(invariants))
 	for i := range invariants {
 		inv := &invariants[i]
-		fmt.Fprintf(w, "#%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			inv.ID, formatInvariantStatus(inv), inv.Category, inv.Source,
-			formatInvariantScopeShort(inv), formatInvariantOwnerShort(inv), inv.Title)
+		row := []string{"#" + strconv.Itoa(inv.ID), formatInvariantStatus(inv), inv.Category}
+		if usage {
+			row = append(row, formatInvariantUsageCells(inv.Usage)...)
+		} else {
+			row = append(row, inv.Source, formatInvariantScopeShort(inv), formatInvariantOwnerShort(inv))
+		}
+		rows = append(rows, append(row, inv.Title))
 		if reason := strings.TrimSpace(inv.Reason); reason != "" {
 			// Same cell count as a data row so tabwriter keeps one column
 			// block; the reason lands under TITLE, unpadded.
-			fmt.Fprintf(w, "\t\t\t\t\t\t%s\n", colors.Faint("reason: "+strings.ReplaceAll(reason, "\n", " ")))
+			reasonRow := make([]string, len(header))
+			reasonRow[len(header)-1] = colors.Faint("reason: " + strings.ReplaceAll(reason, "\n", " "))
+			rows = append(rows, reasonRow)
 		}
 	}
-	_ = w.Flush()
+	writeTable(&b, "", header, rows)
 	return b.String()
 }
 
-// formatInvariantStatus renders the lifecycle status, flagging the active-but-
-// switched-off case since the selector skips those too.
+// formatInvariantUsageCells renders the APPLIED, FAILED, RATE and WAIVED cells.
+func formatInvariantUsageCells(u *api.InvariantUsage) []string {
+	return []string{
+		strconv.Itoa(u.TimesApplied), strconv.Itoa(u.TimesFailed), formatRate(u.FailureRate), strconv.Itoa(u.TotalWaives),
+	}
+}
+
+// formatInvariantStatus renders the lifecycle status, flagging an active rule
+// that is switched off (the selector skips it) or only in shadow mode.
 func formatInvariantStatus(inv *api.Invariant) string {
-	if inv.Status == "active" && !inv.Enabled {
+	switch {
+	case inv.Status != "active":
+		return inv.Status
+	case !inv.Enabled:
 		return "active (disabled)"
+	case inv.Mode == "shadow":
+		return "active (shadow)"
 	}
 	return inv.Status
 }
@@ -135,22 +174,33 @@ func formatConditions(conditions []api.InvariantCondition) []string {
 }
 
 // formatInvariantDetail renders an invariant's fields as indented lines, for
-// the create and edit confirmations. Multi-line values (a body from
-// --body-file, typically) keep their continuation lines aligned under the
-// first.
+// the create and edit confirmations.
 func formatInvariantDetail(inv *api.Invariant) string {
 	var b strings.Builder
-	field := func(name, value string) {
-		label := "  " + name + ": "
-		fmt.Fprintf(&b, "%s%s\n", label, indentContinuation(value, len(label)))
-	}
-	field("Title", inv.Title)
+	writeInvariantField(&b, "Title", inv.Title)
+	b.WriteString(formatInvariantFields(inv))
+	return b.String()
+}
+
+// formatInvariantFields renders every field but the title, which `show`
+// carries in its heading instead. Multi-line values (a body from
+// --body-file, typically) keep their continuation lines aligned under the
+// first.
+func formatInvariantFields(inv *api.Invariant) string {
+	var b strings.Builder
+	field := func(name, value string) { writeInvariantField(&b, name, value) }
 	field("Category", inv.Category)
 	field("Status", fmt.Sprintf("%s (enabled: %t)", inv.Status, inv.Enabled))
+	if inv.Mode != "" {
+		field("Mode", inv.Mode)
+	}
 	field("Source", inv.Source)
 	field("Scope", formatInvariantScope(inv))
 	if inv.OwnerTeams != nil {
 		field("Owner", formatInvariantOwners(*inv.OwnerTeams))
+	}
+	if inv.Version != nil {
+		field("Version", strconv.Itoa(*inv.Version))
 	}
 	field("Body", strings.TrimSpace(inv.Body))
 	if reason := strings.TrimSpace(inv.Reason); reason != "" {
@@ -160,6 +210,11 @@ func formatInvariantDetail(inv *api.Invariant) string {
 		field("Source refs", strings.Join(inv.SourceRefs, ", "))
 	}
 	return b.String()
+}
+
+func writeInvariantField(b *strings.Builder, name, value string) {
+	label := "  " + name + ": "
+	fmt.Fprintf(b, "%s%s\n", label, indentContinuation(value, len(label)))
 }
 
 // indentContinuation pads every line after the first by width columns.
@@ -173,7 +228,7 @@ func formatInvariantOwnerTeams(resp *api.ListInvariantOwnerTeamsResponse) string
 	var b strings.Builder
 	switch {
 	case len(resp.OwnerTeams) == 0 && resp.Page > 1:
-		fmt.Fprintf(&b, "Nothing on page %d, the listing ends before it. Try a lower --page.\n", resp.Page)
+		b.WriteString(emptyPageMessage(resp.Page, "teams"))
 	case len(resp.OwnerTeams) == 0:
 		b.WriteString(colors.Warning("no teams yet") + ": Aviator has not synced any GitHub teams for this account\n")
 	default:
@@ -225,14 +280,43 @@ type invariantJSON struct {
 	Source       string          `json:"source"`
 	Status       string          `json:"status"`
 	Enabled      bool            `json:"enabled"`
+	Mode         string          `json:"mode"`
 	Reason       string          `json:"reason"`
 	SourceRefs   []string        `json:"source_refs"`
 	Repositories []string        `json:"repositories"`
 	Conditions   []conditionJSON `json:"conditions"`
 	// OwnerTeams is null when the backend predates owner teams.
 	OwnerTeams *[]string `json:"owner_teams"`
-	CreatedAt  string    `json:"created_at"`
-	ModifiedAt string    `json:"modified_at"`
+	// Version is null when the invariant has none; Usage is only on
+	// `list --usage` and `show`.
+	Version    *int                `json:"version"`
+	Usage      *invariantUsageJSON `json:"usage,omitempty"`
+	CreatedAt  string              `json:"created_at"`
+	ModifiedAt string              `json:"modified_at"`
+}
+
+// invariantUsageJSON mirrors the API's usage counts, the same on list rows,
+// on show and on its by-version and by-repo rows.
+type invariantUsageJSON struct {
+	TimesApplied     int             `json:"times_applied"`
+	TimesFailed      int             `json:"times_failed"`
+	FailureRate      *float64        `json:"failure_rate"`
+	TotalWaives      int             `json:"total_waives"`
+	WaivedFailures   int             `json:"waived_failures"`
+	WaiveRate        *float64        `json:"waive_rate"`
+	WaivesByCategory waiveCountsJSON `json:"waives_by_category"`
+}
+
+func newInvariantUsageJSON(u *api.InvariantUsage) invariantUsageJSON {
+	return invariantUsageJSON{
+		TimesApplied:     u.TimesApplied,
+		TimesFailed:      u.TimesFailed,
+		FailureRate:      u.FailureRate,
+		TotalWaives:      u.TotalWaives,
+		WaivedFailures:   u.WaivedFailures,
+		WaiveRate:        u.WaiveRate,
+		WaivesByCategory: newWaiveCountsJSON(u.WaivesByCategory),
+	}
 }
 
 type conditionJSON struct {
@@ -283,6 +367,7 @@ func newInvariantJSON(inv *api.Invariant) invariantJSON {
 		Source:       inv.Source,
 		Status:       inv.Status,
 		Enabled:      inv.Enabled,
+		Mode:         inv.Mode,
 		Reason:       inv.Reason,
 		SourceRefs:   inv.SourceRefs,
 		Repositories: make([]string, 0, len(inv.Repositories)),
@@ -302,6 +387,11 @@ func newInvariantJSON(inv *api.Invariant) invariantJSON {
 	if inv.OwnerTeams != nil {
 		names := ownerTeamNames(*inv.OwnerTeams)
 		out.OwnerTeams = &names
+	}
+	out.Version = inv.Version
+	if inv.Usage != nil {
+		usage := newInvariantUsageJSON(inv.Usage)
+		out.Usage = &usage
 	}
 	return out
 }

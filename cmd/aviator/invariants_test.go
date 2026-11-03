@@ -187,7 +187,7 @@ func TestFormatInvariantList(t *testing.T) {
 			},
 		},
 	}
-	out := formatInvariantList(resp)
+	out := formatInvariantList(resp, nil)
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	if len(lines) != 7 {
 		t.Fatalf("want header, 3 rows, 1 reason row, blank, footer; got %d lines:\n%s", len(lines), out)
@@ -240,13 +240,13 @@ func TestFormatInvariantScopeShort(t *testing.T) {
 }
 
 func TestFormatInvariantListEmptyAndLastPage(t *testing.T) {
-	if out := formatInvariantList(&api.ListInvariantsResponse{Page: 1}); out != "No invariants match.\n" {
+	if out := formatInvariantList(&api.ListInvariantsResponse{Page: 1}, nil); out != "No invariants match.\n" {
 		t.Errorf("empty first page = %q", out)
 	}
-	if out := formatInvariantList(&api.ListInvariantsResponse{Page: 4}); !strings.Contains(out, "Nothing on page 4") {
+	if out := formatInvariantList(&api.ListInvariantsResponse{Page: 4}, nil); !strings.Contains(out, "Nothing on page 4") {
 		t.Errorf("empty later page = %q", out)
 	}
-	out := formatInvariantList(&api.ListInvariantsResponse{Page: 3, Invariants: []api.Invariant{{ID: 9}}})
+	out := formatInvariantList(&api.ListInvariantsResponse{Page: 3, Invariants: []api.Invariant{{ID: 9}}}, nil)
 	if strings.Contains(out, "See more") {
 		t.Errorf("last page should have no footer, got %q", out)
 	}
