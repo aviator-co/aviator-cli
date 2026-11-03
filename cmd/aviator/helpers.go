@@ -170,3 +170,19 @@ func warnPreviewNotApplied(sent string, got *string) {
 		fmt.Fprintf(os.Stderr, "%s %s\n", colors.Warning("warning:"), msg)
 	}
 }
+
+const (
+	evidenceSourceAviator  = "aviator"
+	evidenceSourceExternal = "external"
+	scenarioSourceExternal = "external"
+)
+
+// checkEvidenceSource validates an --evidence-source value; empty means unset.
+func checkEvidenceSource(value string) error {
+	switch value {
+	case "", evidenceSourceAviator, evidenceSourceExternal:
+		return nil
+	}
+	return errors.Errorf("--evidence-source must be %s or %s, got %q",
+		evidenceSourceAviator, evidenceSourceExternal, value)
+}
