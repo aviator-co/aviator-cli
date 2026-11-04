@@ -1,8 +1,11 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,7 +15,6 @@ import (
 	"github.com/aviator-co/aviator-cli/internal/api"
 	"github.com/aviator-co/aviator-cli/internal/utils/colors"
 	"github.com/spf13/cobra"
-	"go.yaml.in/yaml/v3"
 )
 
 var evidenceSubmitFlags struct {
@@ -24,21 +26,25 @@ const docsEvidenceSubmit = "https://docs.aviator.co/verify/how-to-guides/submitt
 
 var evidenceSubmitCmd = &cobra.Command{
 	Use:   "submit <id> <manifest>",
-	Short: "Submit scenarios and evidence from your own run of the change (e.g. aviator evidence submit r/123 evidence.yaml)",
+	Short: "Submit scenarios and evidence from your own run of the change (e.g. aviator evidence submit r/123 evidence.json)",
 	Long: "Upload the scenarios you ran yourself and the evidence each step\n" +
 		"produced, for a session created with --evidence-source external.\n" +
 		"Aviator judges that evidence instead of collecting its own.\n" +
 		"\n" +
-		"The manifest is YAML or JSON. Each scenario has a summary and steps;\n" +
+		"The manifest is JSON. Each scenario has a summary and steps;\n" +
 		"each step may list evidence files with a type (screenshot, dom_snapshot,\n" +
 		"console_log, api_response, network_request, client_storage) and a label\n" +
 		"saying what the file shows. Paths are relative to the manifest. A\n" +
 		"scenario may pin the criteria it covers by stable key or invariant id\n" +
 		"(from aviator show); the rest are mapped when a run starts.\n" +
 		"\n" +
-		"Submitting replaces whatever was submitted before and starts no run:\n" +
-		"follow it with `aviator verify r/<number>`. The evidence is bound to\n" +
-		"the full commit SHA it was captured against (`commit` in the manifest\n" +
+		"Submitting replaces whatever was submitted before. Files the review\n" +
+		"already has from an earlier submission are not uploaded again, so\n" +
+		"resubmitting after re-running one scenario only sends what changed.\n" +
+		"Submitting starts no run; start one with `aviator verify r/<number>`.\n" +
+		"Automatic runs (ready for review, approval, queued) wait until a\n" +
+		"submission for the PR's head commit is complete. The evidence is bound\n" +
+		"to the full commit SHA it was captured against (`commit` in the manifest\n" +
 		"or --commit); a run at another commit judges from code instead.\n" +
 		"\n" +
 		"Manifest reference: " + docsEvidenceSubmit,
@@ -63,7 +69,7 @@ var evidenceSubmitCmd = &cobra.Command{
 			return err
 		}
 
-		var ids []int
+		var ids, reused []int
 		var failed []string
 		for i, scenario := range submission.Scenarios {
 			for j, step := range scenario.Steps {
@@ -71,6 +77,10 @@ var evidenceSubmitCmd = &cobra.Command{
 					path, ok := loaded.pathAt(i, j, k)
 					if !ok {
 						return errors.Errorf("server returned an upload slot the manifest did not declare (scenario %d, step %d, evidence %d)", i+1, j+1, k+1)
+					}
+					if slot.AlreadyUploaded {
+						reused = append(reused, slot.ID)
+						continue
 					}
 					if err := client.UploadEvidenceFile(ctx, slot, path); err != nil {
 						failed = append(failed, err.Error())
@@ -90,7 +100,7 @@ var evidenceSubmitCmd = &cobra.Command{
 
 		id := formatRunbookID(submission.RunbookNumber)
 		if evidenceSubmitFlags.JSON {
-			return printJSON(newEvidenceSubmitJSON(id, submission, completion, failed))
+			return printJSON(newEvidenceSubmitJSON(id, submission, completion, reused, failed))
 		}
 		fmt.Printf("%s Submitted %d scenario(s) for %s at %s\n",
 			colors.Success("✓"), len(submission.Scenarios), id, shortSHA(submission.CommitSHA))
@@ -98,23 +108,33 @@ var evidenceSubmitCmd = &cobra.Command{
 			fmt.Printf("  %s (scenario %d, %d evidence file(s))\n",
 				loaded.manifest.Scenarios[i].Summary, scenario.ID, countSlots(scenario))
 		}
+		uploaded := 0
 		if completion != nil {
-			fmt.Printf("  Uploaded: %d", len(completion.UploadedEvidenceIDs))
+			uploaded = len(completion.UploadedEvidenceIDs)
+		}
+		fmt.Printf("  Uploaded: %d", uploaded)
+		if len(reused) > 0 {
+			fmt.Printf(", unchanged since the last submission: %d", len(reused))
+		}
+		if completion != nil {
+			if n := len(completion.UnknownEvidenceIDs); n > 0 {
+				fmt.Printf(", replaced by another submission: %d", n)
+			}
 			if n := len(completion.MissingEvidenceIDs); n > 0 {
 				fmt.Printf(", not in storage: %d", n)
 			}
 			if n := len(completion.RejectedEvidenceIDs); n > 0 {
 				fmt.Printf(", rejected as empty or over 10 MB: %d", n)
 			}
-			fmt.Println()
 		}
+		fmt.Println()
 		for _, msg := range failed {
 			fmt.Printf("  %s %s\n", colors.Warning("failed:"), msg)
 		}
-		if len(failed) > 0 || (completion != nil && (len(completion.MissingEvidenceIDs) > 0 || len(completion.RejectedEvidenceIDs) > 0)) {
+		if len(failed) > 0 || (completion != nil && (len(completion.UnknownEvidenceIDs) > 0 || len(completion.MissingEvidenceIDs) > 0 || len(completion.RejectedEvidenceIDs) > 0)) {
 			return errors.New("some evidence did not upload; fix the files and submit the manifest again")
 		}
-		fmt.Printf("  %s\n", colors.Faint("Judge it with: aviator verify "+id))
+		fmt.Printf("  %s\n", colors.Faint("Start a run with: aviator verify "+id))
 		return nil
 	},
 }
@@ -131,30 +151,30 @@ func init() {
 // manifestFile is the on-disk manifest shape: the API shape plus a file path
 // per evidence entry, which the CLI turns into a content type and size.
 type manifestFile struct {
-	Commit    string             `yaml:"commit" json:"commit"`
-	Scenarios []manifestScenario `yaml:"scenarios" json:"scenarios"`
+	Commit    string             `json:"commit"`
+	Scenarios []manifestScenario `json:"scenarios"`
 }
 
 type manifestScenario struct {
-	Summary  string              `yaml:"summary" json:"summary"`
-	Steps    []manifestStep      `yaml:"steps" json:"steps"`
-	Criteria []manifestCriterion `yaml:"criteria" json:"criteria"`
+	Summary  string              `json:"summary"`
+	Steps    []manifestStep      `json:"steps"`
+	Criteria []manifestCriterion `json:"criteria"`
 }
 
 type manifestCriterion struct {
-	StableKey           *string `yaml:"stable_key" json:"stable_key"`
-	BaselineInvariantID *int    `yaml:"baseline_invariant_id" json:"baseline_invariant_id"`
+	StableKey           *string `json:"stable_key"`
+	BaselineInvariantID *int    `json:"baseline_invariant_id"`
 }
 
 type manifestStep struct {
-	Text     string             `yaml:"text" json:"text"`
-	Evidence []manifestEvidence `yaml:"evidence" json:"evidence"`
+	Text     string             `json:"text"`
+	Evidence []manifestEvidence `json:"evidence"`
 }
 
 type manifestEvidence struct {
-	Type  string `yaml:"type" json:"type"`
-	File  string `yaml:"file" json:"file"`
-	Label string `yaml:"label" json:"label"`
+	Type  string `json:"type"`
+	File  string `json:"file"`
+	Label string `json:"label"`
 }
 
 // loadedManifest is the API manifest plus the local path behind each upload
@@ -191,13 +211,8 @@ func loadEvidenceManifest(path, commit string) (*loadedManifest, error) {
 		return nil, errors.Wrapf(err, "failed to read %s", path)
 	}
 	var file manifestFile
-	if strings.HasSuffix(strings.ToLower(path), ".json") {
-		err = json.Unmarshal(data, &file)
-	} else {
-		err = yaml.Unmarshal(data, &file)
-	}
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse %s", path)
+	if err := json.Unmarshal(data, &file); err != nil {
+		return nil, errors.Wrapf(err, "failed to parse %s as JSON", path)
 	}
 	if commit == "" {
 		commit = file.Commit
@@ -259,11 +274,16 @@ func loadEvidenceManifest(path, commit string) (*loadedManifest, error) {
 				if info.Size() == 0 {
 					return nil, errors.Errorf("%s: %s is empty", where, item.File)
 				}
+				digest, err := fileSHA256(full)
+				if err != nil {
+					return nil, errors.Wrapf(err, "%s: cannot read %s", where, item.File)
+				}
 				apiStep.Evidence = append(apiStep.Evidence, api.ManifestEvidence{
 					Type:        item.Type,
 					Label:       item.Label,
 					ContentType: contentType,
 					SizeBytes:   info.Size(),
+					SHA256:      digest,
 				})
 				stepPaths = append(stepPaths, full)
 			}
@@ -281,6 +301,19 @@ func loadEvidenceManifest(path, commit string) (*loadedManifest, error) {
 
 var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
 func countSlots(scenario api.SubmittedScenario) int {
 	n := 0
 	for _, step := range scenario.Steps {
@@ -295,6 +328,8 @@ type evidenceSubmitJSON struct {
 	ScenarioIDs             []int    `json:"scenario_ids"`
 	ScenarioRunIDs          []int    `json:"scenario_run_ids"`
 	UploadedEvidenceIDs     []int    `json:"uploaded_evidence_ids"`
+	ReusedEvidenceIDs       []int    `json:"reused_evidence_ids"`
+	UnknownEvidenceIDs      []int    `json:"unknown_evidence_ids"`
 	MissingEvidenceIDs      []int    `json:"missing_evidence_ids"`
 	RejectedEvidenceIDs     []int    `json:"rejected_evidence_ids"`
 	CompletedScenarioRunIDs []int    `json:"completed_scenario_run_ids"`
@@ -302,7 +337,7 @@ type evidenceSubmitJSON struct {
 }
 
 func newEvidenceSubmitJSON(
-	id string, submission *api.EvidenceSubmission, completion *api.CompleteUploadsResponse, failed []string,
+	id string, submission *api.EvidenceSubmission, completion *api.CompleteUploadsResponse, reused []int, failed []string,
 ) evidenceSubmitJSON {
 	out := evidenceSubmitJSON{
 		ID:                      id,
@@ -310,6 +345,8 @@ func newEvidenceSubmitJSON(
 		ScenarioIDs:             []int{},
 		ScenarioRunIDs:          []int{},
 		UploadedEvidenceIDs:     []int{},
+		ReusedEvidenceIDs:       append([]int{}, reused...),
+		UnknownEvidenceIDs:      []int{},
 		MissingEvidenceIDs:      []int{},
 		RejectedEvidenceIDs:     []int{},
 		CompletedScenarioRunIDs: []int{},
@@ -324,6 +361,7 @@ func newEvidenceSubmitJSON(
 	}
 	if completion != nil {
 		out.UploadedEvidenceIDs = append(out.UploadedEvidenceIDs, completion.UploadedEvidenceIDs...)
+		out.UnknownEvidenceIDs = append(out.UnknownEvidenceIDs, completion.UnknownEvidenceIDs...)
 		out.MissingEvidenceIDs = append(out.MissingEvidenceIDs, completion.MissingEvidenceIDs...)
 		out.RejectedEvidenceIDs = append(out.RejectedEvidenceIDs, completion.RejectedEvidenceIDs...)
 		out.CompletedScenarioRunIDs = append(out.CompletedScenarioRunIDs, completion.CompletedScenarioRunIDs...)

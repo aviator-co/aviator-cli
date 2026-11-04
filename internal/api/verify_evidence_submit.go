@@ -38,6 +38,7 @@ type ManifestEvidence struct {
 	Label       string `json:"label"`
 	ContentType string `json:"content_type"`
 	SizeBytes   int64  `json:"size_bytes"`
+	SHA256      string `json:"sha256,omitempty"`
 }
 
 // ManifestCriterion pins a scenario to a criterion by the handles
@@ -74,6 +75,9 @@ type UploadSlot struct {
 	ID          int    `json:"id"`
 	UploadURL   string `json:"upload_url"`
 	ContentType string `json:"content_type"`
+	// AlreadyUploaded means the session has this exact file from an earlier
+	// submission; there is no UploadURL and nothing to send.
+	AlreadyUploaded bool `json:"already_uploaded"`
 }
 
 // CompleteUploadsResponse is the response from
@@ -81,6 +85,7 @@ type UploadSlot struct {
 type CompleteUploadsResponse struct {
 	RunbookNumber           int   `json:"runbook_number"`
 	UploadedEvidenceIDs     []int `json:"uploaded_evidence_ids"`
+	UnknownEvidenceIDs      []int `json:"unknown_evidence_ids"`
 	MissingEvidenceIDs      []int `json:"missing_evidence_ids"`
 	RejectedEvidenceIDs     []int `json:"rejected_evidence_ids"`
 	CompletedScenarioRunIDs []int `json:"completed_scenario_run_ids"`

@@ -24,29 +24,32 @@ func writeManifestFixture(t *testing.T, manifest string) string {
 			t.Fatal(err)
 		}
 	}
-	path := filepath.Join(dir, "evidence.yaml")
+	path := filepath.Join(dir, "evidence.json")
 	if err := os.WriteFile(path, []byte(manifest), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return path
 }
 
-const goodManifest = `
-commit: 4f2c9e1a7b3d5c6e8f9a0b1c2d3e4f5a6b7c8d9e
-scenarios:
-  - summary: Toggle the flag and reload
-    criteria:
-      - stable_key: ac-1
-    steps:
-      - text: Open the home page
-      - text: Capture it without the banner
-        evidence:
-          - type: screenshot
-            file: shots/home.png
-            label: Home page, no banner
-          - type: api_response
-            file: ./api/flags.json
-            label: GET /api/flags shows banner=false
+const goodManifest = `{
+  "commit": "4f2c9e1a7b3d5c6e8f9a0b1c2d3e4f5a6b7c8d9e",
+  "scenarios": [
+    {
+      "summary": "Toggle the flag and reload",
+      "criteria": [{"stable_key": "ac-1"}],
+      "steps": [
+        {"text": "Open the home page"},
+        {
+          "text": "Capture it without the banner",
+          "evidence": [
+            {"type": "screenshot", "file": "shots/home.png", "label": "Home page, no banner"},
+            {"type": "api_response", "file": "./api/flags.json", "label": "GET /api/flags shows banner=false"}
+          ]
+        }
+      ]
+    }
+  ]
+}
 `
 
 func TestLoadEvidenceManifest(t *testing.T) {
@@ -68,8 +71,8 @@ func TestLoadEvidenceManifest(t *testing.T) {
 	}
 	evidence := m.Scenarios[0].Steps[1].Evidence
 	want := []api.ManifestEvidence{
-		{Type: "screenshot", Label: "Home page, no banner", ContentType: "image/png", SizeBytes: 4},
-		{Type: "api_response", Label: "GET /api/flags shows banner=false", ContentType: "application/json", SizeBytes: 17},
+		{Type: "screenshot", Label: "Home page, no banner", ContentType: "image/png", SizeBytes: 4, SHA256: "0f4636c78f65d3639ece5a064b5ae753e3408614a14fb18ab4d7540d2c248543"},
+		{Type: "api_response", Label: "GET /api/flags shows banner=false", ContentType: "application/json", SizeBytes: 17, SHA256: "8b541b22bc6e6185ffed6703ced9b4ad0b8ef07cf707b2b35746d994841ad5b2"},
 	}
 	for i, w := range want {
 		if evidence[i] != w {
@@ -99,10 +102,11 @@ func TestLoadEvidenceManifestRejectsBadEntries(t *testing.T) {
 	cases := map[string]string{
 		"missing file":  strings.Replace(goodManifest, "shots/home.png", "shots/nope.png", 1),
 		"bad extension": strings.Replace(goodManifest, "api/flags.json", "api/flags.csv", 1),
-		"no label":      strings.Replace(goodManifest, "label: Home page, no banner", "label: ''", 1),
-		"no scenarios":  "commit: 4f2c9e1a7b3d5c6e8f9a0b1c2d3e4f5a6b7c8d9e\nscenarios: []\n",
-		"no commit":     strings.Replace(goodManifest, "commit: 4f2c9e1a7b3d5c6e8f9a0b1c2d3e4f5a6b7c8d9e\n", "", 1),
-		"short commit":  strings.Replace(goodManifest, "commit: 4f2c9e1a7b3d5c6e8f9a0b1c2d3e4f5a6b7c8d9e", "commit: 4f2c9e1", 1),
+		"no label":      strings.Replace(goodManifest, `"label": "Home page, no banner"`, `"label": ""`, 1),
+		"no scenarios":  `{"commit": "4f2c9e1a7b3d5c6e8f9a0b1c2d3e4f5a6b7c8d9e", "scenarios": []}`,
+		"no commit":     strings.Replace(goodManifest, `"commit": "4f2c9e1a7b3d5c6e8f9a0b1c2d3e4f5a6b7c8d9e",`, "", 1),
+		"yaml":          "commit: 4f2c9e1a7b3d5c6e8f9a0b1c2d3e4f5a6b7c8d9e\nscenarios: []\n",
+		"short commit":  strings.Replace(goodManifest, "4f2c9e1a7b3d5c6e8f9a0b1c2d3e4f5a6b7c8d9e", "4f2c9e1", 1),
 	}
 	for name, manifest := range cases {
 		path := writeManifestFixture(t, manifest)
@@ -120,7 +124,7 @@ func TestEvidenceSubmitJSON(t *testing.T) {
 		UploadedEvidenceIDs:     []int{1, 2},
 		MissingEvidenceIDs:      []int{},
 		CompletedScenarioRunIDs: []int{70},
-	}, nil))
+	}, []int{3}, nil))
 	if got["id"] != "r/123" || got["commit_sha"] != "4f2c9e1a" {
 		t.Errorf("top level = %v", got)
 	}
@@ -129,5 +133,8 @@ func TestEvidenceSubmitJSON(t *testing.T) {
 	}
 	if errs := got["upload_errors"].([]any); len(errs) != 0 {
 		t.Errorf("upload_errors = %v", errs)
+	}
+	if ids := got["reused_evidence_ids"].([]any); len(ids) != 1 {
+		t.Errorf("reused = %v", ids)
 	}
 }
