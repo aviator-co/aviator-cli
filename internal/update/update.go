@@ -18,6 +18,7 @@ import (
 
 const (
 	latestReleaseURL = "https://api.github.com/repos/aviator-co/aviator-cli/releases/latest"
+	newestReleaseURL = "https://api.github.com/repos/aviator-co/aviator-cli/releases?per_page=1"
 	releaseURLPrefix = "https://github.com/aviator-co/aviator-cli/releases/tag/"
 	checkInterval    = 24 * time.Hour
 )
@@ -69,23 +70,38 @@ func latestVersion() string {
 	return latest
 }
 
+type release struct {
+	TagName string `json:"tag_name"`
+}
+
+// fetchLatestVersion returns the newest stable tag, or for a nightly build the newest tag of any kind.
 func fetchLatestVersion() string {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, latestReleaseURL, nil)
-	if err != nil {
+	if semver.Prerelease(config.Version) == "" {
+		var latest release
+		fetchJSON(latestReleaseURL, &latest)
+		return latest.TagName
+	}
+	var newest []release
+	fetchJSON(newestReleaseURL, &newest)
+	if len(newest) == 0 {
 		return ""
+	}
+	return newest[0].TagName
+}
+
+func fetchJSON(url string, out any) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return
 	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return ""
+		return
 	}
 	defer res.Body.Close()
-	var release struct {
-		TagName string `json:"tag_name"`
+	if res.StatusCode == http.StatusOK {
+		_ = json.NewDecoder(res.Body).Decode(out)
 	}
-	if res.StatusCode != http.StatusOK || json.NewDecoder(res.Body).Decode(&release) != nil {
-		return ""
-	}
-	return release.TagName
 }
 
 // brewFormula returns the Homebrew formula this binary was installed from, or "" if none.
