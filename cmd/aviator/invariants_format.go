@@ -53,7 +53,7 @@ func formatInvariantTable(invariants []api.Invariant, usage bool) string {
 	var b strings.Builder
 	header := []string{"ID", "STATUS", "CATEGORY", "SOURCE", "SCOPE", "OWNER", "TITLE"}
 	if usage {
-		header = []string{"ID", "STATUS", "CATEGORY", "APPLIED", "FAILED", "RATE", "WAIVED", "TITLE"}
+		header = []string{"ID", "STATUS", "CATEGORY", "APPLIED", "FAILED", "RATE", "WAIVED", "SHADOW", "TITLE"}
 	}
 	rows := make([][]string, 0, len(invariants))
 	for i := range invariants {
@@ -77,10 +77,15 @@ func formatInvariantTable(invariants []api.Invariant, usage bool) string {
 	return b.String()
 }
 
-// formatInvariantUsageCells renders the APPLIED, FAILED, RATE and WAIVED cells.
+// formatInvariantUsageCells renders the APPLIED, FAILED, RATE, WAIVED and
+// SHADOW (failed/evaluated) cells.
 func formatInvariantUsageCells(u *api.InvariantUsage) []string {
+	shadow := "-"
+	if u.ShadowEvaluated > 0 {
+		shadow = fmt.Sprintf("%d/%d", u.ShadowFailed, u.ShadowEvaluated)
+	}
 	return []string{
-		strconv.Itoa(u.TimesApplied), strconv.Itoa(u.TimesFailed), formatRate(u.FailureRate), strconv.Itoa(u.TotalWaives),
+		strconv.Itoa(u.TimesApplied), strconv.Itoa(u.TimesFailed), formatRate(u.FailureRate), strconv.Itoa(u.TotalWaives), shadow,
 	}
 }
 
@@ -305,6 +310,8 @@ type invariantUsageJSON struct {
 	WaivedFailures   int             `json:"waived_failures"`
 	WaiveRate        *float64        `json:"waive_rate"`
 	WaivesByCategory waiveCountsJSON `json:"waives_by_category"`
+	ShadowEvaluated  int             `json:"shadow_evaluated"`
+	ShadowFailed     int             `json:"shadow_failed"`
 }
 
 func newInvariantUsageJSON(u *api.InvariantUsage) invariantUsageJSON {
@@ -316,6 +323,8 @@ func newInvariantUsageJSON(u *api.InvariantUsage) invariantUsageJSON {
 		WaivedFailures:   u.WaivedFailures,
 		WaiveRate:        u.WaiveRate,
 		WaivesByCategory: newWaiveCountsJSON(u.WaivesByCategory),
+		ShadowEvaluated:  u.ShadowEvaluated,
+		ShadowFailed:     u.ShadowFailed,
 	}
 }
 

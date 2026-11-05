@@ -15,7 +15,11 @@ import (
 
 // usageSorts names the --sort values `list --usage` takes. The server
 // validates the value, so nothing is checked client-side.
-const usageSorts = "applied, failure_rate, waived, waive_rate"
+const usageSorts = "applied, failure_rate, waived, waive_rate, shadow_failed"
+
+// invariantModes names the --mode values `list` takes; the server validates
+// these too.
+const invariantModes = "off, shadow, enforced"
 
 // reviewOutcomes names the --outcome values `reviews` takes. The server
 // validates the value, so nothing is checked client-side.
@@ -137,6 +141,7 @@ var invariantsShowCmd = &cobra.Command{
 
 var invariantsReviewsFlags struct {
 	Outcome string
+	Shadow  bool
 	Repo    string
 	Page    int
 	Limit   int
@@ -147,7 +152,9 @@ var invariantsReviewsCmd = &cobra.Command{
 	Short: "List the reviews an invariant was applied on, with each outcome",
 	Long: "List the reviews an invariant was applied on, newest first, with how\n" +
 		"it came out on each: pass, fail, warn, error, waived, fixed (failed\n" +
-		"an earlier run, passed the latest), or not_run.\n" +
+		"an earlier run, passed the latest), or not_run. An outcome marked\n" +
+		"(shadow) ran in shadow mode; the mark and --shadow only apply while the\n" +
+		"invariant is in shadow mode.\n" +
 		"\n" + analyticsHelp,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -162,6 +169,9 @@ var invariantsReviewsCmd = &cobra.Command{
 			Outcome: invariantsReviewsFlags.Outcome,
 			Page:    invariantsReviewsFlags.Page,
 			PerPage: invariantsReviewsFlags.Limit,
+		}
+		if cmd.Flags().Changed("shadow") {
+			query.Shadow = &invariantsReviewsFlags.Shadow
 		}
 		if invariantsReviewsFlags.Repo != "" {
 			repo, err := parseRepo(invariantsReviewsFlags.Repo)
@@ -261,6 +271,7 @@ func init() {
 
 	f = invariantsReviewsCmd.Flags()
 	f.StringVar(&invariantsReviewsFlags.Outcome, "outcome", "", "only reviews with this outcome ("+reviewOutcomes+")")
+	f.BoolVar(&invariantsReviewsFlags.Shadow, "shadow", false, "only reviews with a shadow verdict; --shadow=false for the rest")
 	f.StringVar(&invariantsReviewsFlags.Repo, "repo", "", "only reviews of this owner/repo")
 	f.IntVar(&invariantsReviewsFlags.Page, "page", 1, "page number, starting at 1")
 	f.IntVar(&invariantsReviewsFlags.Limit, "limit", 20, "reviews per page (max 100)")

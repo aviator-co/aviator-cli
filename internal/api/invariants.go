@@ -68,6 +68,10 @@ type InvariantUsage struct {
 	WaivedFailures   int         `json:"waived_failures"`
 	WaiveRate        *float64    `json:"waive_rate"`
 	WaivesByCategory WaiveCounts `json:"waives_by_category"`
+	// ShadowEvaluated and ShadowFailed count reviews with a shadow verdict, and
+	// with a failed one. They are 0 unless the invariant is in shadow mode now.
+	ShadowEvaluated int `json:"shadow_evaluated"`
+	ShadowFailed    int `json:"shadow_failed"`
 }
 
 // ListInvariantsQuery is the query string for GET /api/v1/invariants. A
@@ -78,8 +82,9 @@ type InvariantUsage struct {
 // are sent only when positive, so the server's defaults hold otherwise.
 // OwnerTeams (org/slug) and Unowned OR together and match the effective owner.
 // IncludeUsage attaches each row's all-time Usage and makes the server default
-// Status to active; Sort (applied, failure_rate, waived, waive_rate) and
-// NeverApplied are only valid with it, and not together.
+// Status to active; Sort (applied, failure_rate, waived, waive_rate,
+// shadow_failed) and NeverApplied are only valid with it, and not together.
+// Modes (off, shadow, enforced) match the current mode.
 type ListInvariantsQuery struct {
 	Repo         *Repository
 	Status       string
@@ -87,6 +92,7 @@ type ListInvariantsQuery struct {
 	Sources      []string
 	OwnerTeams   []string
 	Unowned      bool
+	Modes        []string
 	IncludeUsage bool
 	Sort         string
 	NeverApplied bool
@@ -236,6 +242,9 @@ func listInvariantsQuery(q ListInvariantsQuery) url.Values {
 	}
 	if q.Unowned {
 		values.Set("unowned", "true")
+	}
+	if len(q.Modes) > 0 {
+		values.Set("mode", strings.Join(q.Modes, ","))
 	}
 	if q.IncludeUsage {
 		values.Set("include", "usage")

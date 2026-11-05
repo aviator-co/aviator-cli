@@ -183,9 +183,11 @@ func TestListInvariantReviews(t *testing.T) {
 		`"verdict_run":null,"result":null,"outcome":"not_run","waiver":null}`+
 		`],"page":1,"per_page":20,"has_more":false}`)
 
+	shadow := false
 	resp, err := newTestClient(srv).ListInvariantReviews(context.Background(), 42, InvariantReviewsQuery{
 		Repo:    &Repository{Org: "acme", Name: "web"},
 		Outcome: "waived",
+		Shadow:  &shadow,
 		Page:    1,
 		PerPage: 20,
 	})
@@ -195,7 +197,7 @@ func TestListInvariantReviews(t *testing.T) {
 	if got.URL.Path != "/api/v1/invariants/42/reviews" {
 		t.Errorf("path = %q", got.URL.Path)
 	}
-	if want := "org=acme&outcome=waived&page=1&per_page=20&repo=web"; got.URL.RawQuery != want {
+	if want := "org=acme&outcome=waived&page=1&per_page=20&repo=web&shadow=false"; got.URL.RawQuery != want {
 		t.Errorf("query = %q, want %q", got.URL.RawQuery, want)
 	}
 	if resp.HasMore || len(resp.Reviews) != 2 || resp.Invariant.ID != 42 || resp.Invariant.Title != "HTTP handlers authenticate" {
