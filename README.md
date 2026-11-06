@@ -188,6 +188,27 @@ aviator dismiss r/123 --criteria-json \
   '[{"baseline_invariant_id": 42, "category": "accepted_risk", "justification": "..."}]'
 ```
 
+### Record decisions
+
+A decision is a question, possible bug, risk, or choice raised about a
+session's PR, so reviewers can see why the code looks the way it does. Each one
+has a comment thread and is either open or settled with an outcome.
+
+```bash
+aviator decisions list r/123                  # a session's decisions
+aviator decisions list r/123 --status open    # only the open ones
+aviator decisions show r/123 7                # one decision with its comments
+aviator decisions apply r/123 --file batch.json   # record a batch, - reads stdin
+```
+
+`apply` creates, changes, settles, reopens, and comments on decisions in one
+request, so either all of it is recorded or none of it is.
+`aviator decisions apply --help` has the batch format. It needs a user access
+token (`aviator login` or a personal token). Anyone can settle, reopen, and
+comment, but only the user who raised a decision can change its type, title,
+summary, or anchor. There's no way to delete one. `--json` prints the result as
+a single JSON object.
+
 ### Manage baseline invariants
 
 Baseline invariants are standing rules every verification checks on top of a

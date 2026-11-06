@@ -23,9 +23,6 @@ var decisionsCmd = &cobra.Command{
 	Use:     "decisions",
 	Aliases: []string{"decision"},
 	Short:   "Read and record the decisions on a session's pull request",
-	// Still changing, so left out of help and completion; it runs when called
-	// by name.
-	Hidden: true,
 	Long: "A decision is a question, possible bug, risk, or choice raised about a\n" +
 		"session's pull request. Each one has a comment thread and is either open\n" +
 		"or settled with an outcome.\n" +
