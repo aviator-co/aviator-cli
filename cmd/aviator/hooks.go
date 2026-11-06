@@ -47,7 +47,7 @@ var hooksSessionStartCmd = &cobra.Command{
 
 var hooksPostToolUseCmd = &cobra.Command{
 	Use:               "post-tool-use",
-	Short:             "Emit the post-commit Verify directive (invoked by the installed hook)",
+	Short:             "Emit the post-commit Verify directive and review hint (invoked by the installed hook)",
 	Hidden:            true,
 	Args:              cobra.NoArgs,
 	PersistentPreRunE: noSetup,

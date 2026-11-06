@@ -139,10 +139,10 @@ The CLI targets endpoints in the `mergeit` backend:
   spec_file?, acceptance_criteria?, ...}`. Creates a runbook from an intent
   (`prompt` is a deprecated backend alias; the CLI sends `intent`); criteria
   are optional.
-- `GET /api/v1/runbook/` — `?org=&repo=&working_branch=&status=&page=&per_page=`.
-  Lists the caller's sessions in a repo, newest first, for `aviator sessions`.
-  `working_branch` is the only filter, so `--pr` matches client-side over the
-  `pull_requests` each summary carries.
+- `GET /api/v1/runbook/` —
+  `?org=&repo=&working_branch=&pr_number=&all_users=&status=&page=&per_page=`.
+  Lists sessions in a repo, newest first, for `aviator sessions`: the caller's,
+  or everyone's in the account with `all_users=true`, which `--pr` always sends.
 - `PATCH /api/v1/verify/<n>` — `{intent?, acceptance_criteria?,
   expected_version?, preview_config_name?}`, at least one of intent, criteria,
   or preview config; `expected_version` is required with criteria (409

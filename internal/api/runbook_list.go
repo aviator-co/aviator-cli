@@ -26,33 +26,22 @@ type LinkedPullRequest struct {
 	StepNumbers []string `json:"step_numbers"`
 }
 
-// HasPullRequest reports whether the session is linked to a PR number.
-func (s SessionSummary) HasPullRequest(number int) bool {
-	for _, pr := range s.PullRequests {
-		if pr.Number == number {
-			return true
-		}
-	}
-	return false
-}
-
 // ListSessionsParams are the filters for GET /api/v1/runbook/. Limit is capped
 // at the API's own page size, so a page here is a page there.
 type ListSessionsParams struct {
 	Repository    Repository
 	WorkingBranch string
+	PRNumber      int
+	AllUsers      bool
 	Status        string
 	Page          int
 	Limit         int
 }
 
-const (
-	maxPageSize  = 100
-	maxPageWalks = 10
-)
+const maxPageSize = 100
 
-// ListSessions returns the caller's sessions in a repository, newest first:
-// one page of Limit, and whether more follow it.
+// ListSessions returns sessions in a repository, newest first: one page of
+// Limit, and whether more follow it. Only the caller's, unless AllUsers.
 func (c *Client) ListSessions(
 	ctx context.Context, params ListSessionsParams,
 ) ([]SessionSummary, bool, error) {
@@ -65,31 +54,6 @@ func (c *Client) ListSessions(
 		return nil, false, err
 	}
 	return resp.Sessions, resp.HasMore, nil
-}
-
-// FindSessionsForPullRequest returns the sessions linked to a PR number. The
-// listing filters on working branch only, so the match happens here, over the
-// PRs each summary carries.
-func (c *Client) FindSessionsForPullRequest(
-	ctx context.Context, repo Repository, prNumber int, status string,
-) ([]SessionSummary, error) {
-	params := ListSessionsParams{Repository: repo, Status: status}
-	var found []SessionSummary
-	for page := 1; page <= maxPageWalks; page++ {
-		resp, err := c.listSessionPage(ctx, params, page, maxPageSize)
-		if err != nil {
-			return nil, err
-		}
-		for _, session := range resp.Sessions {
-			if session.HasPullRequest(prNumber) {
-				found = append(found, session)
-			}
-		}
-		if !resp.HasMore {
-			break
-		}
-	}
-	return found, nil
 }
 
 type listSessionsResponse struct {
@@ -108,6 +72,12 @@ func (c *Client) listSessionPage(
 	}
 	if params.WorkingBranch != "" {
 		query.Set("working_branch", params.WorkingBranch)
+	}
+	if params.PRNumber > 0 {
+		query.Set("pr_number", strconv.Itoa(params.PRNumber))
+	}
+	if params.AllUsers {
+		query.Set("all_users", "true")
 	}
 	if params.Status != "" {
 		query.Set("status", params.Status)
