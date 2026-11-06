@@ -19,6 +19,7 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   login.go          # `aviator login`   -> browser OAuth flow
   logout.go         # `aviator logout`  -> drop the stored session
   verify.go         # `aviator verify`  -> POST /api/v1/verify
+  verify_stack.go   # `aviator verify <add|confirm|regroup>` (hidden, stacked Verify)
   runbook.go        # `aviator runbook` -> POST /api/v1/runbook
   show.go           # `aviator show`    -> runbook detail + its verification runs
   sessions.go       # `aviator sessions`-> list/lookup sessions by branch or PR
@@ -160,6 +161,18 @@ The CLI targets endpoints in the `mergeit` backend:
   feedback winning on conflicts. It needs non-blank feedback and a preview,
   doesn't combine with `evaluator_only`, and the backend caps it per session
   for non-BYOK accounts (429 `scenario-regen-limit-reached`).
+- Stacked Verify, behind a per-user allowlist, so its commands and
+  `--draft` are `Hidden: true`. `POST /api/v1/verify` takes `draft: true`;
+  a draft never runs (409 `session-draft`). `POST /api/v1/verify/<n>/prs`
+  takes `{pr_number, criteria, base_version}`, `criteria` being the full list
+  for every member (409 `stale-runbook-version` when `base_version` is
+  behind). `POST /<n>/confirm` takes `{run}` and returns the session plus
+  `run_id`/`run_status` when a run started. `POST /<n>/regroup` takes
+  `{groups: [{pr_numbers, intent, criteria, decision_ids}]}` and returns
+  `{sessions: [...]}`. All three return the session with `state` and
+  `members` (`[{pr_number, position, head_sha}]`) and refuse a broken stack
+  with 400 `stack-invalid`. The detail endpoint carries `state` and `members`
+  for stacked sessions only.
 - `POST /api/v1/verify/<n>/dismissals` — `{criteria: [{stable_key} |
   {stable_key, action: "waive", justification} |
   {baseline_invariant_id, category, justification}]}`. Deletes or waives task
