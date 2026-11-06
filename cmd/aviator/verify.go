@@ -25,6 +25,7 @@ var verifyFlags struct {
 	RegenerateScenarios string
 	Preview             string
 	ExternalEvidence    bool
+	Draft               bool
 	JSON                bool
 }
 
@@ -32,7 +33,7 @@ var verifyFlags struct {
 // session, so trigger mode rejects them by name.
 var verifySubmitOnlyFlags = []string{
 	"repo", "intent", "criteria", "criteria-file",
-	"working-branch", "target-branch", "spec", "scenario-guidance", "external-evidence",
+	"working-branch", "target-branch", "spec", "scenario-guidance", "external-evidence", "draft",
 }
 
 var verifyTriggerOnlyFlags = []string{"evaluator-only", "force", "regenerate-scenarios"}
@@ -160,7 +161,7 @@ func runVerifySubmit(cmd *cobra.Command) error {
 		SpecFile:           spec,
 		PreviewConfigName:  verifyFlags.Preview,
 		ScenarioGuidance:   guidance,
-		Draft:              verifyFlags.ExternalEvidence,
+		Draft:              verifyFlags.ExternalEvidence || verifyFlags.Draft,
 	})
 	if err != nil {
 		return err
@@ -190,6 +191,11 @@ func runVerifySubmit(cmd *cobra.Command) error {
 	if resp.Draft {
 		fmt.Printf("  Draft: runs once evidence for the PR's head commit is submitted\n")
 		fmt.Printf("  %s\n", colors.Faint("Submit what you saw with: aviator evidence submit "+formatRunbookID(resp.RunbookNumber)+" <manifest>"))
+	}
+	if verifyFlags.Draft {
+		id := formatRunbookID(resp.RunbookNumber)
+		fmt.Printf("  %s\n", colors.Faint("Draft: add each PR above with aviator verify add "+id+
+			", then aviator verify confirm "+id))
 	}
 	return nil
 }
@@ -228,7 +234,7 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 	}
 	resp, err := client.TriggerVerifyRun(cmd.Context(), runbookNumber, req)
 	if err != nil {
-		return err
+		return stackedVerifyError(err, runbookNumber, 0)
 	}
 	warnPreviewNotApplied(verifyFlags.Preview, resp.PreviewConfigName)
 	if verifyFlags.JSON {
@@ -275,6 +281,10 @@ func init() {
 		"create a draft that waits for scenarios and evidence you submit from your own run (submit mode only)")
 	f.StringVar(&verifyFlags.RegenerateScenarios, "regenerate-scenarios", "",
 		"rewrite the scenarios before running, with feedback on what to change (trigger mode only)")
+	f.BoolVar(&verifyFlags.Draft, "draft", false,
+		"open a draft stacked review that holds PRs and criteria but doesn't run until confirmed (submit mode only)")
+	// Stacked Verify is behind a per-user allowlist.
+	_ = f.MarkHidden("draft")
 	f.BoolVar(&verifyFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 }
 
