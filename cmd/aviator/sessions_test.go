@@ -93,7 +93,7 @@ func TestNoSessionsMessage(t *testing.T) {
 		t.Errorf("message = %q", got)
 	}
 	sessionsFlags.Branch, sessionsFlags.PR = "", 1201
-	if got := noSessionsMessage(); got != "No active sessions for PR #1201." {
+	if got := noSessionsMessage(); got != "No sessions for PR #1201." {
 		t.Errorf("message = %q", got)
 	}
 

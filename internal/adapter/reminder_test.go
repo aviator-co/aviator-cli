@@ -224,6 +224,39 @@ func TestPushGetsTheCriteriaQuestion(t *testing.T) {
 	}
 }
 
+func TestIsReviewCommand(t *testing.T) {
+	tests := []struct {
+		cmd  string
+		want bool
+	}{
+		{"gh pr checkout 123", true},
+		{"gh pr co 123", true},
+		{"gh pr diff 123", true},
+		{"gh -R owner/repo pr review 123 --approve", true},
+		{"av adopt --remote origin/feature", true},
+		{"gt get feature", true},
+		{"gh pr view 123", false},
+		{"gh pr create", false},
+		{"av adopt --parent master", false},
+		{"gh repo view; pr diff", false},
+	}
+	for _, tt := range tests {
+		if got := isReviewCommand(tt.cmd); got != tt.want {
+			t.Errorf("isReviewCommand(%q) = %v, want %v", tt.cmd, got, tt.want)
+		}
+	}
+}
+
+func TestReviewCommandGetsTheDecisionsHint(t *testing.T) {
+	event, text := contextOf(t, emitPost(t, commitPayload("gh pr co 123")))
+	if event != "PostToolUse" {
+		t.Errorf("hookEventName = %q, want PostToolUse", event)
+	}
+	if text != reviewText {
+		t.Errorf("additionalContext = %q, want the review hint", text)
+	}
+}
+
 // Anything else must produce no output, or the hook would inject noise after
 // every shell command an agent runs.
 func TestPostToolUseStaysSilent(t *testing.T) {

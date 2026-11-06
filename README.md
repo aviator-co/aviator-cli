@@ -78,7 +78,8 @@ Two commands, two different jobs:
 ### Set up your agents
 
 Add hooks that have your coding agents capture a change's intent and
-acceptance criteria for Verify as you open a PR:
+acceptance criteria for Verify as you open a PR, and read a PR's decisions when
+you review it:
 
 ```bash
 aviator init                 # in this repo, committed for your whole team
@@ -150,7 +151,8 @@ single JSON object.
 ```bash
 aviator sessions --repo acme/web                            # active sessions, newest first
 aviator sessions --repo acme/web --branch feature/banner    # sessions on one branch
-aviator sessions --repo acme/web --pr 1201                  # sessions linked to one PR
+aviator sessions --repo acme/web --pr 1201                  # sessions linked to one PR, whoever created them
+aviator sessions --repo acme/web --all                      # everyone's sessions, not just yours
 ```
 
 ```
@@ -163,7 +165,7 @@ Submitting the same branch again creates a second session instead of updating
 the first, and a PR opened from that branch then links to neither. For what a
 session contains, use `aviator show r/42`.
 
-`--status` (default `active`) chooses what to list, `--limit` (default 20, max
+`--status` (default `active`, or any status with `--pr`) chooses what to list, `--limit` (default 20, max
 100) sets the page size, and `--page` steps through the pages. `--json` prints
 `{"sessions": [...], "has_more": bool}`, with `id`, `url`, `working_branch`,
 `pull_requests`, and the `version` that `aviator edit --expected-version`
