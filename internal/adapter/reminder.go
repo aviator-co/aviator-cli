@@ -41,6 +41,13 @@ var commitOrPushCommands = []*regexp.Regexp{
 	regexp.MustCompile(`\bgt\s+(commit|branch)\s+(create|amend)\b`),
 }
 
+// reviewCommands matches pulling up a PR, which is where a review starts.
+var reviewCommands = []*regexp.Regexp{
+	regexp.MustCompile(`\bgh\b[^;&|]*\bpr\s+(checkout|co|diff|review)\b`),
+	regexp.MustCompile(`\bav\s+adopt\b[^;&|]*--remote\b`),
+	regexp.MustCompile(`\bgt\s+get\b`),
+}
+
 // commitOrPushText follows every commit and push, so it stays short and has
 // the agent look the session up instead of guessing at one.
 const commitOrPushText = "Verify: does this branch have a session? Check with " +
@@ -56,6 +63,11 @@ const reminderText = "Verify: if this branch has no session, this PR is out of o
 	"session with " +
 	"`aviator sessions --repo <owner/repo> --branch <branch>`, or run /verify-submit if the " +
 	"branch doesn't have one yet."
+
+// reviewText also follows these commands on the agent's own PRs, so it opens
+// with the condition.
+const reviewText = "Aviator: if you're reviewing someone else's PR, read its decisions with " +
+	"/aviator:decisions before judging the code."
 
 // signInText is appended when the machine has no Aviator credentials, since an
 // agent that reaches /verify-submit without them only finds out when the
@@ -89,6 +101,10 @@ func isPRCommand(cmd string) bool {
 
 func isCommitOrPushCommand(cmd string) bool {
 	return matchesAny(commitOrPushCommands, cmd)
+}
+
+func isReviewCommand(cmd string) bool {
+	return matchesAny(reviewCommands, cmd)
 }
 
 func matchesAny(res []*regexp.Regexp, cmd string) bool {
@@ -150,10 +166,16 @@ func emitPostToolUse(stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if in.ToolName != shellToolName || !isCommitOrPushCommand(in.ToolInput.Command) {
+	if in.ToolName != shellToolName {
 		return nil
 	}
-	return emitContext(stdout, "PostToolUse", commitOrPushText)
+	switch {
+	case isCommitOrPushCommand(in.ToolInput.Command):
+		return emitContext(stdout, "PostToolUse", commitOrPushText)
+	case isReviewCommand(in.ToolInput.Command):
+		return emitContext(stdout, "PostToolUse", reviewText)
+	}
+	return nil
 }
 
 func emitContext(stdout io.Writer, event, text string) error {

@@ -13,6 +13,7 @@ var sessionsFlags struct {
 	Repo   string
 	Branch string
 	PR     int
+	All    bool
 	Status string
 	Page   int
 	Limit  int
@@ -21,8 +22,9 @@ var sessionsFlags struct {
 
 var sessionsCmd = &cobra.Command{
 	Use:   "sessions",
-	Short: "List your review and runbook sessions in a repository",
-	Long: "List your review and runbook sessions in a repository, newest first.\n" +
+	Short: "List review and runbook sessions in a repository",
+	Long: "List review and runbook sessions in a repository, newest first: your own,\n" +
+		"unless you pass --all or look up a PR with --pr.\n" +
 		"\n" +
 		"Check here before running `aviator verify`. Submitting a branch that\n" +
 		"already has a session creates a second one instead of updating the first,\n" +
@@ -41,20 +43,19 @@ var sessionsCmd = &cobra.Command{
 			return err
 		}
 
-		var sessions []api.SessionSummary
-		hasMore := false
-		if sessionsFlags.PR > 0 {
-			sessions, err = client.FindSessionsForPullRequest(
-				cmd.Context(), repo, sessionsFlags.PR, sessionsFlags.Status)
-		} else {
-			sessions, hasMore, err = client.ListSessions(cmd.Context(), api.ListSessionsParams{
-				Repository:    repo,
-				WorkingBranch: sessionsFlags.Branch,
-				Status:        sessionsFlags.Status,
-				Page:          sessionsFlags.Page,
-				Limit:         sessionsFlags.Limit,
-			})
+		status := sessionsFlags.Status
+		if sessionsFlags.PR > 0 && !cmd.Flags().Changed("status") {
+			status = ""
 		}
+		sessions, hasMore, err := client.ListSessions(cmd.Context(), api.ListSessionsParams{
+			Repository:    repo,
+			WorkingBranch: sessionsFlags.Branch,
+			PRNumber:      sessionsFlags.PR,
+			AllUsers:      sessionsFlags.All || sessionsFlags.PR > 0,
+			Status:        status,
+			Page:          sessionsFlags.Page,
+			Limit:         sessionsFlags.Limit,
+		})
 		if err != nil {
 			return err
 		}
@@ -75,7 +76,8 @@ func init() {
 	f := sessionsCmd.Flags()
 	f.StringVar(&sessionsFlags.Repo, "repo", "", "GitHub repo as owner/repo")
 	f.StringVar(&sessionsFlags.Branch, "branch", "", "only sessions on this working branch")
-	f.IntVar(&sessionsFlags.PR, "pr", 0, "only sessions linked to this PR number")
+	f.IntVar(&sessionsFlags.PR, "pr", 0, "only sessions linked to this PR number, whoever created them")
+	f.BoolVar(&sessionsFlags.All, "all", false, "include everyone's sessions, not just yours")
 	f.StringVar(&sessionsFlags.Status, "status", "active", "session status to list (active or archived)")
 	f.IntVar(&sessionsFlags.Page, "page", 1, "which page to show")
 	f.IntVar(&sessionsFlags.Limit, "limit", 20, "sessions per page (max 100)")
@@ -95,7 +97,7 @@ func noSessionsMessage() string {
 	case sessionsFlags.Branch != "":
 		return fmt.Sprintf("No %s sessions on branch %s.", sessionsFlags.Status, sessionsFlags.Branch)
 	case sessionsFlags.PR > 0:
-		return fmt.Sprintf("No %s sessions for PR #%d.", sessionsFlags.Status, sessionsFlags.PR)
+		return fmt.Sprintf("No sessions for PR #%d.", sessionsFlags.PR)
 	default:
 		return fmt.Sprintf("No %s sessions in %s.", sessionsFlags.Status, sessionsFlags.Repo)
 	}

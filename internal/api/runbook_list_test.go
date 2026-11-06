@@ -84,9 +84,6 @@ func TestListSessions(t *testing.T) {
 	if first.RunbookVersion == nil || *first.RunbookVersion != 3 {
 		t.Errorf("runbook_version = %v", first.RunbookVersion)
 	}
-	if !first.HasPullRequest(1201) || first.HasPullRequest(1202) {
-		t.Errorf("pull_requests = %+v", first.PullRequests)
-	}
 
 	// A session with no branch, intent or runbook version yet comes back as
 	// JSON nulls, which must not fail the decode.
@@ -125,62 +122,26 @@ func TestListSessionsAsksForThePageDirectly(t *testing.T) {
 	}
 }
 
-// The listing has no PR filter, so the match happens over the pages.
-func TestFindSessionsForPullRequestPages(t *testing.T) {
-	pages := []string{
-		`{"runbooks":[{"runbook_number":9,"pull_requests":[{"number":7}]}],"has_more":true}`,
-		`{"runbooks":[{"runbook_number":8,"pull_requests":[{"number":12}]}],"has_more":false}`,
-	}
-	var requested []string
-
+func TestListSessionsAsksTheServerForAPullRequestAcrossUsers(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-		requested = append(requested, q.Get("page"))
-		if got := q.Get("per_page"); got != fmt.Sprint(maxPageSize) {
-			t.Errorf("per_page = %q, want %d", got, maxPageSize)
+		if q.Get("pr_number") != "12" || q.Get("all_users") != "true" {
+			t.Errorf("pr_number = %q, all_users = %q", q.Get("pr_number"), q.Get("all_users"))
 		}
-		if q.Has("working_branch") {
-			t.Errorf("branch filter sent for a PR search: %q", q.Get("working_branch"))
-		}
-		page := len(requested) - 1
-		_, _ = w.Write([]byte(pages[page]))
+		_, _ = w.Write([]byte(`{"runbooks":[{"runbook_number":8}],"has_more":false}`))
 	}))
 	defer srv.Close()
 
-	found, err := newTestClient(srv).FindSessionsForPullRequest(
-		context.Background(), Repository{Org: "acme", Name: "web"}, 12, "active",
-	)
+	sessions, _, err := newTestClient(srv).ListSessions(
+		context.Background(), ListSessionsParams{
+			Repository: Repository{Org: "acme", Name: "web"},
+			PRNumber:   12,
+			AllUsers:   true,
+		})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(requested) != 2 || requested[0] != "1" || requested[1] != "2" {
-		t.Errorf("pages requested = %v", requested)
-	}
-	if len(found) != 1 || found[0].RunbookNumber != 8 {
-		t.Errorf("found = %+v", found)
-	}
-}
-
-// Paging stops as soon as the server says there is nothing more, so a repo
-// with one page costs one request.
-func TestFindSessionsForPullRequestStopsAtLastPage(t *testing.T) {
-	requests := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requests++
-		_, _ = w.Write([]byte(`{"runbooks":[],"has_more":false}`))
-	}))
-	defer srv.Close()
-
-	found, err := newTestClient(srv).FindSessionsForPullRequest(
-		context.Background(), Repository{Org: "acme", Name: "web"}, 12, "active",
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if requests != 1 {
-		t.Errorf("requests = %d, want 1", requests)
-	}
-	if len(found) != 0 {
-		t.Errorf("found = %+v", found)
+	if len(sessions) != 1 || sessions[0].RunbookNumber != 8 {
+		t.Errorf("sessions = %+v", sessions)
 	}
 }
