@@ -167,7 +167,7 @@ func TestFormatInvariantListUsage(t *testing.T) {
 			{
 				ID: 71, Title: "Flags have a ticket", Category: "code_style", Status: "active", Enabled: true,
 				Reason: "Reviewers keep asking.",
-				Usage:  &api.InvariantUsage{},
+				Usage:  &api.InvariantUsage{ShadowEvaluated: 4, ShadowFailed: 2},
 			},
 		},
 	}
@@ -176,13 +176,13 @@ func TestFormatInvariantListUsage(t *testing.T) {
 	if len(lines) != 5 {
 		t.Fatalf("want header, 2 rows, 1 reason row, footer; got %d lines:\n%s", len(lines), out)
 	}
-	if want := "ID   STATUS  CATEGORY    APPLIED  FAILED  RATE  WAIVED  TITLE"; lines[0] != want {
+	if want := "ID   STATUS  CATEGORY    APPLIED  FAILED  RATE  WAIVED  SHADOW  TITLE"; lines[0] != want {
 		t.Errorf("header = %q, want %q", lines[0], want)
 	}
-	if want := "#42  active  security    143      31      22%   18      HTTP handlers authenticate"; lines[1] != want {
+	if want := "#42  active  security    143      31      22%   18      -       HTTP handlers authenticate"; lines[1] != want {
 		t.Errorf("row = %q, want %q", lines[1], want)
 	}
-	if want := "#71  active  code_style  0        0       -     0       Flags have a ticket"; lines[2] != want {
+	if want := "#71  active  code_style  0        0       -     0       2/4     Flags have a ticket"; lines[2] != want {
 		t.Errorf("row = %q, want %q", lines[2], want)
 	}
 	titleCol := strings.Index(lines[0], "TITLE")
@@ -218,6 +218,7 @@ func TestInvariantJSONUsage(t *testing.T) {
 		ID: 7, Version: ptr(3),
 		Usage: &api.InvariantUsage{
 			TimesApplied: 12, TimesFailed: 5, FailureRate: rate(0.417), TotalWaives: 3, WaivedFailures: 2,
+			ShadowEvaluated: 4, ShadowFailed: 1,
 			WaivesByCategory: api.WaiveCounts{FalsePositive: 3},
 		},
 	}))
@@ -236,6 +237,7 @@ func TestInvariantJSONUsage(t *testing.T) {
 	assertJSONFields(t, usage, map[string]any{
 		"times_applied": float64(12), "times_failed": float64(5), "failure_rate": 0.417,
 		"total_waives": float64(3), "waived_failures": float64(2), "waive_rate": nil,
+		"shadow_evaluated": float64(4), "shadow_failed": float64(1),
 	})
 }
 
@@ -381,11 +383,18 @@ func TestFormatInvariantShow(t *testing.T) {
 		t.Errorf("no more waivers should have no footer:\n%s", out)
 	}
 
+	shadow := *showDetail
+	shadow.Usage = &api.InvariantUsage{ShadowEvaluated: 4, ShadowFailed: 2}
+	out = formatInvariantShow(&shadow, &api.InvariantWaiversResponse{Page: 1})
+	if !strings.Contains(out, "  Shadow: evaluated 4 · failed 2\n") {
+		t.Errorf("output = %s", out)
+	}
+
 	// Nothing applied yet: no rates, no waive breakdown, an empty version table.
 	bare := &api.InvariantDetail{Invariant: api.Invariant{ID: 5, Title: "New", Source: "manual"}}
 	out = formatInvariantShow(bare, &api.InvariantWaiversResponse{Page: 1})
 	if !strings.Contains(out, "  Applied 0 · Failed 0 (-) · Waived 0 of 0 failures (-)\n") ||
-		strings.Contains(out, "Waived as") || strings.Contains(out, "Version:") ||
+		strings.Contains(out, "Waived as") || strings.Contains(out, "Version:") || strings.Contains(out, "Shadow:") ||
 		!strings.Contains(out, "\nBy version\n  none\n") {
 		t.Errorf("output = %s", out)
 	}
@@ -404,7 +413,7 @@ func TestFormatInvariantReviews(t *testing.T) {
 		Page:      1,
 		HasMore:   true,
 		Reviews: []api.InvariantReviewRow{
-			{Review: review(1302, "https://github.com/acme/web/pull/6102"), AppliedAt: "2026-10-24T08:00:00Z", Version: ptr(3), Outcome: "pass"},
+			{Review: review(1302, "https://github.com/acme/web/pull/6102"), AppliedAt: "2026-10-24T08:00:00Z", Version: ptr(3), Outcome: "pass", Shadow: true},
 			{
 				Review: review(1296, "https://github.com/acme/web/pull/6096"), AppliedAt: "2026-10-22T08:00:00Z", Version: ptr(3),
 				Outcome: "fixed", VerdictRun: &api.InvariantReviewRun{ID: 9958, Status: "succeeded"},
@@ -418,11 +427,11 @@ func TestFormatInvariantReviews(t *testing.T) {
 	}
 	out := formatInvariantReviews(resp)
 	want := "#42 HTTP handlers authenticate\n" +
-		"WHEN        REVIEW  PR             OUTCOME  VERSION  NOTE\n" +
-		"2026-10-24  r/1302  acme/web#6102  pass     3        \n" +
-		"2026-10-22  r/1296  acme/web#6096  fixed    3        failed earlier run, passed run 9958\n" +
-		"2026-10-21  r/1288  acme/web#6088  waived   2        false positive, Dana K.\n" +
-		"2026-10-17  r/1270  -              not_run  -        \n" +
+		"WHEN        REVIEW  PR             OUTCOME        VERSION  NOTE\n" +
+		"2026-10-24  r/1302  acme/web#6102  pass (shadow)  3        \n" +
+		"2026-10-22  r/1296  acme/web#6096  fixed          3        failed earlier run, passed run 9958\n" +
+		"2026-10-21  r/1288  acme/web#6088  waived         2        false positive, Dana K.\n" +
+		"2026-10-17  r/1270  -              not_run        -        \n" +
 		"See more reviews --page 2\n"
 	if out != want {
 		t.Errorf("output =\n%s\nwant\n%s", out, want)
@@ -555,10 +564,10 @@ func TestInvariantShowJSON(t *testing.T) {
 	if len(versions) != 2 || versions[1].(map[string]any)["version"] != nil {
 		t.Errorf("by_version = %v", versions)
 	}
-	// Every row nests the same seven keys as usage itself under its own usage.
+	// Every row nests the same nine keys as usage itself under its own usage.
 	v := versions[0].(map[string]any)
 	if vu, ok := v["usage"].(map[string]any); !ok || vu["times_applied"] != float64(40) || vu["failure_rate"] != 0.1 ||
-		vu["waived_failures"] != float64(0) || len(vu) != 7 || len(v) != 3 {
+		vu["waived_failures"] != float64(0) || len(vu) != 9 || len(v) != 3 {
 		t.Errorf("by_version[0] = %v", v)
 	}
 	if _, ok := got["by_repo"]; ok {
@@ -617,13 +626,14 @@ func TestInvariantReviewsAndWaiversJSON(t *testing.T) {
 		Outcome:    "waived",
 		VerdictRun: &api.InvariantReviewRun{ID: 9931, Status: "failed"},
 		Waiver:     &waiverRows[0].InvariantWaiver,
+		Shadow:     true,
 	}}}
 	got := decodeJSON(t, newInvariantReviewsJSON(resp))
 	assertJSONFields(t, got["invariant"].(map[string]any), map[string]any{
 		"id": float64(42), "title": "T", "category": "security", "status": "active", "mode": "shadow",
 	})
 	row := got["reviews"].([]any)[0].(map[string]any)
-	if row["outcome"] != "waived" || row["result"] != "fail" || row["version"] != nil || row["applied_at"] != "2026-10-21T08:00:00Z" {
+	if row["shadow"] != true || row["outcome"] != "waived" || row["result"] != "fail" || row["version"] != nil || row["applied_at"] != "2026-10-21T08:00:00Z" {
 		t.Errorf("row = %v", row)
 	}
 	if run := row["verdict_run"].(map[string]any); run["run_id"] != float64(9931) || run["completed_at"] != nil {

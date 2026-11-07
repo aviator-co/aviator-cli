@@ -192,8 +192,8 @@ The CLI targets endpoints in the `mergeit` backend:
 so they need a user token or an `aviator login` session.
 
 - `/api/v1/invariants` — `GET` (list; `org`+`repo`, `status`, comma-separated
-  `ids`, `source` and `owner_team` (`org/slug`), `unowned`, `page`, `per_page`
-  query), `GET /categories`, `GET /owner-teams` (paged like the list, the
+  `ids`, `source` and `owner_team` (`org/slug`), `unowned`, comma-separated
+  `mode` (current mode), `page`, `per_page` query), `GET /categories`, `GET /owner-teams` (paged like the list, the
   account's teams with `invariant_count` and `is_default`, most-owning first,
   plus `unowned_count`), `POST` (create),
   `PATCH /<id>` (partial update; `repositories`, `conditions` and
@@ -216,14 +216,15 @@ so they need a user token or an `aviator login` session.
   and `reasons`; waive counts are `total_waives` + `waives_by_category`),
   `GET /<id>` (bare, just the invariant; comma-separated `include` of `usage`,
   `by_version`, `by_repo` adds each, every version/repo row nesting the same
-  seven usage keys under `usage`; `show` always sends `usage,by_version`),
+  nine usage keys under `usage`, of which `shadow_evaluated` and `shadow_failed`
+  are 0 unless the invariant is in shadow mode now; `show` always sends `usage,by_version`),
   `GET /<id>/reviews` (paged, takes `outcome`
-  (`pass|fail|warn|error|waived|fixed|not_run`), carries the `invariant`
+  (`pass|fail|warn|error|waived|fixed|not_run`) and `shadow=true|false`, carries the `invariant`
   summary and each row's `verdict_run`, a full run summary of which the CLI
-  reads `id`, `status` and `completed_at`), `GET /waivers` (account-wide,
+  reads `id`, `status` and `completed_at`, and `shadow`), `GET /waivers` (account-wide,
   also where `show` gets its latest waivers from; `invariant`, `user` (`me` needs a user
   token, else an email), `category`), and `include=usage` on the list with
-  `sort` (`applied|failure_rate|waived|waive_rate`) or `never_applied`, not
+  `sort` (`applied|failure_rate|waived|waive_rate|shadow_failed`) or `never_applied`, not
   both (400); `include=usage` defaults `status` to active, and `list --usage`
   also sends `status=active` itself when `--status` is absent. Waivers'
   `waived_by` is `{id, name, email}`, `email` null for a deleted user and
