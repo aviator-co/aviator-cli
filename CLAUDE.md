@@ -24,7 +24,7 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   sessions.go       # `aviator sessions`-> list/lookup sessions by branch or PR
   results.go        # `aviator results` -> runbook step results
   edit.go           # `aviator edit`    -> PATCH intent / acceptance criteria
-  dismiss.go        # `aviator dismiss` -> delete criteria / waive invariants
+  dismiss.go        # `aviator dismiss` -> delete or waive task criteria, waive invariants
   scenarios.go      # `aviator scenarios` -> scenario runs + evidence of a verification run
   evidence.go       # `aviator evidence`  -> signed URL / download of one evidence file
   invariants.go     # `aviator invariants <list|categories|owner-teams|create|edit|delete|approve|reject|set-status|set-owner>`

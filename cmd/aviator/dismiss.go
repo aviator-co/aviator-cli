@@ -32,6 +32,8 @@ var dismissCmd = &cobra.Command{
 		"where category is false_positive, doesnt_apply, accepted_risk, or\n" +
 		"fix_in_followup. --key <key> is shorthand for a stable_key entry.\n" +
 		"\n" +
+		"A waived task criterion stays waived on later runs until its text is edited.\n" +
+		"\n" +
 		"Picking a waiver category: " + docsResults + "#the-invariant-doesnt-fit-this-change",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
