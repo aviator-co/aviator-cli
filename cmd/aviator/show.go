@@ -77,6 +77,16 @@ func formatRunbookDetail(d *api.RunbookDetail, runs []api.VerificationRun, moreR
 	if state := deref(d.State); state != "" {
 		fmt.Fprintf(&b, "  State: %s\n", state)
 	}
+	if len(d.ReplacedBy) > 0 {
+		ids := make([]string, len(d.ReplacedBy))
+		for i, n := range d.ReplacedBy {
+			ids[i] = formatRunbookID(n)
+		}
+		fmt.Fprintf(&b, "  Replaced by: %s\n", strings.Join(ids, ", "))
+	}
+	if d.ReplacedFrom != nil {
+		fmt.Fprintf(&b, "  Replaces: %s\n", formatRunbookID(*d.ReplacedFrom))
+	}
 
 	if intent := deref(d.Intent); intent != "" {
 		fmt.Fprintf(&b, "  Intent: %s\n", intent)

@@ -167,12 +167,12 @@ The CLI targets endpoints in the `mergeit` backend:
   takes `{pr_number, criteria, base_version}`, `criteria` being the full list
   for every member (409 `stale-runbook-version` when `base_version` is
   behind). `POST /<n>/confirm` takes `{run}` and returns the session plus
-  `run_id`/`run_status` when a run started. `POST /<n>/regroup` takes
-  `{groups: [{pr_numbers, intent, criteria, decision_ids}]}` and returns
-  `{sessions: [...]}`. All three return the session with `state` and
+  `run_id`/`run_status` when a run started. `POST /<n>/regroup` only splits:
+  it takes `{groups: [{pr_numbers, intent, criteria, decision_ids}]}` with two
+  or more groups (one is 400 `invalid-input`) and returns `{sessions: [...]}`. All three return the session with `state` and
   `members` (`[{pr_number, position, head_sha}]`) and refuse a broken stack
-  with 400 `stack-invalid`. The detail endpoint carries `state` and `members`
-  for stacked sessions only.
+  with 400 `stack-invalid`. The detail endpoint carries `state`, `members`,
+  `replaced_from` and `replaced_by` for stacked sessions only.
 - `POST /api/v1/verify/<n>/dismissals` — `{criteria: [{stable_key} |
   {stable_key, action: "waive", justification} |
   {baseline_invariant_id, category, justification}]}`. Deletes or waives task

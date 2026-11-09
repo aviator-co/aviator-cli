@@ -127,13 +127,14 @@ var verifyRegroupFlags struct {
 }
 
 var verifyRegroupCmd = &cobra.Command{
-	Use:    "regroup <id> --group <file> [--group <file>]",
-	Short:  "Replace a stacked review with one new review per group",
+	Use:    "regroup <id> --group <file> --group <file> [--group <file>]",
+	Short:  "Split a stacked review into one new review per group",
 	Hidden: true,
-	Long: "Replace a stacked review after a member PR was closed or the stack was\n" +
-		"split. One --group replaces the review; two split it. Every open PR of\n" +
-		"the review must be in exactly one group, and each group must be a valid\n" +
-		"stack. The old review is archived and the new ones keep its state.\n" +
+	Long: "Split a stacked review into separate reviews. Split only: it needs two\n" +
+		"or more --group. To change criteria or intent, use `aviator edit`. Every\n" +
+		"open PR of the review must be in exactly one group, and each group must\n" +
+		"be a valid stack. The old review is archived and the new ones keep its\n" +
+		"state.\n" +
 		"\n" +
 		"Each --group is a JSON file:\n" +
 		"\n" +
@@ -148,8 +149,8 @@ var verifyRegroupCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if len(verifyRegroupFlags.Groups) == 0 {
-			return errors.New("at least one --group is required")
+		if len(verifyRegroupFlags.Groups) < 2 {
+			return errors.New("regroup only splits a stack: pass two or more --group (use `aviator edit` to change criteria)")
 		}
 		groups := make([]api.RegroupGroup, 0, len(verifyRegroupFlags.Groups))
 		for _, path := range verifyRegroupFlags.Groups {

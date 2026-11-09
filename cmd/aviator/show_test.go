@@ -102,6 +102,21 @@ func TestFormatRunbookDetailNoVerificationYet(t *testing.T) {
 	}
 }
 
+func TestFormatRunbookDetailReplacements(t *testing.T) {
+	detail := &api.RunbookDetail{
+		RunbookNumber: 7,
+		URL:           "https://app.aviator.co/runbook/7",
+		ReplacedFrom:  ptr(5),
+		ReplacedBy:    []int{8, 9},
+	}
+	out := formatRunbookDetail(detail, nil, false)
+	for _, want := range []string{"Replaced by: r/8, r/9", "Replaces: r/5"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q, got:\n%s", want, out)
+		}
+	}
+}
+
 func TestFormatVerificationError(t *testing.T) {
 	msg := "sandbox timed out"
 	out := formatVerification("Latest verification", &api.VerificationRun{
