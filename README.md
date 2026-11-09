@@ -78,7 +78,8 @@ Two commands, two different jobs:
 ### Set up your agents
 
 Add hooks that have your coding agents capture a change's intent and
-acceptance criteria for Verify as you open a PR:
+acceptance criteria for Verify as you open a PR, and read a PR's decisions when
+you review it:
 
 ```bash
 aviator init                 # in this repo, committed for your whole team
@@ -150,7 +151,8 @@ single JSON object.
 ```bash
 aviator sessions --repo acme/web                            # active sessions, newest first
 aviator sessions --repo acme/web --branch feature/banner    # sessions on one branch
-aviator sessions --repo acme/web --pr 1201                  # sessions linked to one PR
+aviator sessions --repo acme/web --pr 1201                  # sessions linked to one PR, whoever created them
+aviator sessions --repo acme/web --all                      # everyone's sessions, not just yours
 ```
 
 ```
@@ -163,7 +165,7 @@ Submitting the same branch again creates a second session instead of updating
 the first, and a PR opened from that branch then links to neither. For what a
 session contains, use `aviator show r/42`.
 
-`--status` (default `active`) chooses what to list, `--limit` (default 20, max
+`--status` (default `active`, or any status with `--pr`) chooses what to list, `--limit` (default 20, max
 100) sets the page size, and `--page` steps through the pages. `--json` prints
 `{"sessions": [...], "has_more": bool}`, with `id`, `url`, `working_branch`,
 `pull_requests`, and the `version` that `aviator edit --expected-version`
@@ -187,6 +189,27 @@ aviator dismiss r/123 --criteria-json \
 aviator dismiss r/123 --criteria-json \
   '[{"baseline_invariant_id": 42, "category": "accepted_risk", "justification": "..."}]'
 ```
+
+### Record decisions
+
+A decision is a question, possible bug, risk, or choice raised about a
+session's PR, so reviewers can see why the code looks the way it does. Each one
+has a comment thread and is either open or settled with an outcome.
+
+```bash
+aviator decisions list r/123                  # a session's decisions
+aviator decisions list r/123 --status open    # only the open ones
+aviator decisions show r/123 7                # one decision with its comments
+aviator decisions apply r/123 --file batch.json   # record a batch, - reads stdin
+```
+
+`apply` creates, changes, settles, reopens, and comments on decisions in one
+request, so either all of it is recorded or none of it is.
+`aviator decisions apply --help` has the batch format. It needs a user access
+token (`aviator login` or a personal token). Anyone can settle, reopen, and
+comment, but only the user who raised a decision can change its type, title,
+summary, or anchor. There's no way to delete one. `--json` prints the result as
+a single JSON object.
 
 ### Manage baseline invariants
 

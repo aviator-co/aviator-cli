@@ -31,7 +31,7 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   invariants_format.go  # text rendering for the invariants commands
   invariants_insights.go        # `aviator invariants <insights|show|reviews|waivers>` and insights' `--since` parsing
   invariants_insights_format.go # text rendering + `--json` structs for the analytics commands
-  decisions.go      # `aviator decisions <list|show|apply>` (hidden)
+  decisions.go      # `aviator decisions <list|show|apply>`
   decisions_format.go  # text rendering for the decisions commands
   version.go        # `aviator version`
   helpers.go        # parseRepo(s), readSpecFile, collectCriteria, collectBody
@@ -139,10 +139,10 @@ The CLI targets endpoints in the `mergeit` backend:
   spec_file?, acceptance_criteria?, ...}`. Creates a runbook from an intent
   (`prompt` is a deprecated backend alias; the CLI sends `intent`); criteria
   are optional.
-- `GET /api/v1/runbook/` — `?org=&repo=&working_branch=&status=&page=&per_page=`.
-  Lists the caller's sessions in a repo, newest first, for `aviator sessions`.
-  `working_branch` is the only filter, so `--pr` matches client-side over the
-  `pull_requests` each summary carries.
+- `GET /api/v1/runbook/` —
+  `?org=&repo=&working_branch=&pr_number=&all_users=&status=&page=&per_page=`.
+  Lists sessions in a repo, newest first, for `aviator sessions`: the caller's,
+  or everyone's in the account with `all_users=true`, which `--pr` always sends.
 - `PATCH /api/v1/verify/<n>` — `{intent?, acceptance_criteria?,
   expected_version?, preview_config_name?}`, at least one of intent, criteria,
   or preview config; `expected_version` is required with criteria (409
@@ -176,11 +176,11 @@ The CLI targets endpoints in the `mergeit` backend:
   The CLI doesn't follow it with the bearer token: `EvidenceURL` stops at the
   redirect and the download is a plain unauthenticated GET.
 
-- `/api/v1/verify/<n>/decisions` — for `aviator decisions`, which is
-  `Hidden: true` while it changes. `GET` lists in id order without comments
-  (`comment_count` instead), `?status=open|settled&page=&per_page=`, with
-  `has_more`; `GET /<id>` is one decision with its comments. `POST` takes
-  `{decisions: [...]}` and applies it all or nothing: no `id` creates, an `id`
+- `/api/v1/verify/<n>/decisions` — for `aviator decisions`. `GET` lists in id
+  order without comments (`comment_count` instead),
+  `?status=open|settled&page=&per_page=`, with `has_more`; `GET /<id>` is one
+  decision with its comments. `POST` takes `{decisions: [...]}` and applies it
+  all or nothing: no `id` creates, an `id`
   changes only the keys sent, `outcome` settles (needs `resolution`),
   `outcome: null` reopens (needs a comment), and a comment with an `id` edits
   it. Anyone can settle, reopen, or comment; only the raiser can change type,
