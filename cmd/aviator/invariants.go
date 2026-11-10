@@ -21,6 +21,10 @@ const invariantStatuses = "pending, active, rejected"
 // server validates these too.
 const invariantSources = "manual, ai_generated, ai_generated_docs, ai_generated_pr_comments, template, slack, github_comment"
 
+// invariantModes names the --mode values `list` takes; the server validates
+// these too.
+const invariantModes = "off, shadow, enforced"
+
 // conditionFlagHelp documents the --condition syntax shared by create and edit.
 const conditionFlagHelp = "narrow when the invariant applies, as <type>=<value> or <type>!=<value> " +
 	"(types: file_path_glob, language; repeatable; see https://docs.aviator.co/verify/reference/invariant-conditions)"

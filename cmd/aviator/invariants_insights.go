@@ -17,10 +17,6 @@ import (
 // validates the value, so nothing is checked client-side.
 const usageSorts = "applied, failure_rate, waived, waive_rate, shadow_failed"
 
-// invariantModes names the --mode values `list` takes; the server validates
-// these too.
-const invariantModes = "off, shadow, enforced"
-
 // reviewOutcomes names the --outcome values `reviews` takes. The server
 // validates the value, so nothing is checked client-side.
 const reviewOutcomes = "pass, fail, warn, error, waived, fixed, not_run"
