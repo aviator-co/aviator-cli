@@ -21,6 +21,10 @@ const invariantStatuses = "pending, active, rejected"
 // server validates these too.
 const invariantSources = "manual, ai_generated, ai_generated_docs, ai_generated_pr_comments, template, slack, github_comment"
 
+// invariantModes names the --mode values `list` takes; the server validates
+// these too.
+const invariantModes = "off, shadow, enforced"
+
 // conditionFlagHelp documents the --condition syntax shared by create and edit.
 const conditionFlagHelp = "narrow when the invariant applies, as <type>=<value> or <type>!=<value> " +
 	"(types: file_path_glob, language; repeatable; see https://docs.aviator.co/verify/reference/invariant-conditions)"
@@ -62,6 +66,7 @@ var invariantsListFlags struct {
 	Sources      []string
 	OwnerTeams   []string
 	Unowned      bool
+	Modes        []string
 	Usage        bool
 	Sort         string
 	NeverApplied bool
@@ -76,7 +81,8 @@ var invariantsListCmd = &cobra.Command{
 		"says how many reviews applied, failed and waived it; the listing then\n" +
 		"covers active invariants unless --status says otherwise, and --sort or\n" +
 		"--never-applied orders or narrows it. Counts are per review session,\n" +
-		"all-time.\n" +
+		"all-time. SHADOW is failed/evaluated reviews, only for invariants in\n" +
+		"shadow mode now.\n" +
 		"\n" +
 		"Docs: " + docsInvariants,
 	Args: cobra.NoArgs,
@@ -94,6 +100,7 @@ var invariantsListCmd = &cobra.Command{
 			Sources:    invariantsListFlags.Sources,
 			OwnerTeams: ownerTeamNames(ownerTeams),
 			Unowned:    invariantsListFlags.Unowned,
+			Modes:      invariantsListFlags.Modes,
 			Page:       invariantsListFlags.Page,
 			PerPage:    invariantsListFlags.Limit,
 		}
@@ -577,6 +584,8 @@ func init() {
 		"only invariants these org/team-slug teams own, the default team's fallbacks included (comma-separated)")
 	lf.BoolVar(&invariantsListFlags.Unowned, "unowned", false,
 		"only invariants with no owner team and no default to fall back to")
+	lf.StringSliceVar(&invariantsListFlags.Modes, "mode", nil,
+		"only invariants in these current modes, comma-separated ("+invariantModes+")")
 	lf.BoolVar(&invariantsListFlags.Usage, "usage", false,
 		"add how many reviews applied, failed and waived each invariant (active ones unless --status)")
 	lf.StringVar(&invariantsListFlags.Sort, "sort", "",

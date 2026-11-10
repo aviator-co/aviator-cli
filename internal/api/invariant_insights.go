@@ -184,17 +184,21 @@ type InvariantWaiversResponse struct {
 }
 
 // InvariantReviewsQuery filters and pages GET /api/v1/invariants/<id>/reviews.
-// Outcome is one of pass, fail, warn, error, waived, fixed, not_run.
+// Outcome is one of pass, fail, warn, error, waived, fixed, not_run. Shadow
+// keeps the reviews with (true) or without (false) a shadow verdict; nil sends
+// no filter.
 type InvariantReviewsQuery struct {
 	Repo    *Repository
 	Outcome string
+	Shadow  *bool
 	Page    int
 	PerPage int
 }
 
 // InvariantReviewRow is one review an invariant was applied on. Result is
 // the verdict run's raw status for it (pass, fail, warn, error), nil when no
-// run concluded on it; Outcome folds waivers and earlier failures in.
+// run concluded on it; Outcome folds waivers and earlier failures in. Shadow
+// is whether the invariant is in shadow mode now and has a shadow verdict here.
 type InvariantReviewRow struct {
 	Review     InvariantReview     `json:"review"`
 	AppliedAt  string              `json:"applied_at"`
@@ -203,6 +207,7 @@ type InvariantReviewRow struct {
 	Result     *string             `json:"result"`
 	Outcome    string              `json:"outcome"`
 	Waiver     *InvariantWaiver    `json:"waiver"`
+	Shadow     bool                `json:"shadow"`
 }
 
 // InvariantReviewRun is the run of the latest concluded verdict for the
@@ -279,6 +284,9 @@ func (c *Client) ListInvariantReviews(
 	setRepo(values, q.Repo)
 	if q.Outcome != "" {
 		values.Set("outcome", q.Outcome)
+	}
+	if q.Shadow != nil {
+		values.Set("shadow", strconv.FormatBool(*q.Shadow))
 	}
 	setPage(values, q.Page, q.PerPage)
 	var out InvariantReviewsResponse

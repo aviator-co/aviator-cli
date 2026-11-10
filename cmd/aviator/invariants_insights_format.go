@@ -96,6 +96,9 @@ func formatInvariantShow(d *api.InvariantDetail, waivers *api.InvariantWaiversRe
 	if u.TotalWaives > 0 {
 		fmt.Fprintf(&b, "  Waived as: %s\n", formatWaiveCounts(u.WaivesByCategory))
 	}
+	if u.ShadowEvaluated > 0 {
+		fmt.Fprintf(&b, "  Shadow: evaluated %d · failed %d\n", u.ShadowEvaluated, u.ShadowFailed)
+	}
 
 	b.WriteString("\nBy version\n")
 	rows := make([][]string, 0, len(d.ByVersion))
@@ -144,9 +147,13 @@ func formatInvariantReviews(resp *api.InvariantReviewsResponse) string {
 	rows := make([][]string, 0, len(resp.Reviews))
 	for i := range resp.Reviews {
 		r := &resp.Reviews[i]
+		outcome := r.Outcome
+		if r.Shadow {
+			outcome += " (shadow)"
+		}
 		rows = append(rows, []string{
 			formatDate(r.AppliedAt), formatRunbookID(r.Review.RunbookNumber), formatReviewPR(&r.Review),
-			r.Outcome, formatOptionalInt(r.Version), formatReviewNote(r),
+			outcome, formatOptionalInt(r.Version), formatReviewNote(r),
 		})
 	}
 	writeTable(&b, "", []string{"WHEN", "REVIEW", "PR", "OUTCOME", "VERSION", "NOTE"}, rows)
@@ -459,6 +466,7 @@ type reviewRowJSON struct {
 	Result     *string        `json:"result"`
 	Outcome    string         `json:"outcome"`
 	Waiver     *waiverJSON    `json:"waiver"`
+	Shadow     bool           `json:"shadow"`
 }
 
 type reviewRunJSON struct {
@@ -619,6 +627,7 @@ func newInvariantReviewsJSON(resp *api.InvariantReviewsResponse) reviewsJSON {
 			Version:   r.Version,
 			Result:    r.Result,
 			Outcome:   r.Outcome,
+			Shadow:    r.Shadow,
 		}
 		if r.VerdictRun != nil {
 			row.VerdictRun = &reviewRunJSON{RunID: r.VerdictRun.ID, Status: r.VerdictRun.Status, CompletedAt: r.VerdictRun.CompletedAt}

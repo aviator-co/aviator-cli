@@ -32,13 +32,14 @@ func TestListInvariantsQuery(t *testing.T) {
 		Status:  "active",
 		IDs:     []int{7, 12},
 		Sources: []string{"manual", "ai_generated_docs"},
+		Modes:   []string{"off", "shadow"},
 		Page:    2,
 		PerPage: 5,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gotQuery != "ids=7%2C12&org=acme&page=2&per_page=5&repo=web&source=manual%2Cai_generated_docs&status=active" {
+	if gotQuery != "ids=7%2C12&mode=off%2Cshadow&org=acme&page=2&per_page=5&repo=web&source=manual%2Cai_generated_docs&status=active" {
 		t.Errorf("query = %q", gotQuery)
 	}
 	if !resp.HasMore || resp.Page != 2 || len(resp.Invariants) != 1 {
