@@ -21,18 +21,21 @@ var verifyAddFlags struct {
 	Criteria     []string
 	CriteriaFile string
 	BaseVersion  int
+	Intent       string
 	JSON         bool
 }
 
 var verifyAddCmd = &cobra.Command{
-	Use:    "add <id> --pr <number> --criteria-file <file> --base-version <version>",
+	Use:    "add <id> --pr <number> --intent <intent> --criteria-file <file> --base-version <version>",
 	Short:  "Add a PR to a draft stacked review (e.g. aviator verify add r/42 --pr 102 ...)",
 	Hidden: true,
-	Long: "Add a PR to a draft stacked review and replace its acceptance criteria.\n" +
+	Long: "Add a PR to a draft stacked review and replace its intent and acceptance\n" +
+		"criteria.\n" +
 		"\n" +
-		"The criteria are the FULL list for every PR in the review, not just the\n" +
-		"new one: read the current list with `aviator show`, rewrite any that\n" +
-		"conflict, duplicate, or got refined, and send them all. --base-version is\n" +
+		"The intent and criteria cover EVERY PR in the review, not just the new\n" +
+		"one: read the current ones with `aviator show`, fold in the new PR, rewrite\n" +
+		"any criteria that conflict, duplicate, or got refined, and send them all.\n" +
+		"Without --intent the intent stays as it was. --base-version is\n" +
 		"the version `aviator show` printed; the add is refused if the criteria\n" +
 		"changed since.",
 	Args: cobra.ExactArgs(1),
@@ -63,6 +66,7 @@ var verifyAddCmd = &cobra.Command{
 			PRNumber:    f.PR,
 			Criteria:    criteria,
 			BaseVersion: f.BaseVersion,
+			Intent:      f.Intent,
 		})
 		if err != nil {
 			return stackedVerifyError(err, runbookNumber, f.BaseVersion)
@@ -314,6 +318,7 @@ func init() {
 	af := verifyAddCmd.Flags()
 	registerCriteriaFlags(verifyAddCmd, &verifyAddFlags.Criteria, &verifyAddFlags.CriteriaFile)
 	af.IntVar(&verifyAddFlags.PR, "pr", 0, "number of the PR to add")
+	af.StringVar(&verifyAddFlags.Intent, "intent", "", "new intent covering every PR in the review, the new one included")
 	af.IntVar(&verifyAddFlags.BaseVersion, "base-version", 0,
 		"criteria version the new list is based on, as aviator show prints it")
 	af.BoolVar(&verifyAddFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
