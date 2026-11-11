@@ -24,6 +24,7 @@ var verifyFlags struct {
 	Force               bool
 	RegenerateScenarios string
 	Preview             string
+	ExternalEvidence    bool
 	JSON                bool
 }
 
@@ -31,7 +32,7 @@ var verifyFlags struct {
 // session, so trigger mode rejects them by name.
 var verifySubmitOnlyFlags = []string{
 	"repo", "intent", "criteria", "criteria-file",
-	"working-branch", "target-branch", "spec", "scenario-guidance",
+	"working-branch", "target-branch", "spec", "scenario-guidance", "external-evidence",
 }
 
 var verifyTriggerOnlyFlags = []string{"evaluator-only", "force", "regenerate-scenarios"}
@@ -70,6 +71,11 @@ var verifyCmd = &cobra.Command{
 		"or --evaluator-only to re-judge the evidence an earlier run already\n" +
 		"collected instead of collecting it again. Evaluator-only is refused once\n" +
 		"criteria have been added or reworded, since those need a full run.\n" +
+		"\n" +
+		"--external-evidence creates the session as a draft that runs nothing\n" +
+		"yet: run the change yourself and submit what you saw with\n" +
+		"`aviator evidence submit`. Once the evidence is uploaded the draft\n" +
+		"becomes active and a run judges it.\n" +
 		"\n" +
 		"--preview names one of the repo's preview configs for the session's runs\n" +
 		"to use instead of the repo default, in either mode. The choice sticks:\n" +
@@ -153,6 +159,7 @@ func runVerifySubmit(cmd *cobra.Command) error {
 		SpecFile:           spec,
 		PreviewConfigName:  verifyFlags.Preview,
 		ScenarioGuidance:   guidance,
+		Draft:              verifyFlags.ExternalEvidence,
 	})
 	if err != nil {
 		return err
@@ -178,6 +185,10 @@ func runVerifySubmit(cmd *cobra.Command) error {
 	fmt.Printf("  Criteria: %d\n", len(resp.AcceptanceCriteria))
 	if name := deref(resp.PreviewConfigName); name != "" {
 		fmt.Printf("  Preview config: %s\n", name)
+	}
+	if resp.Draft {
+		fmt.Printf("  Draft: runs once its evidence is submitted\n")
+		fmt.Printf("  %s\n", colors.Faint("Submit what you saw with: aviator evidence submit "+formatRunbookID(resp.RunbookNumber)+" <manifest>"))
 	}
 	return nil
 }
@@ -259,6 +270,8 @@ func init() {
 		"start a fresh full run even if an equivalent run already exists (trigger mode only)")
 	f.StringVar(&verifyFlags.Preview, "preview", "",
 		"preview config the session's runs use instead of the repo default; sticks until changed")
+	f.BoolVar(&verifyFlags.ExternalEvidence, "external-evidence", false,
+		"create a draft that waits for scenarios and evidence you submit from your own run (submit mode only)")
 	f.StringVar(&verifyFlags.RegenerateScenarios, "regenerate-scenarios", "",
 		"rewrite the scenarios before running, with feedback on what to change (trigger mode only)")
 	f.BoolVar(&verifyFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
@@ -270,6 +283,7 @@ type verifySubmitJSON struct {
 	TargetBranch      string  `json:"target_branch"`
 	CriteriaCount     int     `json:"criteria_count"`
 	PreviewConfigName *string `json:"preview_config_name"`
+	Draft             bool    `json:"draft"`
 }
 
 func newVerifySubmitJSON(resp *api.SubmitVerifyResponse) verifySubmitJSON {
@@ -279,6 +293,7 @@ func newVerifySubmitJSON(resp *api.SubmitVerifyResponse) verifySubmitJSON {
 		TargetBranch:      resp.TargetBranch,
 		CriteriaCount:     len(resp.AcceptanceCriteria),
 		PreviewConfigName: resp.PreviewConfigName,
+		Draft:             resp.Draft,
 	}
 }
 
