@@ -74,6 +74,20 @@ func formatRunbookDetail(d *api.RunbookDetail, runs []api.VerificationRun, moreR
 	var b strings.Builder
 	b.WriteString(formatDetailHeader(d))
 
+	if state := deref(d.State); state != "" {
+		fmt.Fprintf(&b, "  State: %s\n", state)
+	}
+	if len(d.ReplacedBy) > 0 {
+		ids := make([]string, len(d.ReplacedBy))
+		for i, n := range d.ReplacedBy {
+			ids[i] = formatRunbookID(n)
+		}
+		fmt.Fprintf(&b, "  Replaced by: %s\n", strings.Join(ids, ", "))
+	}
+	if d.ReplacedFrom != nil {
+		fmt.Fprintf(&b, "  Replaces: %s\n", formatRunbookID(*d.ReplacedFrom))
+	}
+
 	if intent := deref(d.Intent); intent != "" {
 		fmt.Fprintf(&b, "  Intent: %s\n", intent)
 	}
@@ -95,6 +109,8 @@ func formatRunbookDetail(d *api.RunbookDetail, runs []api.VerificationRun, moreR
 	if name := deref(d.PreviewConfigName); name != "" {
 		fmt.Fprintf(&b, "  Preview config: %s\n", name)
 	}
+
+	b.WriteString(formatMembers(d.Members))
 
 	if len(d.SpecFiles) > 0 {
 		names := make([]string, len(d.SpecFiles))
@@ -236,6 +252,9 @@ type showJSON struct {
 	Runs               []runJSON         `json:"runs"`
 	RunsHasMore        bool              `json:"runs_has_more"`
 	PreviewConfigName  *string           `json:"preview_config_name"`
+	// State and Members describe a stacked session; null and [] otherwise.
+	State   *string      `json:"state"`
+	Members []memberJSON `json:"members"`
 }
 
 type pullRequestJSON struct {
@@ -267,6 +286,8 @@ func newShowJSON(d *api.RunbookDetail, runs []api.VerificationRun, moreRuns bool
 		PreviewConfigName:  d.PreviewConfigName,
 		Runs:               make([]runJSON, 0, len(runs)),
 		RunsHasMore:        moreRuns,
+		State:              d.State,
+		Members:            newMembersJSON(d.Members),
 	}
 	for i := range runs {
 		out.Runs = append(out.Runs, newRunJSON(&runs[i]))

@@ -12,6 +12,9 @@ type SubmitVerifyRequest struct {
 	SpecFile           *SpecFile  `json:"spec_file,omitempty"`
 	PreviewConfigName  string     `json:"preview_config_name,omitempty"`
 	ScenarioGuidance   string     `json:"scenario_guidance,omitempty"`
+	// Draft opens a stacked session that holds PRs and criteria but never
+	// runs until marked ready. Only allowlisted owners can use it.
+	Draft bool `json:"draft,omitempty"`
 }
 
 // SubmitVerifyResponse is the response from POST /api/v1/verify.

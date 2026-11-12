@@ -27,6 +27,13 @@ type RunbookDetail struct {
 	// PreviewConfigName is the preview config the session's runs use; the
 	// latest run's config is on LatestVerification.
 	PreviewConfigName *string `json:"preview_config_name"`
+	// State (draft, active, archived) and Members are set only for stacked
+	// sessions; older backends and unstacked sessions leave them out.
+	State   *string         `json:"state,omitempty"`
+	Members []SessionMember `json:"members,omitempty"`
+	// ReplacedFrom and ReplacedBy are the runbook numbers a regroup linked.
+	ReplacedFrom *int  `json:"replaced_from,omitempty"`
+	ReplacedBy   []int `json:"replaced_by,omitempty"`
 	// LatestVerificationPresent distinguishes a response that carried an
 	// explicit null latest_verification (no runs yet) from one where the
 	// server omitted the key entirely.
