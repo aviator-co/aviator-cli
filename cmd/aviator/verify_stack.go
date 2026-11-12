@@ -1,15 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
 	"github.com/aviator-co/aviator-cli/internal/utils/colors"
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
 
@@ -139,7 +142,10 @@ var verifyRegroupCmd = &cobra.Command{
 		"   \"criteria\": [\"...\"], \"decision_ids\": [3, 4]}\n" +
 		"\n" +
 		"criteria is the full list for the group's PRs; decision_ids names the\n" +
-		"decisions that move to it (from `aviator decisions list`).",
+		"decisions that move to it (from `aviator decisions list`).\n" +
+		"\n" +
+		"It prints the split and asks for a yes before making it, so it needs\n" +
+		"an interactive terminal.",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		runbookNumber, err := parseRunbookID(args[0])
@@ -161,6 +167,10 @@ var verifyRegroupCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		ok, err := confirmRegroup(cmd.InOrStdin(), cmd.ErrOrStderr(), stdinIsTerminal(), runbookNumber, groups)
+		if err != nil || !ok {
+			return err
+		}
 		resp, err := client.RegroupVerify(cmd.Context(), runbookNumber, api.RegroupVerifyRequest{Groups: groups})
 		if err != nil {
 			return stackedVerifyError(err, runbookNumber, 0)
@@ -176,6 +186,41 @@ var verifyRegroupCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+// stdinIsTerminal is a var so tests can stand in for a terminal.
+var stdinIsTerminal = func() bool { return isatty.IsTerminal(os.Stdin.Fd()) }
+
+// confirmRegroup prints what the split does and asks for a yes, since an agent
+// can't approve a split for the user. Anything but y/yes cancels.
+func confirmRegroup(
+	in io.Reader, out io.Writer, isTerminal bool, runbookNumber int, groups []api.RegroupGroup,
+) (bool, error) {
+	id := formatRunbookID(runbookNumber)
+	if !isTerminal {
+		return false, errors.Errorf("regroup asks for a yes before splitting %s, so it needs an "+
+			"interactive terminal; run it there yourself", id)
+	}
+	_, _ = fmt.Fprintf(out, "This archives %s, cancels any verification running on it, and opens one new review per group:\n", id)
+	for i, g := range groups {
+		prs := make([]string, 0, len(g.PRNumbers))
+		for _, n := range g.PRNumbers {
+			prs = append(prs, fmt.Sprintf("#%d", n))
+		}
+		_, _ = fmt.Fprintf(out, "  %d. %s — %s\n", i+1, strings.Join(prs, ", "), g.Intent)
+		_, _ = fmt.Fprintf(out, "     %s\n", colors.Faint(fmt.Sprintf("%d criteria, %d decisions", len(g.Criteria), len(g.DecisionIDs))))
+	}
+	_, _ = fmt.Fprintf(out, "Split %s into %d sessions? [y/N] ", id, len(groups))
+	answer, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, errors.Wrap(err, "failed to read the answer")
+	}
+	switch strings.ToLower(strings.TrimSpace(answer)) {
+	case "y", "yes":
+		return true, nil
+	}
+	_, _ = fmt.Fprintf(out, "Cancelled — %s is unchanged.\n", id)
+	return false, nil
 }
 
 // readRegroupGroup reads one --group file. Unknown keys are refused so a typo
