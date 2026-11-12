@@ -70,7 +70,7 @@ func TestStackedVerifyError(t *testing.T) {
 			"draft",
 			&api.Error{Status: http.StatusConflict, Code: "session-draft", Message: "draft"},
 			0,
-			[]string{"r/42 is a draft", "aviator verify confirm r/42"},
+			[]string{"r/42 is a draft", "aviator verify ready r/42"},
 		},
 		{
 			"stale on add",
@@ -124,29 +124,6 @@ func TestFormatMembers(t *testing.T) {
 	}
 }
 
-func TestConfirmJSON(t *testing.T) {
-	got := decodeJSON(t, newConfirmJSON(&api.ConfirmVerifyResponse{
-		StackedVerifySession: api.StackedVerifySession{
-			VerifySession: api.VerifySession{RunbookNumber: 42, URL: "https://app.aviator.co/r/42", Version: ptr(4)},
-			State:         ptr("active"),
-		},
-		RunID:     ptr(900),
-		RunStatus: "pending",
-	}))
-	if m, ok := got["members"].([]any); !ok || len(m) != 0 {
-		t.Errorf("members = %v, want []", got["members"])
-	}
-	delete(got, "members")
-	assertJSONFields(t, got, map[string]any{
-		"id":         "r/42",
-		"url":        "https://app.aviator.co/r/42",
-		"state":      "active",
-		"version":    float64(4),
-		"run_id":     float64(900),
-		"run_status": "pending",
-	})
-}
-
 func TestShowStackedSession(t *testing.T) {
 	detail := &api.RunbookDetail{
 		RunbookNumber: 42,
@@ -187,7 +164,7 @@ func TestShowUnstackedSession(t *testing.T) {
 
 // Stacked Verify is allowlisted, so its commands and flag stay out of help.
 func TestStackedVerifyHidden(t *testing.T) {
-	for _, c := range []interface{ IsAvailableCommand() bool }{verifyAddCmd, verifyConfirmCmd, verifyRegroupCmd} {
+	for _, c := range []interface{ IsAvailableCommand() bool }{verifyAddCmd, verifyReadyCmd, verifyRegroupCmd} {
 		if c.IsAvailableCommand() {
 			t.Errorf("%v is listed in help", c)
 		}

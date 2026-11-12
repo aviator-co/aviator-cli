@@ -13,7 +13,7 @@ type SubmitVerifyRequest struct {
 	PreviewConfigName  string     `json:"preview_config_name,omitempty"`
 	ScenarioGuidance   string     `json:"scenario_guidance,omitempty"`
 	// Draft creates the session as a draft, which runs nothing until its
-	// evidence is submitted or, for a stacked session, until confirmed.
+	// evidence is submitted or, for a stacked session, until marked ready.
 	Draft bool `json:"draft,omitempty"`
 }
 
