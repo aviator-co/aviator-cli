@@ -184,7 +184,7 @@ func runVerifySubmit(cmd *cobra.Command) error {
 	if verifyFlags.Draft {
 		id := formatRunbookID(resp.RunbookNumber)
 		fmt.Printf("  %s\n", colors.Faint("Draft: add each PR above with aviator verify add "+id+
-			", then aviator verify confirm "+id))
+			", then aviator verify ready "+id))
 	}
 	return nil
 }
@@ -269,7 +269,7 @@ func init() {
 	f.StringVar(&verifyFlags.RegenerateScenarios, "regenerate-scenarios", "",
 		"rewrite the scenarios before running, with feedback on what to change (trigger mode only)")
 	f.BoolVar(&verifyFlags.Draft, "draft", false,
-		"open a draft stacked review that holds PRs and criteria but doesn't run until confirmed (submit mode only)")
+		"open a draft stacked review that holds PRs and criteria but doesn't run until marked ready (submit mode only)")
 	// Stacked Verify is behind a per-user allowlist.
 	_ = f.MarkHidden("draft")
 	f.BoolVar(&verifyFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")

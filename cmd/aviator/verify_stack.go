@@ -77,24 +77,23 @@ var verifyAddCmd = &cobra.Command{
 		id := formatRunbookID(resp.RunbookNumber)
 		fmt.Printf("%s PR #%d added to %s%s\n", colors.Success("✓"), f.PR, id, formatVersion(resp.Version))
 		fmt.Print(formatMembers(resp.Members))
-		fmt.Printf("  %s\n", colors.Faint("Once the user agrees to the grouping: aviator verify confirm "+id))
+		fmt.Printf("  %s\n", colors.Faint("Once the user agrees to the grouping: aviator verify ready "+id))
 		return nil
 	},
 }
 
-var verifyConfirmFlags struct {
-	NoRun bool
-	JSON  bool
+var verifyReadyFlags struct {
+	JSON bool
 }
 
-var verifyConfirmCmd = &cobra.Command{
-	Use:    "confirm <id> [--no-run]",
-	Short:  "Make a draft stacked review active and start its first run",
+var verifyReadyCmd = &cobra.Command{
+	Use:    "ready <id>",
+	Short:  "Mark a draft stacked review ready",
 	Hidden: true,
-	Long: "Confirm a draft stacked review after the user agrees to its grouping.\n" +
-		"The review becomes active and runs once on the top PR of the stack,\n" +
-		"against every PR's criteria. --no-run confirms without starting a run.\n" +
-		"No PRs can be added after this.",
+	Long: "Mark a draft stacked review ready after the user agrees to its grouping.\n" +
+		"The review becomes active; no PRs can be added after this. It starts\n" +
+		"no run: Verify runs on the top PR, against every PR's criteria, when a\n" +
+		"PR is marked ready for review, approved, or queued.",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		runbookNumber, err := parseRunbookID(args[0])
@@ -105,22 +104,16 @@ var verifyConfirmCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		resp, err := client.ConfirmVerify(cmd.Context(), runbookNumber, api.ConfirmVerifyRequest{
-			Run: !verifyConfirmFlags.NoRun,
-		})
+		resp, err := client.MarkVerifyReady(cmd.Context(), runbookNumber)
 		if err != nil {
 			return stackedVerifyError(err, runbookNumber, 0)
 		}
-		if verifyConfirmFlags.JSON {
-			return printJSON(newConfirmJSON(resp))
+		if verifyReadyFlags.JSON {
+			return printJSON(newStackedSessionJSON(resp))
 		}
 		id := formatRunbookID(resp.RunbookNumber)
-		fmt.Printf("%s %s confirmed\n", colors.Success("✓"), id)
+		fmt.Printf("%s %s marked ready\n", colors.Success("✓"), id)
 		fmt.Print(formatMembers(resp.Members))
-		if resp.RunID != nil {
-			fmt.Printf("  Run %d: %s\n", *resp.RunID, resp.RunStatus)
-			fmt.Printf("  %s\n", colors.Faint(fmt.Sprintf("Poll with: aviator results %s --run %d", id, *resp.RunID)))
-		}
 		return nil
 	},
 }
@@ -223,8 +216,8 @@ func stackedVerifyError(err error, runbookNumber, baseVersion int) error {
 	id := formatRunbookID(runbookNumber)
 	switch apiErr.Code {
 	case "session-draft":
-		return errors.Errorf("%s is a draft and doesn't run until confirmed; once the user agrees "+
-			"to the grouping, run `aviator verify confirm %s`", id, id)
+		return errors.Errorf("%s is a draft and doesn't run until marked ready; once the user agrees "+
+			"to the grouping, run `aviator verify ready %s`", id, id)
 	case "stale-runbook-version":
 		if baseVersion > 0 {
 			return errors.Errorf("the criteria of %s changed since version %d; re-read them with "+
@@ -284,20 +277,6 @@ func newStackedSessionJSON(s *api.StackedVerifySession) stackedSessionJSON {
 	}
 }
 
-type confirmJSON struct {
-	stackedSessionJSON
-	RunID     *int   `json:"run_id"`
-	RunStatus string `json:"run_status"`
-}
-
-func newConfirmJSON(resp *api.ConfirmVerifyResponse) confirmJSON {
-	return confirmJSON{
-		stackedSessionJSON: newStackedSessionJSON(&resp.StackedVerifySession),
-		RunID:              resp.RunID,
-		RunStatus:          resp.RunStatus,
-	}
-}
-
 type regroupJSON struct {
 	Archived string               `json:"archived"`
 	Sessions []stackedSessionJSON `json:"sessions"`
@@ -323,13 +302,12 @@ func init() {
 		"criteria version the new list is based on, as aviator show prints it")
 	af.BoolVar(&verifyAddFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 
-	cf := verifyConfirmCmd.Flags()
-	cf.BoolVar(&verifyConfirmFlags.NoRun, "no-run", false, "confirm without starting the first run")
-	cf.BoolVar(&verifyConfirmFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
+	cf := verifyReadyCmd.Flags()
+	cf.BoolVar(&verifyReadyFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 
 	rf := verifyRegroupCmd.Flags()
 	rf.StringArrayVar(&verifyRegroupFlags.Groups, "group", nil, "JSON file describing one new review (repeatable)")
 	rf.BoolVar(&verifyRegroupFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 
-	verifyCmd.AddCommand(verifyAddCmd, verifyConfirmCmd, verifyRegroupCmd)
+	verifyCmd.AddCommand(verifyAddCmd, verifyReadyCmd, verifyRegroupCmd)
 }

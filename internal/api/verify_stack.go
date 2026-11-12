@@ -41,25 +41,12 @@ func (c *Client) AddVerifyPR(
 	return &out, nil
 }
 
-// ConfirmVerifyRequest is the body for POST /api/v1/verify/<n>/confirm.
-type ConfirmVerifyRequest struct {
-	Run bool `json:"run"`
-}
-
-// ConfirmVerifyResponse is the confirmed session, with the first run when one
-// was started.
-type ConfirmVerifyResponse struct {
-	StackedVerifySession
-	RunID     *int   `json:"run_id"`
-	RunStatus string `json:"run_status"`
-}
-
-// ConfirmVerify makes a draft stacked session active.
-func (c *Client) ConfirmVerify(
-	ctx context.Context, runbookNumber int, req ConfirmVerifyRequest,
-) (*ConfirmVerifyResponse, error) {
-	var out ConfirmVerifyResponse
-	if err := c.postJSON(ctx, verifyStackPath(runbookNumber, "confirm"), req, &out); err != nil {
+// MarkVerifyReady marks a draft stacked session ready. It starts no run.
+func (c *Client) MarkVerifyReady(
+	ctx context.Context, runbookNumber int,
+) (*StackedVerifySession, error) {
+	var out StackedVerifySession
+	if err := c.postJSON(ctx, verifyStackPath(runbookNumber, "ready"), struct{}{}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

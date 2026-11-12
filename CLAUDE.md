@@ -19,7 +19,7 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   login.go          # `aviator login`   -> browser OAuth flow
   logout.go         # `aviator logout`  -> drop the stored session
   verify.go         # `aviator verify`  -> POST /api/v1/verify
-  verify_stack.go   # `aviator verify <add|confirm|regroup>` (hidden, stacked Verify)
+  verify_stack.go   # `aviator verify <add|ready|regroup>` (hidden, stacked Verify)
   runbook.go        # `aviator runbook` -> POST /api/v1/runbook
   show.go           # `aviator show`    -> runbook detail + its verification runs
   sessions.go       # `aviator sessions`-> list/lookup sessions by branch or PR
@@ -166,8 +166,8 @@ The CLI targets endpoints in the `mergeit` backend:
   a draft never runs (409 `session-draft`). `POST /api/v1/verify/<n>/prs`
   takes `{pr_number, criteria, base_version}`, `criteria` being the full list
   for every member (409 `stale-runbook-version` when `base_version` is
-  behind). `POST /<n>/confirm` takes `{run}` and returns the session plus
-  `run_id`/`run_status` when a run started. `POST /<n>/regroup` only splits:
+  behind). `POST /<n>/ready` takes `{}`, makes the draft active, and starts no
+  run (PR events start them). `POST /<n>/regroup` only splits:
   it takes `{groups: [{pr_numbers, intent, criteria, decision_ids}]}` with two
   or more groups (one is 400 `invalid-input`) and returns `{sessions: [...]}`. All three return the session with `state` and
   `members` (`[{pr_number, position, head_sha}]`) and refuse a broken stack

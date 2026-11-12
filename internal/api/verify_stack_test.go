@@ -100,32 +100,17 @@ func TestAddVerifyPRStaleVersion(t *testing.T) {
 	}
 }
 
-func TestConfirmVerify(t *testing.T) {
-	srv := stackServer(t, "/api/v1/verify/42/confirm", `{"run":true}`, http.StatusOK,
-		`{"runbook_number":42,"state":"active","run_id":900,"run_status":"pending"}`)
-	defer srv.Close()
-
-	resp, err := newTestClient(srv).ConfirmVerify(context.Background(), 42, ConfirmVerifyRequest{Run: true})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.RunID == nil || *resp.RunID != 900 || resp.RunStatus != "pending" || *resp.State != "active" {
-		t.Errorf("resp = %+v", resp)
-	}
-}
-
-// --no-run must send run:false explicitly rather than dropping the key.
-func TestConfirmVerifyNoRun(t *testing.T) {
-	srv := stackServer(t, "/api/v1/verify/42/confirm", `{"run":false}`, http.StatusOK,
+func TestMarkVerifyReady(t *testing.T) {
+	srv := stackServer(t, "/api/v1/verify/42/ready", `{}`, http.StatusOK,
 		`{"runbook_number":42,"state":"active"}`)
 	defer srv.Close()
 
-	resp, err := newTestClient(srv).ConfirmVerify(context.Background(), 42, ConfirmVerifyRequest{})
+	resp, err := newTestClient(srv).MarkVerifyReady(context.Background(), 42)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.RunID != nil {
-		t.Errorf("run_id = %v, want nil", *resp.RunID)
+	if *resp.State != "active" {
+		t.Errorf("resp = %+v", resp)
 	}
 }
 
