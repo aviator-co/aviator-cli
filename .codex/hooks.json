@@ -1,0 +1,36 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if command -v aviator >/dev/null 2>&1; then aviator hooks session-start --agent=codex; else echo '{\"hookSpecificOutput\":{\"additionalContext\":\"This repository uses Aviator Verify, but the aviator CLI isn'\\''t installed, so this session can'\\''t submit anything to it. Tell the user to install it with `brew install aviator-co/tap/aviator`, then sign in with `aviator login`.\",\"hookEventName\":\"SessionStart\"}}'; fi"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v aviator >/dev/null 2>&1 && aviator hooks post-tool-use --agent=codex || true"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|mcp__.*__create_pull_request",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v aviator >/dev/null 2>&1 && aviator hooks pre-tool-use --agent=codex || true"
+          }
+        ]
+      }
+    ]
+  }
+}
