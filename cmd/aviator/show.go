@@ -77,6 +77,9 @@ func formatRunbookDetail(d *api.RunbookDetail, runs []api.VerificationRun, moreR
 	if state := deref(d.State); state != "" {
 		fmt.Fprintf(&b, "  State: %s\n", state)
 	}
+	if problem := deref(d.StackProblem); problem != "" {
+		fmt.Fprintf(&b, "  Stack problem: %s\n", problem)
+	}
 	if len(d.ReplacedBy) > 0 {
 		ids := make([]string, len(d.ReplacedBy))
 		for i, n := range d.ReplacedBy {
@@ -253,8 +256,9 @@ type showJSON struct {
 	RunsHasMore        bool              `json:"runs_has_more"`
 	PreviewConfigName  *string           `json:"preview_config_name"`
 	// State and Members describe a stacked session; null and [] otherwise.
-	State   *string      `json:"state"`
-	Members []memberJSON `json:"members"`
+	State        *string      `json:"state"`
+	Members      []memberJSON `json:"members"`
+	StackProblem *string      `json:"stack_problem"`
 }
 
 type pullRequestJSON struct {
@@ -288,6 +292,7 @@ func newShowJSON(d *api.RunbookDetail, runs []api.VerificationRun, moreRuns bool
 		RunsHasMore:        moreRuns,
 		State:              d.State,
 		Members:            newMembersJSON(d.Members),
+		StackProblem:       d.StackProblem,
 	}
 	for i := range runs {
 		out.Runs = append(out.Runs, newRunJSON(&runs[i]))
