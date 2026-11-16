@@ -19,7 +19,7 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   login.go          # `aviator login`   -> browser OAuth flow
   logout.go         # `aviator logout`  -> drop the stored session
   verify.go         # `aviator verify`  -> POST /api/v1/verify
-  verify_stack.go   # `aviator verify <add|ready|regroup>` (hidden, stacked Verify)
+  verify_stack.go   # `aviator verify <add|ready|remove>` (hidden, stacked Verify)
   runbook.go        # `aviator runbook` -> POST /api/v1/runbook
   show.go           # `aviator show`    -> runbook detail + its verification runs
   sessions.go       # `aviator sessions`-> list/lookup sessions by branch or PR
@@ -173,11 +173,16 @@ The CLI targets endpoints in the `mergeit` backend:
   takes `{pr_number, criteria, base_version}`, `criteria` being the full list
   for every member (409 `stale-runbook-version` when `base_version` is
   behind). `POST /<n>/ready` takes `{}`, makes the draft active, and starts no
-  run (PR events start them). `POST /<n>/regroup` only splits:
-  it takes `{groups: [{pr_numbers, intent, criteria, decision_ids}]}` with two
-  or more groups (one is 400 `invalid-input`) and returns `{sessions: [...]}`. All three return the session with `state` and
-  `members` (`[{pr_number, position, head_sha}]`) and refuse a broken stack
-  with 400 `stack-invalid`. The detail endpoint carries `state`, `members`,
+  run (PR events start them). `POST /<n>/prs/remove` takes `{pr_numbers,
+  criteria, base_version, intent?}`, `criteria` being the full list for the
+  PRs that stay; the session stays open (draft or ready). `POST
+  /api/v1/verify/stack` takes `{repository:{org,name}, pr_numbers, intent,
+  criteria, from_runbook_number?}` and opens a ready session holding those
+  PRs (`from_runbook_number` links the session they were removed from). All
+  of them return the session with `state` and `members` (`[{pr_number,
+  position, head_sha}]`) and refuse a broken stack with 400 `stack-invalid`
+  (503 `stack-check-unavailable` when GitHub can't say). The detail endpoint
+  carries `state`, `members`,
   `replaced_from` and `replaced_by` for stacked sessions only.
 - `POST /api/v1/verify/<n>/dismissals` — `{criteria: [{stable_key} |
   {stable_key, action: "waive", justification} |

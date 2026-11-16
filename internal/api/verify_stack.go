@@ -22,9 +22,11 @@ type StackedVerifySession struct {
 
 // AddVerifyPRRequest is the body for POST /api/v1/verify/<n>/prs. Criteria is
 // the full list for every member, replacing the session's criteria; Intent,
-// when set, replaces the session's intent the same way.
+// when set, replaces the session's intent the same way. One PR goes in
+// PRNumber, which every server accepts; several go in PRNumbers.
 type AddVerifyPRRequest struct {
-	PRNumber    int      `json:"pr_number"`
+	PRNumber    int      `json:"pr_number,omitempty"`
+	PRNumbers   []int    `json:"pr_numbers,omitempty"`
 	Criteria    []string `json:"criteria"`
 	BaseVersion int      `json:"base_version"`
 	Intent      string   `json:"intent,omitempty"`
@@ -52,31 +54,44 @@ func (c *Client) MarkVerifyReady(
 	return &out, nil
 }
 
-// RegroupGroup is one new session of a regroup: its PRs, intent, full
-// criteria, and the decisions that move to it.
-type RegroupGroup struct {
+// RemoveVerifyPRsRequest is the body for POST /api/v1/verify/<n>/prs/remove.
+// Criteria is the full list for the PRs that stay, replacing the session's
+// criteria; Intent, when set, replaces the session's intent the same way.
+type RemoveVerifyPRsRequest struct {
 	PRNumbers   []int    `json:"pr_numbers"`
-	Intent      string   `json:"intent"`
 	Criteria    []string `json:"criteria"`
-	DecisionIDs []int    `json:"decision_ids"`
+	BaseVersion int      `json:"base_version"`
+	Intent      string   `json:"intent,omitempty"`
 }
 
-// RegroupVerifyRequest is the body for POST /api/v1/verify/<n>/regroup.
-type RegroupVerifyRequest struct {
-	Groups []RegroupGroup `json:"groups"`
+// RemoveVerifyPRs takes PRs out of a stacked session, which stays open.
+func (c *Client) RemoveVerifyPRs(
+	ctx context.Context, runbookNumber int, req RemoveVerifyPRsRequest,
+) (*StackedVerifySession, error) {
+	var out StackedVerifySession
+	if err := c.postJSON(ctx, verifyStackPath(runbookNumber, "prs/remove"), req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
-// RegroupVerifyResponse lists the sessions that replace the archived one.
-type RegroupVerifyResponse struct {
-	Sessions []StackedVerifySession `json:"sessions"`
+// NewStackedVerifyRequest is the body for POST /api/v1/verify/stack.
+// FromRunbookNumber links the new session to the one its PRs were removed from.
+type NewStackedVerifyRequest struct {
+	Repository        Repository `json:"repository"`
+	PRNumbers         []int      `json:"pr_numbers"`
+	Intent            string     `json:"intent"`
+	Criteria          []string   `json:"criteria"`
+	FromRunbookNumber *int       `json:"from_runbook_number,omitempty"`
 }
 
-// RegroupVerify replaces a stacked session with one session per group.
-func (c *Client) RegroupVerify(
-	ctx context.Context, runbookNumber int, req RegroupVerifyRequest,
-) (*RegroupVerifyResponse, error) {
-	var out RegroupVerifyResponse
-	if err := c.postJSON(ctx, verifyStackPath(runbookNumber, "regroup"), req, &out); err != nil {
+// NewStackedVerify opens a ready stacked session holding the PRs. It starts
+// no run.
+func (c *Client) NewStackedVerify(
+	ctx context.Context, req NewStackedVerifyRequest,
+) (*StackedVerifySession, error) {
+	var out StackedVerifySession
+	if err := c.postJSON(ctx, "/api/v1/verify/stack", req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

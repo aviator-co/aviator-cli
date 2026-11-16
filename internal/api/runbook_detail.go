@@ -35,7 +35,8 @@ type RunbookDetail struct {
 	Members []SessionMember `json:"members,omitempty"`
 	// StackProblem says why a stacked session's PRs don't form one stack.
 	StackProblem *string `json:"stack_problem,omitempty"`
-	// ReplacedFrom and ReplacedBy are the runbook numbers a regroup linked.
+	// ReplacedFrom is the session this one's PRs were removed from (add --new
+	// --from), and ReplacedBy the sessions that took PRs removed from this one.
 	ReplacedFrom *int  `json:"replaced_from,omitempty"`
 	ReplacedBy   []int `json:"replaced_by,omitempty"`
 	// LatestVerificationPresent distinguishes a response that carried an

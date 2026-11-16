@@ -1,18 +1,12 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
 	"github.com/aviator-co/aviator-cli/internal/utils/colors"
-	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
 
@@ -20,7 +14,158 @@ import (
 // help and completion while it is; they run when called by name.
 
 var verifyAddFlags struct {
-	PR           int
+	PRs          []int
+	Criteria     []string
+	CriteriaFile string
+	BaseVersion  int
+	Intent       string
+	New          bool
+	From         string
+	Repo         string
+	JSON         bool
+}
+
+var verifyAddCmd = &cobra.Command{
+	Use: "add <id> --pr <number> [--pr <number>] --intent <intent> --criteria-file <file> --base-version <version>\n" +
+		"  aviator verify add --new --repo <owner/repo> --pr <number> [--pr <number>] --intent <intent> " +
+		"--criteria-file <file> [--from <id>]",
+	Short:  "Add PRs to a draft stacked review, or open a new review from PRs (e.g. aviator verify add r/42 --pr 102 ...)",
+	Hidden: true,
+	Long: "Add PRs to a draft stacked review and replace its intent and acceptance\n" +
+		"criteria. --pr is repeatable, in any order.\n" +
+		"\n" +
+		"The intent and criteria cover EVERY PR in the review, not just the new\n" +
+		"one: read the current ones with `aviator show`, fold in the new PR, rewrite\n" +
+		"any criteria that conflict, duplicate, or got refined, and send them all.\n" +
+		"Without --intent the intent stays as it was. --base-version is\n" +
+		"the version `aviator show` printed; the add is refused if the criteria\n" +
+		"changed since.\n" +
+		"\n" +
+		"With --new there is no <id>: it opens a new review holding the --pr PRs\n" +
+		"(repeatable, any order) with this intent and criteria. The new review is\n" +
+		"ready, not a draft, and starts no run; run it with `aviator verify r/<n>`.\n" +
+		"--from links it to the review the PRs were just removed from with\n" +
+		"`aviator verify remove`.",
+	Args: cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if verifyAddFlags.New {
+			if len(args) > 0 {
+				return errors.New("--new opens a new review, so it takes no <id>; use --from to link the review the PRs came from")
+			}
+			return runVerifyAddNew(cmd)
+		}
+		if len(args) != 1 {
+			return errors.New("add needs the review id, e.g. aviator verify add r/42 --pr 102 ... (or --new for a new review)")
+		}
+		for _, name := range []string{"from", "repo"} {
+			if cmd.Flags().Changed(name) {
+				return errors.Errorf("--%s only applies with --new", name)
+			}
+		}
+		return runVerifyAdd(cmd, args[0])
+	},
+}
+
+func runVerifyAdd(cmd *cobra.Command, arg string) error {
+	runbookNumber, err := parseRunbookID(arg)
+	if err != nil {
+		return err
+	}
+	f := &verifyAddFlags
+	prs, err := validPRNumbers(f.PRs)
+	if err != nil {
+		return err
+	}
+	if !cmd.Flags().Changed("base-version") {
+		return errors.New("--base-version is required, the version `aviator show` prints")
+	}
+	criteria, err := collectCriteria(f.Criteria, f.CriteriaFile)
+	if err != nil {
+		return err
+	}
+	if len(criteria) == 0 {
+		return errors.New("--criteria-file (or --criteria) is required, with the full list for every PR")
+	}
+	client, err := api.NewClient()
+	if err != nil {
+		return err
+	}
+	req := api.AddVerifyPRRequest{Criteria: criteria, BaseVersion: f.BaseVersion, Intent: f.Intent}
+	// One PR keeps the field older servers read.
+	if len(prs) == 1 {
+		req.PRNumber = prs[0]
+	} else {
+		req.PRNumbers = prs
+	}
+	resp, err := client.AddVerifyPR(cmd.Context(), runbookNumber, req)
+	if err != nil {
+		return stackedVerifyError(err, runbookNumber, f.BaseVersion)
+	}
+	if f.JSON {
+		return printJSON(newStackedSessionJSON(resp))
+	}
+	id := formatRunbookID(resp.RunbookNumber)
+	fmt.Printf("%s %s added to %s%s\n", colors.Success("✓"), formatPRList(prs), id, formatVersion(resp.Version))
+	fmt.Print(formatMembers(resp.Members))
+	fmt.Printf("  %s\n", colors.Faint("Once the user agrees to the grouping: aviator verify ready "+id))
+	return nil
+}
+
+func runVerifyAddNew(cmd *cobra.Command) error {
+	f := &verifyAddFlags
+	if cmd.Flags().Changed("base-version") {
+		return errors.New("--base-version doesn't apply with --new: the review is new")
+	}
+	if f.Repo == "" {
+		return errors.New("--repo is required with --new")
+	}
+	repo, err := parseRepo(f.Repo)
+	if err != nil {
+		return err
+	}
+	prs, err := validPRNumbers(f.PRs)
+	if err != nil {
+		return err
+	}
+	intent := strings.TrimSpace(f.Intent)
+	if intent == "" {
+		return errors.New("--intent is required with --new")
+	}
+	criteria, err := collectCriteria(f.Criteria, f.CriteriaFile)
+	if err != nil {
+		return err
+	}
+	if len(criteria) == 0 {
+		return errors.New("--criteria-file (or --criteria) is required, with the full list for these PRs")
+	}
+	req := api.NewStackedVerifyRequest{Repository: repo, PRNumbers: prs, Intent: intent, Criteria: criteria}
+	if f.From != "" {
+		from, err := parseRunbookID(f.From)
+		if err != nil {
+			return err
+		}
+		req.FromRunbookNumber = &from
+	}
+	client, err := api.NewClient()
+	if err != nil {
+		return err
+	}
+	resp, err := client.NewStackedVerify(cmd.Context(), req)
+	if err != nil {
+		return stackedVerifyError(err, 0, 0)
+	}
+	if f.JSON {
+		return printJSON(newStackedSessionJSON(resp))
+	}
+	id := formatRunbookID(resp.RunbookNumber)
+	fmt.Printf("%s %s opened with %s — %s\n", colors.Success("✓"), id, formatPRList(prs), resp.URL)
+	fmt.Print(formatMembers(resp.Members))
+	fmt.Printf("  %s\n", colors.Faint("It's ready and hasn't run: aviator verify "+id))
+	return nil
+}
+
+var verifyRemoveFlags struct {
+	PRs          []int
 	Criteria     []string
 	CriteriaFile string
 	BaseVersion  int
@@ -28,28 +173,32 @@ var verifyAddFlags struct {
 	JSON         bool
 }
 
-var verifyAddCmd = &cobra.Command{
-	Use:    "add <id> --pr <number> --intent <intent> --criteria-file <file> --base-version <version>",
-	Short:  "Add a PR to a draft stacked review (e.g. aviator verify add r/42 --pr 102 ...)",
+var verifyRemoveCmd = &cobra.Command{
+	Use:    "remove <id> --pr <number> [--pr <number>] --intent <intent> --criteria-file <file> --base-version <version>",
+	Short:  "Remove PRs from a stacked review (e.g. aviator verify remove r/42 --pr 103 ...)",
 	Hidden: true,
-	Long: "Add a PR to a draft stacked review and replace its intent and acceptance\n" +
-		"criteria.\n" +
+	Long: "Remove PRs from a stacked review, draft or ready, and replace its intent\n" +
+		"and acceptance criteria. The review stays open with the PRs that are left,\n" +
+		"which must still form one restacked stack, and keeps its decisions. Any\n" +
+		"verification running on it is cancelled.\n" +
 		"\n" +
-		"The intent and criteria cover EVERY PR in the review, not just the new\n" +
-		"one: read the current ones with `aviator show`, fold in the new PR, rewrite\n" +
-		"any criteria that conflict, duplicate, or got refined, and send them all.\n" +
-		"Without --intent the intent stays as it was. --base-version is\n" +
-		"the version `aviator show` printed; the add is refused if the criteria\n" +
-		"changed since.",
+		"The criteria cover the PRs that STAY: read the current ones with\n" +
+		"`aviator show`, drop what only the removed PRs did, and send the full\n" +
+		"list. Without --intent the intent stays as it was. --base-version is the\n" +
+		"version `aviator show` printed.\n" +
+		"\n" +
+		"The removed PRs' checks stay pending until they're in a review again:\n" +
+		"`aviator verify add --new --pr ... --from <id>` opens one for them.",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		runbookNumber, err := parseRunbookID(args[0])
 		if err != nil {
 			return err
 		}
-		f := &verifyAddFlags
-		if f.PR <= 0 {
-			return errors.New("--pr is required")
+		f := &verifyRemoveFlags
+		prs, err := validPRNumbers(f.PRs)
+		if err != nil {
+			return err
 		}
 		if !cmd.Flags().Changed("base-version") {
 			return errors.New("--base-version is required, the version `aviator show` prints")
@@ -59,14 +208,14 @@ var verifyAddCmd = &cobra.Command{
 			return err
 		}
 		if len(criteria) == 0 {
-			return errors.New("--criteria-file (or --criteria) is required, with the full list for every PR")
+			return errors.New("--criteria-file (or --criteria) is required, with the full list for the PRs that stay")
 		}
 		client, err := api.NewClient()
 		if err != nil {
 			return err
 		}
-		resp, err := client.AddVerifyPR(cmd.Context(), runbookNumber, api.AddVerifyPRRequest{
-			PRNumber:    f.PR,
+		resp, err := client.RemoveVerifyPRs(cmd.Context(), runbookNumber, api.RemoveVerifyPRsRequest{
+			PRNumbers:   prs,
 			Criteria:    criteria,
 			BaseVersion: f.BaseVersion,
 			Intent:      f.Intent,
@@ -78,9 +227,10 @@ var verifyAddCmd = &cobra.Command{
 			return printJSON(newStackedSessionJSON(resp))
 		}
 		id := formatRunbookID(resp.RunbookNumber)
-		fmt.Printf("%s PR #%d added to %s%s\n", colors.Success("✓"), f.PR, id, formatVersion(resp.Version))
+		fmt.Printf("%s %s removed from %s%s\n", colors.Success("✓"), formatPRList(prs), id, formatVersion(resp.Version))
 		fmt.Print(formatMembers(resp.Members))
-		fmt.Printf("  %s\n", colors.Faint("Once the user agrees to the grouping: aviator verify ready "+id))
+		fmt.Printf("  %s\n", colors.Faint("Their checks stay pending until they're in a review: aviator verify add --new "+
+			"--repo <owner/repo> "+formatPRFlags(prs)+" --intent ... --criteria-file ... --from "+id))
 		return nil
 	},
 }
@@ -121,134 +271,39 @@ var verifyReadyCmd = &cobra.Command{
 	},
 }
 
-var verifyRegroupFlags struct {
-	Groups []string
-	JSON   bool
+// validPRNumbers checks a repeatable --pr list: at least one, all positive,
+// no repeats.
+func validPRNumbers(prs []int) ([]int, error) {
+	if len(prs) == 0 {
+		return nil, errors.New("--pr is required (repeatable)")
+	}
+	seen := make(map[int]bool, len(prs))
+	for _, n := range prs {
+		if n <= 0 {
+			return nil, errors.Errorf("invalid --pr %d", n)
+		}
+		if seen[n] {
+			return nil, errors.Errorf("--pr %d is given twice", n)
+		}
+		seen[n] = true
+	}
+	return prs, nil
 }
 
-var verifyRegroupCmd = &cobra.Command{
-	Use:    "regroup <id> --group <file> --group <file> [--group <file>]",
-	Short:  "Split a stacked review into one new review per group",
-	Hidden: true,
-	Long: "Split a stacked review into separate reviews. Split only: it needs two\n" +
-		"or more --group. To change criteria or intent, use `aviator edit`. Every\n" +
-		"open PR of the review must be in exactly one group, and each group must\n" +
-		"be a valid stack. The old review is archived and the new ones keep its\n" +
-		"state.\n" +
-		"\n" +
-		"Each --group is a JSON file:\n" +
-		"\n" +
-		"  {\"pr_numbers\": [101, 102], \"intent\": \"...\",\n" +
-		"   \"criteria\": [\"...\"], \"decision_ids\": [3, 4]}\n" +
-		"\n" +
-		"criteria is the full list for the group's PRs; decision_ids names the\n" +
-		"decisions that move to it (from `aviator decisions list`).\n" +
-		"\n" +
-		"It prints the split and asks for a yes before making it, so it needs\n" +
-		"an interactive terminal.",
-	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		runbookNumber, err := parseRunbookID(args[0])
-		if err != nil {
-			return err
-		}
-		if len(verifyRegroupFlags.Groups) < 2 {
-			return errors.New("regroup only splits a stack: pass two or more --group (use `aviator edit` to change criteria)")
-		}
-		groups := make([]api.RegroupGroup, 0, len(verifyRegroupFlags.Groups))
-		for _, path := range verifyRegroupFlags.Groups {
-			g, err := readRegroupGroup(path)
-			if err != nil {
-				return err
-			}
-			groups = append(groups, g)
-		}
-		client, err := api.NewClient()
-		if err != nil {
-			return err
-		}
-		ok, err := confirmRegroup(cmd.InOrStdin(), cmd.ErrOrStderr(), stdinIsTerminal(), runbookNumber, groups)
-		if err != nil || !ok {
-			return err
-		}
-		resp, err := client.RegroupVerify(cmd.Context(), runbookNumber, api.RegroupVerifyRequest{Groups: groups})
-		if err != nil {
-			return stackedVerifyError(err, runbookNumber, 0)
-		}
-		if verifyRegroupFlags.JSON {
-			return printJSON(newRegroupJSON(runbookNumber, resp))
-		}
-		fmt.Printf("%s %s archived, replaced by:\n", colors.Success("✓"), formatRunbookID(runbookNumber))
-		for i := range resp.Sessions {
-			s := &resp.Sessions[i]
-			fmt.Printf("  %s %s — %s\n", formatRunbookID(s.RunbookNumber), deref(s.State), s.URL)
-			fmt.Print(formatMembers(s.Members))
-		}
-		return nil
-	},
+func formatPRList(prs []int) string {
+	parts := make([]string, 0, len(prs))
+	for _, n := range prs {
+		parts = append(parts, fmt.Sprintf("#%d", n))
+	}
+	return strings.Join(parts, ", ")
 }
 
-// stdinIsTerminal is a var so tests can stand in for a terminal.
-var stdinIsTerminal = func() bool { return isatty.IsTerminal(os.Stdin.Fd()) }
-
-// confirmRegroup prints what the split does and asks for a yes, since an agent
-// can't approve a split for the user. Anything but y/yes cancels.
-func confirmRegroup(
-	in io.Reader, out io.Writer, isTerminal bool, runbookNumber int, groups []api.RegroupGroup,
-) (bool, error) {
-	id := formatRunbookID(runbookNumber)
-	if !isTerminal {
-		return false, errors.Errorf("regroup asks for a yes before splitting %s, so it needs an "+
-			"interactive terminal; run it there yourself", id)
+func formatPRFlags(prs []int) string {
+	parts := make([]string, 0, len(prs))
+	for _, n := range prs {
+		parts = append(parts, fmt.Sprintf("--pr %d", n))
 	}
-	_, _ = fmt.Fprintf(out, "This archives %s, cancels any verification running on it, and opens one new review per group:\n", id)
-	for i, g := range groups {
-		prs := make([]string, 0, len(g.PRNumbers))
-		for _, n := range g.PRNumbers {
-			prs = append(prs, fmt.Sprintf("#%d", n))
-		}
-		_, _ = fmt.Fprintf(out, "  %d. %s — %s\n", i+1, strings.Join(prs, ", "), g.Intent)
-		_, _ = fmt.Fprintf(out, "     %s\n", colors.Faint(fmt.Sprintf("%d criteria, %d decisions", len(g.Criteria), len(g.DecisionIDs))))
-	}
-	_, _ = fmt.Fprintf(out, "Split %s into %d sessions? [y/N] ", id, len(groups))
-	answer, err := bufio.NewReader(in).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return false, errors.Wrap(err, "failed to read the answer")
-	}
-	switch strings.ToLower(strings.TrimSpace(answer)) {
-	case "y", "yes":
-		return true, nil
-	}
-	_, _ = fmt.Fprintf(out, "Cancelled — %s is unchanged.\n", id)
-	return false, nil
-}
-
-// readRegroupGroup reads one --group file. Unknown keys are refused so a typo
-// can't silently drop a group's criteria or decisions.
-func readRegroupGroup(path string) (api.RegroupGroup, error) {
-	var g api.RegroupGroup
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return g, errors.Wrapf(err, "failed to read group file %s", path)
-	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&g); err != nil {
-		return g, errors.Wrapf(err, "invalid group file %s", path)
-	}
-	g.Intent = strings.TrimSpace(g.Intent)
-	switch {
-	case len(g.PRNumbers) == 0:
-		return g, errors.Errorf("group file %s: pr_numbers is required", path)
-	case g.Intent == "":
-		return g, errors.Errorf("group file %s: intent is required", path)
-	case len(g.Criteria) == 0:
-		return g, errors.Errorf("group file %s: criteria is required", path)
-	}
-	if g.DecisionIDs == nil {
-		g.DecisionIDs = []int{}
-	}
-	return g, nil
+	return strings.Join(parts, " ")
 }
 
 // stackedVerifyError turns the stacked-session refusals into the next step to
@@ -258,7 +313,12 @@ func stackedVerifyError(err error, runbookNumber, baseVersion int) error {
 	if !errors.As(err, &apiErr) {
 		return err
 	}
+	// runbookNumber is 0 for add --new, which has no review yet.
 	id := formatRunbookID(runbookNumber)
+	stackOf := "the stack of " + id
+	if runbookNumber == 0 {
+		stackOf = "the stack"
+	}
 	switch apiErr.Code {
 	case "session-draft":
 		return errors.Errorf("%s is a draft and doesn't run until marked ready; once the user agrees "+
@@ -270,7 +330,9 @@ func stackedVerifyError(err error, runbookNumber, baseVersion int) error {
 				id, baseVersion, id, apiErr.Message)
 		}
 	case "stack-invalid":
-		return errors.Errorf("the stack of %s isn't valid: %s", id, apiErr.Message)
+		return errors.Errorf("%s isn't valid: %s", stackOf, apiErr.Message)
+	case "stack-check-unavailable":
+		return errors.Errorf("GitHub couldn't check %s; retry in a minute: %s", stackOf, apiErr.Message)
 	}
 	return err
 }
@@ -322,37 +384,28 @@ func newStackedSessionJSON(s *api.StackedVerifySession) stackedSessionJSON {
 	}
 }
 
-type regroupJSON struct {
-	Archived string               `json:"archived"`
-	Sessions []stackedSessionJSON `json:"sessions"`
-}
-
-func newRegroupJSON(runbookNumber int, resp *api.RegroupVerifyResponse) regroupJSON {
-	out := regroupJSON{
-		Archived: formatRunbookID(runbookNumber),
-		Sessions: make([]stackedSessionJSON, 0, len(resp.Sessions)),
-	}
-	for i := range resp.Sessions {
-		out.Sessions = append(out.Sessions, newStackedSessionJSON(&resp.Sessions[i]))
-	}
-	return out
-}
-
 func init() {
 	af := verifyAddCmd.Flags()
 	registerCriteriaFlags(verifyAddCmd, &verifyAddFlags.Criteria, &verifyAddFlags.CriteriaFile)
-	af.IntVar(&verifyAddFlags.PR, "pr", 0, "number of the PR to add")
+	af.IntSliceVar(&verifyAddFlags.PRs, "pr", nil, "number of a PR to add (repeatable)")
 	af.StringVar(&verifyAddFlags.Intent, "intent", "", "new intent covering every PR in the review, the new one included")
 	af.IntVar(&verifyAddFlags.BaseVersion, "base-version", 0,
 		"criteria version the new list is based on, as aviator show prints it")
+	af.BoolVar(&verifyAddFlags.New, "new", false, "open a new ready review holding the --pr PRs instead of adding to one")
+	af.StringVar(&verifyAddFlags.From, "from", "", "with --new, the review the PRs were removed from (e.g. r/42)")
+	af.StringVar(&verifyAddFlags.Repo, "repo", "", "with --new, the repository as owner/repo")
 	af.BoolVar(&verifyAddFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
+
+	rmf := verifyRemoveCmd.Flags()
+	registerCriteriaFlags(verifyRemoveCmd, &verifyRemoveFlags.Criteria, &verifyRemoveFlags.CriteriaFile)
+	rmf.IntSliceVar(&verifyRemoveFlags.PRs, "pr", nil, "number of a PR to remove (repeatable)")
+	rmf.StringVar(&verifyRemoveFlags.Intent, "intent", "", "new intent covering the PRs that stay")
+	rmf.IntVar(&verifyRemoveFlags.BaseVersion, "base-version", 0,
+		"criteria version the new list is based on, as aviator show prints it")
+	rmf.BoolVar(&verifyRemoveFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 
 	cf := verifyReadyCmd.Flags()
 	cf.BoolVar(&verifyReadyFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 
-	rf := verifyRegroupCmd.Flags()
-	rf.StringArrayVar(&verifyRegroupFlags.Groups, "group", nil, "JSON file describing one new review (repeatable)")
-	rf.BoolVar(&verifyRegroupFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
-
-	verifyCmd.AddCommand(verifyAddCmd, verifyReadyCmd, verifyRegroupCmd)
+	verifyCmd.AddCommand(verifyAddCmd, verifyReadyCmd, verifyRemoveCmd)
 }

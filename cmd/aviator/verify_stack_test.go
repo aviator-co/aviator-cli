@@ -1,66 +1,15 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
+	"github.com/spf13/pflag"
 )
-
-func writeGroupFile(t *testing.T, content string) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "group.json")
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
-func TestReadRegroupGroup(t *testing.T) {
-	g, err := readRegroupGroup(writeGroupFile(t,
-		`{"pr_numbers":[101,102],"intent":" split ","criteria":["one"],"decision_ids":[3]}`))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(g.PRNumbers) != 2 || g.Intent != "split" || g.Criteria[0] != "one" || g.DecisionIDs[0] != 3 {
-		t.Errorf("group = %+v", g)
-	}
-}
-
-// A group with no decisions still sends [] so the server never sees null.
-func TestReadRegroupGroupNoDecisions(t *testing.T) {
-	g, err := readRegroupGroup(writeGroupFile(t, `{"pr_numbers":[101],"intent":"a","criteria":["one"]}`))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if g.DecisionIDs == nil || len(g.DecisionIDs) != 0 {
-		t.Errorf("decision_ids = %v, want []", g.DecisionIDs)
-	}
-}
-
-func TestReadRegroupGroupRefuses(t *testing.T) {
-	for _, tc := range []struct{ name, content, want string }{
-		{"unknown key", `{"prs":[101],"intent":"a","criteria":["one"]}`, "unknown field"},
-		{"no prs", `{"intent":"a","criteria":["one"]}`, "pr_numbers is required"},
-		{"blank intent", `{"pr_numbers":[1],"intent":" ","criteria":["one"]}`, "intent is required"},
-		{"no criteria", `{"pr_numbers":[1],"intent":"a"}`, "criteria is required"},
-		{"not json", `prs: [1]`, "invalid group file"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := readRegroupGroup(writeGroupFile(t, tc.content))
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Errorf("err = %v, want %q", err, tc.want)
-			}
-		})
-	}
-}
 
 func TestStackedVerifyError(t *testing.T) {
 	for _, tc := range []struct {
@@ -86,6 +35,12 @@ func TestStackedVerifyError(t *testing.T) {
 			&api.Error{Status: http.StatusBadRequest, Code: "stack-invalid", Message: "#103's base is not a member"},
 			0,
 			[]string{"isn't valid", "#103's base is not a member"},
+		},
+		{
+			"github unavailable",
+			&api.Error{Status: http.StatusServiceUnavailable, Code: "stack-check-unavailable", Message: "Retry in a minute."},
+			0,
+			[]string{"GitHub couldn't check the stack of r/42", "Retry in a minute."},
 		},
 		{
 			"other",
@@ -167,7 +122,7 @@ func TestShowUnstackedSession(t *testing.T) {
 
 // Stacked Verify is allowlisted, so its commands and flag stay out of help.
 func TestStackedVerifyHidden(t *testing.T) {
-	for _, c := range []interface{ IsAvailableCommand() bool }{verifyAddCmd, verifyReadyCmd, verifyRegroupCmd} {
+	for _, c := range []interface{ IsAvailableCommand() bool }{verifyAddCmd, verifyReadyCmd, verifyRemoveCmd} {
 		if c.IsAvailableCommand() {
 			t.Errorf("%v is listed in help", c)
 		}
@@ -177,115 +132,172 @@ func TestStackedVerifyHidden(t *testing.T) {
 	}
 }
 
-var regroupTestGroups = []api.RegroupGroup{
-	{PRNumbers: []int{101, 102}, Intent: "Add the API", Criteria: []string{"a", "b"}, DecisionIDs: []int{3}},
-	{PRNumbers: []int{103}, Intent: "Add the UI", Criteria: []string{"c"}, DecisionIDs: []int{}},
+// add --new has no review yet, so its errors don't name one.
+func TestStackedVerifyErrorWithoutReview(t *testing.T) {
+	err := &api.Error{Status: http.StatusBadRequest, Code: "stack-invalid", Message: "#103 is closed."}
+	if got := stackedVerifyError(err, 0, 0).Error(); !strings.Contains(got, "the stack isn't valid: #103 is closed.") {
+		t.Errorf("error = %q", got)
+	}
 }
 
-func TestConfirmRegroup(t *testing.T) {
+func TestValidPRNumbers(t *testing.T) {
+	if got, err := validPRNumbers([]int{103, 104}); err != nil || len(got) != 2 {
+		t.Errorf("got %v, %v", got, err)
+	}
 	for _, tc := range []struct {
-		name, answer string
-		want         bool
+		name string
+		prs  []int
+		want string
 	}{
-		{"y", "y\n", true},
-		{"yes any case", " YES \n", true},
-		{"no", "n\n", false},
-		{"empty", "\n", false},
-		{"eof", "", false},
-		{"other", "sure\n", false},
+		{"none", nil, "--pr is required"},
+		{"zero", []int{0}, "invalid --pr 0"},
+		{"repeat", []int{103, 103}, "--pr 103 is given twice"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var out bytes.Buffer
-			got, err := confirmRegroup(strings.NewReader(tc.answer), &out, true, 42, regroupTestGroups)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tc.want {
-				t.Errorf("confirmed = %v, want %v", got, tc.want)
-			}
-			if cancelled := strings.Contains(out.String(), "Cancelled — r/42 is unchanged."); cancelled == tc.want {
-				t.Errorf("cancel line shown = %v, want %v\n%s", cancelled, !tc.want, out.String())
+			if _, err := validPRNumbers(tc.prs); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("err = %v, want %q", err, tc.want)
 			}
 		})
 	}
 }
 
-func TestConfirmRegroupPrintsSplit(t *testing.T) {
-	var out bytes.Buffer
-	if _, err := confirmRegroup(strings.NewReader("n\n"), &out, true, 42, regroupTestGroups); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	for _, want := range []string{
-		"archives r/42, cancels any verification running on it",
-		"1. #101, #102 — Add the API",
-		"2 criteria, 1 decisions",
-		"2. #103 — Add the UI",
-		"Split r/42 into 2 sessions? [y/N] ",
-	} {
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("output missing %q\n%s", want, out.String())
-		}
-	}
-}
-
-// Without a terminal nobody can say yes, so regroup refuses rather than read.
-func TestConfirmRegroupNonInteractive(t *testing.T) {
-	var out bytes.Buffer
-	ok, err := confirmRegroup(strings.NewReader("y\n"), &out, false, 42, regroupTestGroups)
-	if ok || err == nil || !strings.Contains(err.Error(), "needs an interactive terminal") {
-		t.Errorf("ok = %v, err = %v", ok, err)
-	}
-	if out.Len() != 0 {
-		t.Errorf("unexpected output:\n%s", out.String())
-	}
-}
-
-func runRegroup(t *testing.T, answer string, terminal bool) (*[]string, error) {
+func runRemove(t *testing.T) (*[]string, error) {
 	t.Helper()
-	got := useTestServer(t, `{"sessions":[{"runbook_number":43,"state":"active"},{"runbook_number":44,"state":"active"}]}`)
-	orig := stdinIsTerminal
-	stdinIsTerminal = func() bool { return terminal }
+	got := useTestServer(t, `{"runbook_number":42,"version":4,"state":"active",`+
+		`"members":[{"pr_number":101,"position":1,"head_sha":null}]}`)
 	t.Cleanup(func() {
-		stdinIsTerminal = orig
-		verifyRegroupFlags.Groups = nil
-		verifyRegroupCmd.SetIn(nil)
-		verifyRegroupCmd.SetErr(nil)
+		verifyRemoveFlags = struct {
+			PRs          []int
+			Criteria     []string
+			CriteriaFile string
+			BaseVersion  int
+			Intent       string
+			JSON         bool
+		}{}
+		verifyRemoveCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	})
-	a := writeGroupFile(t, `{"pr_numbers":[101],"intent":"a","criteria":["one"]}`)
-	b := writeGroupFile(t, `{"pr_numbers":[102],"intent":"b","criteria":["two"]}`)
-	verifyRegroupCmd.SetContext(context.Background())
-	verifyRegroupCmd.SetIn(strings.NewReader(answer))
-	verifyRegroupCmd.SetErr(io.Discard)
-	if err := verifyRegroupCmd.ParseFlags([]string{"--group", a, "--group", b}); err != nil {
+	verifyRemoveCmd.SetContext(context.Background())
+	if err := verifyRemoveCmd.ParseFlags([]string{
+		"--pr", "103", "--pr", "104", "--criteria", "one", "--base-version", "3", "--json",
+	}); err != nil {
 		t.Fatal(err)
 	}
-	return got, verifyRegroupCmd.RunE(verifyRegroupCmd, []string{"r/42"})
+	return got, verifyRemoveCmd.RunE(verifyRemoveCmd, []string{"r/42"})
 }
 
-func TestRegroupCommandConfirmation(t *testing.T) {
+// The user agrees to the split in the agent's conversation, so remove asks nothing.
+func TestRemoveSendsTheRequest(t *testing.T) {
+	got, err := runRemove(t)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := `POST /api/v1/verify/42/prs/remove {"pr_numbers":[103,104],"criteria":["one"],"base_version":3}`
+	if len(*got) != 1 || (*got)[0] != want {
+		t.Errorf("requests = %v, want %s", *got, want)
+	}
+}
+
+func resetAddFlags(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		verifyAddFlags = struct {
+			PRs          []int
+			Criteria     []string
+			CriteriaFile string
+			BaseVersion  int
+			Intent       string
+			New          bool
+			From         string
+			Repo         string
+			JSON         bool
+		}{}
+		verifyAddCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
+	})
+}
+
+func TestAddNewSendsTheStack(t *testing.T) {
+	got := useTestServer(t, `{"runbook_number":57,"url":"https://app.aviator.co/r/57","state":"active",`+
+		`"members":[{"pr_number":103,"position":1,"head_sha":null}]}`)
+	resetAddFlags(t)
+	runCommand(t, verifyAddCmd, "--new", "--repo", "acme/web", "--pr", "103", "--pr", "104",
+		"--intent", "top half", "--criteria", "two", "--from", "r/42", "--json")
+	want := `POST /api/v1/verify/stack {"repository":{"org":"acme","name":"web"},"pr_numbers":[103,104],` +
+		`"intent":"top half","criteria":["two"],"from_runbook_number":42}`
+	if len(*got) != 1 || (*got)[0] != want {
+		t.Errorf("requests = %v, want %s", *got, want)
+	}
+}
+
+// One PR keeps pr_number, which servers without pr_numbers still read.
+func TestAddSendsOneOrSeveralPRs(t *testing.T) {
 	for _, tc := range []struct {
-		name, answer string
-		terminal     bool
-		wantCalls    int
-		wantErr      string
+		name string
+		prs  []string
+		want string
 	}{
-		{"yes splits", "y\n", true, 1, ""},
-		{"no makes no call", "n\n", true, 0, ""},
-		{"no terminal makes no call", "y\n", false, 0, "needs an interactive terminal"},
+		{"one", []string{"--pr", "102"}, `"pr_number":102,`},
+		{"several", []string{"--pr", "103", "--pr", "102"}, `"pr_numbers":[103,102],`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := runRegroup(t, tc.answer, tc.terminal)
-			if tc.wantErr == "" && err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			got := useTestServer(t, `{"runbook_number":42,"url":"https://app.aviator.co/r/42","version":4,`+
+				`"state":"draft","members":[{"pr_number":101,"position":1,"head_sha":null}]}`)
+			resetAddFlags(t)
+			args := append([]string{"r/42"}, tc.prs...)
+			runCommand(t, verifyAddCmd, append(args, "--criteria", "one", "--base-version", "3", "--json")...)
+			want := `POST /api/v1/verify/42/prs {` + tc.want + `"criteria":["one"],"base_version":3}`
+			if len(*got) != 1 || (*got)[0] != want {
+				t.Errorf("requests = %v, want %s", *got, want)
 			}
-			if tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
-				t.Fatalf("err = %v, want %q", err, tc.wantErr)
+		})
+	}
+}
+
+func TestAddFlagCombinationsRefused(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		pos  []string
+		want string
+	}{
+		{
+			"new with id",
+			[]string{"--new", "--repo", "a/b", "--pr", "1", "--intent", "x", "--criteria", "c"},
+			[]string{"r/42"},
+			"takes no <id>",
+		},
+		{"new with base version", []string{
+			"--new", "--repo", "a/b", "--pr", "1", "--intent", "x", "--criteria", "c",
+			"--base-version", "3",
+		}, nil, "--base-version doesn't apply with --new"},
+		{"new without repo", []string{"--new", "--pr", "1", "--intent", "x", "--criteria", "c"}, nil, "--repo is required"},
+		{"new without intent", []string{"--new", "--repo", "a/b", "--pr", "1", "--criteria", "c"}, nil, "--intent is required"},
+		{
+			"from without new",
+			[]string{"--pr", "1", "--criteria", "c", "--base-version", "3", "--from", "r/41"},
+			[]string{"r/42"},
+			"--from only applies with --new",
+		},
+		{
+			"repeated pr",
+			[]string{"--pr", "1", "--pr", "1", "--criteria", "c", "--base-version", "3"},
+			[]string{"r/42"},
+			"--pr 1 is given twice",
+		},
+		{"no id without new", []string{"--pr", "1", "--criteria", "c", "--base-version", "3"}, nil, "needs the review id"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := useTestServer(t, `{}`)
+			resetAddFlags(t)
+			verifyAddCmd.SetContext(context.Background())
+			if err := verifyAddCmd.ParseFlags(tc.args); err != nil {
+				t.Fatal(err)
 			}
-			if len(*got) != tc.wantCalls {
-				t.Fatalf("requests = %v, want %d", *got, tc.wantCalls)
+			err := verifyAddCmd.RunE(verifyAddCmd, tc.pos)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("err = %v, want %q", err, tc.want)
 			}
-			if tc.wantCalls == 1 && !strings.HasPrefix((*got)[0], "POST /api/v1/verify/42/regroup ") {
-				t.Errorf("request = %s", (*got)[0])
+			if len(*got) != 0 {
+				t.Errorf("requests = %v, want none", *got)
 			}
 		})
 	}
