@@ -114,25 +114,51 @@ func TestMarkVerifyReady(t *testing.T) {
 	}
 }
 
-func TestRegroupVerify(t *testing.T) {
-	srv := stackServer(t, "/api/v1/verify/42/regroup",
-		`{"groups":[{"pr_numbers":[101],"intent":"a","criteria":["one"],"decision_ids":[]},`+
-			`{"pr_numbers":[102,103],"intent":"b","criteria":["two"],"decision_ids":[7]}]}`,
-		http.StatusOK,
-		`{"sessions":[{"runbook_number":57,"state":"active"},{"runbook_number":58,"state":"active"}]}`)
+func TestRemoveVerifyPRs(t *testing.T) {
+	srv := stackServer(t, "/api/v1/verify/42/prs/remove",
+		`{"pr_numbers":[103,104],"criteria":["one"],"base_version":3,"intent":"bottom half"}`, http.StatusOK,
+		`{"runbook_number":42,"version":4,"state":"active","members":[{"pr_number":101,"position":1,"head_sha":"aaa"}]}`)
 	defer srv.Close()
 
-	resp, err := newTestClient(srv).RegroupVerify(context.Background(), 42, RegroupVerifyRequest{
-		Groups: []RegroupGroup{
-			{PRNumbers: []int{101}, Intent: "a", Criteria: []string{"one"}, DecisionIDs: []int{}},
-			{PRNumbers: []int{102, 103}, Intent: "b", Criteria: []string{"two"}, DecisionIDs: []int{7}},
-		},
+	resp, err := newTestClient(srv).RemoveVerifyPRs(context.Background(), 42, RemoveVerifyPRsRequest{
+		PRNumbers: []int{103, 104}, Criteria: []string{"one"}, BaseVersion: 3, Intent: "bottom half",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(resp.Sessions) != 2 || resp.Sessions[1].RunbookNumber != 58 {
-		t.Errorf("sessions = %+v", resp.Sessions)
+	if *resp.Version != 4 || len(resp.Members) != 1 || resp.Members[0].PRNumber != 101 {
+		t.Errorf("resp = %+v", resp)
+	}
+}
+
+func TestNewStackedVerify(t *testing.T) {
+	from := 42
+	for _, tc := range []struct {
+		name     string
+		from     *int
+		wantBody string
+	}{
+		{"linked", &from, `{"repository":{"org":"acme","name":"web"},"pr_numbers":[103,104],"intent":"top half",` +
+			`"criteria":["two"],"from_runbook_number":42}`},
+		{"unlinked", nil, `{"repository":{"org":"acme","name":"web"},"pr_numbers":[103,104],"intent":"top half",` +
+			`"criteria":["two"]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := stackServer(t, "/api/v1/verify/stack", tc.wantBody, http.StatusOK,
+				`{"runbook_number":57,"state":"active","members":[{"pr_number":103,"position":1,"head_sha":null}]}`)
+			defer srv.Close()
+
+			resp, err := newTestClient(srv).NewStackedVerify(context.Background(), NewStackedVerifyRequest{
+				Repository: Repository{Org: "acme", Name: "web"}, PRNumbers: []int{103, 104},
+				Intent: "top half", Criteria: []string{"two"}, FromRunbookNumber: tc.from,
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if resp.RunbookNumber != 57 || *resp.State != "active" {
+				t.Errorf("resp = %+v", resp)
+			}
+		})
 	}
 }
 
