@@ -21,7 +21,7 @@ var verifyFlags struct {
 	Spec                string
 	ScenarioGuidance    string
 	EvaluatorOnly       bool
-	Force               bool
+	SkipDedup           bool
 	RegenerateScenarios string
 	Preview             string
 	JSON                bool
@@ -34,7 +34,7 @@ var verifySubmitOnlyFlags = []string{
 	"working-branch", "target-branch", "spec", "scenario-guidance",
 }
 
-var verifyTriggerOnlyFlags = []string{"evaluator-only", "force", "regenerate-scenarios"}
+var verifyTriggerOnlyFlags = []string{"evaluator-only", "skip-dedup", "regenerate-scenarios"}
 
 // noWorkingBranchWarning covers the one thing a submission gives up without
 // --working-branch: with no branch to match on, the session can only reach a PR
@@ -66,7 +66,7 @@ var verifyCmd = &cobra.Command{
 		"that existing session — including its first run. If an equivalent\n" +
 		"non-error run already exists for the current head commit and criteria,\n" +
 		"the server returns that run instead of starting a new one, so this is\n" +
-		"safe to call liberally. Pass --force to start a fresh full run anyway,\n" +
+		"safe to call liberally. Pass --skip-dedup to start a fresh full run anyway,\n" +
 		"or --evaluator-only to re-judge the evidence an earlier run already\n" +
 		"collected instead of collecting it again. Evaluator-only is refused once\n" +
 		"criteria have been added or reworded, since those need a full run.\n" +
@@ -78,7 +78,7 @@ var verifyCmd = &cobra.Command{
 		"choice, the first run saves the repo default by name, so going back to\n" +
 		"the repo default later means passing that config's name.\n" +
 		"\n" +
-		"--force reuses the session's scenarios. --regenerate-scenarios\n" +
+		"--skip-dedup reuses the session's scenarios. --regenerate-scenarios\n" +
 		"\"<feedback>\" rewrites them before the run, with the feedback saying\n" +
 		"what the new ones should do differently.\n" +
 		"\n" +
@@ -210,7 +210,7 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 	}
 	req := api.TriggerVerifyRunRequest{
 		EvaluatorOnly:      verifyFlags.EvaluatorOnly,
-		Force:              verifyFlags.Force,
+		Force:              verifyFlags.SkipDedup,
 		PreviewConfigName:  verifyFlags.Preview,
 		RegenerateFeedback: strings.TrimSpace(verifyFlags.RegenerateScenarios),
 	}
@@ -227,7 +227,7 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 	if resp.Deduplicated {
 		fmt.Printf("%s %s already has an equivalent run at this commit and criteria version\n",
 			colors.Success("✓"), id)
-		fmt.Printf("  %s\n", colors.Faint("To run again anyway: aviator verify "+id+" --force"))
+		fmt.Printf("  %s\n", colors.Faint("To run again anyway: aviator verify "+id+" --skip-dedup"))
 	} else {
 		fmt.Printf("%s Verification run started for %s\n", colors.Success("✓"), id)
 	}
@@ -255,8 +255,8 @@ func init() {
 		"note on how to verify the change, read when the first scenarios are written (submit mode only)")
 	f.BoolVar(&verifyFlags.EvaluatorOnly, "evaluator-only", false,
 		"re-judge the evidence an earlier run collected instead of collecting it again (trigger mode only)")
-	f.BoolVar(&verifyFlags.Force, "force", false,
-		"start a fresh full run even if an equivalent run already exists (trigger mode only)")
+	f.BoolVar(&verifyFlags.SkipDedup, "skip-dedup", false,
+		"skip deduplication against an equivalent run and start a fresh full run (trigger mode only)")
 	f.StringVar(&verifyFlags.Preview, "preview", "",
 		"preview config the session's runs use instead of the repo default; sticks until changed")
 	f.StringVar(&verifyFlags.RegenerateScenarios, "regenerate-scenarios", "",
