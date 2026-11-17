@@ -10,4 +10,5 @@ cmd/aviator/aviator
 
 # IDE setups
 .idea/
-.claude/
+.claude/*
+!.claude/settings.json
