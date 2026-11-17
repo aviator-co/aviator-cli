@@ -1,6 +1,6 @@
 module github.com/aviator-co/aviator-cli
 
-go 1.26.0
+go 1.27.4
 
 require (
 	emperror.dev/errors v0.8.1
