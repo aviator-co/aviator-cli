@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	"charm.land/huh/v2"
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/adapter"
 	"github.com/aviator-co/aviator-cli/internal/api"
 	"github.com/aviator-co/aviator-cli/internal/git"
 	"github.com/aviator-co/aviator-cli/internal/utils/colors"
-	"github.com/charmbracelet/huh"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
