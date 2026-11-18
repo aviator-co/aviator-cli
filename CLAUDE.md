@@ -177,7 +177,7 @@ The CLI targets endpoints in the `mergeit` backend:
   position, head_sha}]`) and refuse a broken stack with 400 `stack-invalid`
   (503 `stack-check-unavailable` when GitHub can't say). The detail endpoint
   carries `state`, `members`,
-  `replaced_from` and `replaced_by` for stacked sessions only.
+  `split_from` and `split_into` for stacked sessions only.
 - `POST /api/v1/verify/<n>/dismissals` — `{criteria: [{stable_key} |
   {stable_key, action: "waive", justification} |
   {baseline_invariant_id, category, justification}]}`. Deletes or waives task
