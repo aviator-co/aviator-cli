@@ -24,6 +24,7 @@ var verifyFlags struct {
 	Force               bool
 	RegenerateScenarios string
 	Preview             string
+	Draft               bool
 	JSON                bool
 }
 
@@ -31,7 +32,7 @@ var verifyFlags struct {
 // session, so trigger mode rejects them by name.
 var verifySubmitOnlyFlags = []string{
 	"repo", "intent", "criteria", "criteria-file",
-	"working-branch", "target-branch", "spec", "scenario-guidance",
+	"working-branch", "target-branch", "spec", "scenario-guidance", "draft",
 }
 
 var verifyTriggerOnlyFlags = []string{"evaluator-only", "force", "regenerate-scenarios"}
@@ -153,6 +154,7 @@ func runVerifySubmit(cmd *cobra.Command) error {
 		SpecFile:           spec,
 		PreviewConfigName:  verifyFlags.Preview,
 		ScenarioGuidance:   guidance,
+		Draft:              verifyFlags.Draft,
 	})
 	if err != nil {
 		return err
@@ -178,6 +180,11 @@ func runVerifySubmit(cmd *cobra.Command) error {
 	fmt.Printf("  Criteria: %d\n", len(resp.AcceptanceCriteria))
 	if name := deref(resp.PreviewConfigName); name != "" {
 		fmt.Printf("  Preview config: %s\n", name)
+	}
+	if verifyFlags.Draft {
+		id := formatRunbookID(resp.RunbookNumber)
+		fmt.Printf("  %s\n", colors.Faint("Draft: add each PR above with aviator verify add "+id+
+			", then aviator verify ready "+id))
 	}
 	return nil
 }
@@ -216,7 +223,7 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 	}
 	resp, err := client.TriggerVerifyRun(cmd.Context(), runbookNumber, req)
 	if err != nil {
-		return err
+		return stackedVerifyError(err, runbookNumber, 0)
 	}
 	warnPreviewNotApplied(verifyFlags.Preview, resp.PreviewConfigName)
 	if verifyFlags.JSON {
@@ -261,6 +268,10 @@ func init() {
 		"preview config the session's runs use instead of the repo default; sticks until changed")
 	f.StringVar(&verifyFlags.RegenerateScenarios, "regenerate-scenarios", "",
 		"rewrite the scenarios before running, with feedback on what to change (trigger mode only)")
+	f.BoolVar(&verifyFlags.Draft, "draft", false,
+		"open a draft stacked review that holds PRs and criteria but doesn't run until marked ready (submit mode only)")
+	// Stacked Verify is behind a per-user allowlist.
+	_ = f.MarkHidden("draft")
 	f.BoolVar(&verifyFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 }
 

@@ -102,6 +102,35 @@ func TestFormatRunbookDetailNoVerificationYet(t *testing.T) {
 	}
 }
 
+func TestFormatRunbookDetailSplitLinks(t *testing.T) {
+	detail := &api.RunbookDetail{
+		RunbookNumber: 7,
+		URL:           "https://app.aviator.co/runbook/7",
+		SplitFrom:     ptr(5),
+		SplitInto:     []int{8, 9},
+	}
+	out := formatRunbookDetail(detail, nil, false)
+	for _, want := range []string{"Split into: r/8, r/9", "Split from: r/5"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q, got:\n%s", want, out)
+		}
+	}
+}
+
+func TestFormatRunbookDetailStackProblem(t *testing.T) {
+	detail := &api.RunbookDetail{
+		RunbookNumber: 7,
+		URL:           "https://app.aviator.co/runbook/7",
+		State:         ptr("active"),
+		StackProblem:  ptr("#9 was removed from the stack; restack #10 onto sv-1."),
+	}
+	out := formatRunbookDetail(detail, nil, false)
+	want := "Stack problem: #9 was removed from the stack; restack #10 onto sv-1."
+	if !strings.Contains(out, want) {
+		t.Errorf("expected %q, got:\n%s", want, out)
+	}
+}
+
 func TestFormatVerificationError(t *testing.T) {
 	msg := "sandbox timed out"
 	out := formatVerification("Latest verification", &api.VerificationRun{
