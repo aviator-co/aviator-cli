@@ -80,15 +80,15 @@ func formatRunbookDetail(d *api.RunbookDetail, runs []api.VerificationRun, moreR
 	if problem := deref(d.StackProblem); problem != "" {
 		fmt.Fprintf(&b, "  Stack problem: %s\n", problem)
 	}
-	if len(d.ReplacedBy) > 0 {
-		ids := make([]string, len(d.ReplacedBy))
-		for i, n := range d.ReplacedBy {
+	if len(d.SplitInto) > 0 {
+		ids := make([]string, len(d.SplitInto))
+		for i, n := range d.SplitInto {
 			ids[i] = formatRunbookID(n)
 		}
-		fmt.Fprintf(&b, "  Replaced by: %s\n", strings.Join(ids, ", "))
+		fmt.Fprintf(&b, "  Split into: %s\n", strings.Join(ids, ", "))
 	}
-	if d.ReplacedFrom != nil {
-		fmt.Fprintf(&b, "  Replaces: %s\n", formatRunbookID(*d.ReplacedFrom))
+	if d.SplitFrom != nil {
+		fmt.Fprintf(&b, "  Split from: %s\n", formatRunbookID(*d.SplitFrom))
 	}
 
 	if intent := deref(d.Intent); intent != "" {

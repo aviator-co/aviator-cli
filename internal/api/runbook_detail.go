@@ -35,10 +35,10 @@ type RunbookDetail struct {
 	Members []SessionMember `json:"members,omitempty"`
 	// StackProblem says why a stacked session's PRs don't form one stack.
 	StackProblem *string `json:"stack_problem,omitempty"`
-	// ReplacedFrom is the session this one's PRs were removed from (add --new
-	// --from), and ReplacedBy the sessions that took PRs removed from this one.
-	ReplacedFrom *int  `json:"replaced_from,omitempty"`
-	ReplacedBy   []int `json:"replaced_by,omitempty"`
+	// SplitFrom is the session this one was split from (add --new --from), and
+	// SplitInto the sessions split from this one.
+	SplitFrom *int  `json:"split_from,omitempty"`
+	SplitInto []int `json:"split_into,omitempty"`
 	// LatestVerificationPresent distinguishes a response that carried an
 	// explicit null latest_verification (no runs yet) from one where the
 	// server omitted the key entirely.
