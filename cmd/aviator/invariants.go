@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"emperror.dev/errors"
@@ -317,7 +316,7 @@ var invariantsEditCmd = &cobra.Command{
 		"drops them so the account's default owner team applies.",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		id, err := parseInvariantID(args[0])
+		id, err := parseID("invariant", args[0])
 		if err != nil {
 			return err
 		}
@@ -440,7 +439,7 @@ var invariantsDeleteCmd = &cobra.Command{
 		"keeping a record of it, use `aviator invariants reject` instead.",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		id, err := parseInvariantID(args[0])
+		id, err := parseID("invariant", args[0])
 		if err != nil {
 			return err
 		}
@@ -637,20 +636,10 @@ func init() {
 	)
 }
 
-// parseInvariantID accepts a bare number or the #<number> form the CLI prints.
-func parseInvariantID(arg string) (int, error) {
-	s := strings.TrimPrefix(strings.TrimSpace(arg), "#")
-	n, err := strconv.Atoi(s)
-	if err != nil || n <= 0 {
-		return 0, errors.Errorf("invalid invariant ID %q, expected a positive number", arg)
-	}
-	return n, nil
-}
-
 func parseInvariantIDs(rawIDs []string) ([]int, error) {
 	ids := make([]int, 0, len(rawIDs))
 	for _, raw := range rawIDs {
-		id, err := parseInvariantID(raw)
+		id, err := parseID("invariant", raw)
 		if err != nil {
 			return nil, err
 		}

@@ -53,6 +53,16 @@ func (c *Client) SubmitArtifacts(ctx context.Context, runbookNumber int, body []
 	return &out, nil
 }
 
+// GetArtifacts fetches a session's current artifact set. ArtifactSet is nil
+// when nothing has been submitted.
+func (c *Client) GetArtifacts(ctx context.Context, runbookNumber int) (*ArtifactSetResponse, error) {
+	var out ArtifactSetResponse
+	if err := c.getJSON(ctx, artifactsPath(runbookNumber), nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func artifactsPath(runbookNumber int) string {
 	return fmt.Sprintf("/api/v1/verify/%d/artifacts", runbookNumber)
 }

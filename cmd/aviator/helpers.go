@@ -189,3 +189,13 @@ func readPayloadFile(path string) ([]byte, error) {
 	}
 	return data, nil
 }
+
+// parseID accepts a bare number or the #<number> form the CLI prints for a
+// decision, invariant, or artifact, and names noun when arg is neither.
+func parseID(noun, arg string) (int, error) {
+	n, err := strconv.Atoi(strings.TrimPrefix(strings.TrimSpace(arg), "#"))
+	if err != nil || n <= 0 {
+		return 0, errors.Errorf("invalid %s ID %q, expected a positive number", noun, arg)
+	}
+	return n, nil
+}

@@ -104,7 +104,7 @@ var invariantsShowCmd = &cobra.Command{
 		"\n" + analyticsHelp,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		id, err := parseInvariantID(args[0])
+		id, err := parseID("invariant", args[0])
 		if err != nil {
 			return err
 		}
@@ -154,7 +154,7 @@ var invariantsReviewsCmd = &cobra.Command{
 		"\n" + analyticsHelp,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		id, err := parseInvariantID(args[0])
+		id, err := parseID("invariant", args[0])
 		if err != nil {
 			return err
 		}
@@ -216,7 +216,7 @@ var invariantsWaiversCmd = &cobra.Command{
 		}
 		invariantID := 0
 		if invariantsWaiversFlags.Invariant != "" {
-			id, err := parseInvariantID(invariantsWaiversFlags.Invariant)
+			id, err := parseID("invariant", invariantsWaiversFlags.Invariant)
 			if err != nil {
 				return err
 			}

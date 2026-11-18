@@ -34,10 +34,10 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   invariants_insights_format.go # text rendering + `--json` structs for the analytics commands
   decisions.go      # `aviator decisions <list|show|apply>`
   decisions_format.go  # text rendering for the decisions commands
-  artifacts.go      # `aviator artifacts submit`
-  artifacts_format.go  # `--json` structs for the artifacts commands
+  artifacts.go      # `aviator artifacts <list|show|submit>`
+  artifacts_format.go  # text rendering + `--json` structs for the artifacts commands
   version.go        # `aviator version`
-  helpers.go        # parseRepo(s), readSpecFile, readPayloadFile, collectCriteria, collectBody
+  helpers.go        # parseRepo(s), parseID, readSpecFile, readPayloadFile, collectCriteria, collectBody
 internal/
   config/           # viper config load + version
   api/              # thin REST client (client.go) + per-resource methods
