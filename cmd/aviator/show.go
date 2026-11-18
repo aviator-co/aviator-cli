@@ -148,8 +148,12 @@ func formatRuns(runs []api.VerificationRun, more bool, reviewURL string) string 
 	b.WriteString("  Runs:\n")
 	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
 	for _, r := range runs {
+		status := r.Status
+		if r.CoversRemovedPRs {
+			status += " (stale)"
+		}
 		fmt.Fprintf(w, "    %d\t%s\t%s\t%d/%d passed\t%s\t%s\n",
-			r.ID, r.Status, orDash(shortSHA(deref(r.CommitSHA))),
+			r.ID, status, orDash(shortSHA(deref(r.CommitSHA))),
 			r.CriteriaPassed, r.CriteriaTotal, formatRunVersion(r.RunbookVersion), formatRelativeTime(r.CreatedAt))
 	}
 	_ = w.Flush()
@@ -189,6 +193,9 @@ func formatVerification(label string, v *api.VerificationRun) string {
 	}
 	fmt.Fprintf(&b, "  %s: run %d, %s (%d/%d passed, %d failed%s)\n",
 		label, v.ID, v.Status, v.CriteriaPassed, v.CriteriaTotal, v.CriteriaFailed, sha)
+	if v.CoversRemovedPRs {
+		fmt.Fprintf(&b, "    %s\n", colors.Faint("Stale: it covered pull requests since removed from this review. Run verify again."))
+	}
 	if name := deref(v.PreviewConfigName); name != "" {
 		if method := deref(v.PreviewMethod); method != "" {
 			name += " (" + method + ")"
@@ -337,6 +344,7 @@ type runJSON struct {
 	CompletedAt   *string `json:"completed_at"`
 	PreviewConfig *string `json:"preview_config_name"`
 	PreviewMethod *string `json:"preview_method"`
+	Stale         bool    `json:"covers_removed_prs"`
 }
 
 func newRunJSON(r *api.VerificationRun) runJSON {
@@ -357,6 +365,7 @@ func newRunJSON(r *api.VerificationRun) runJSON {
 		CompletedAt:   r.CompletedAt,
 		PreviewConfig: r.PreviewConfigName,
 		PreviewMethod: r.PreviewMethod,
+		Stale:         r.CoversRemovedPRs,
 	}
 }
 

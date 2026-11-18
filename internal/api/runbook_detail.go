@@ -97,6 +97,8 @@ type VerificationRun struct {
 	FailedResults     []FailedResult `json:"failed_results"`
 	PreviewConfigName *string        `json:"preview_config_name"`
 	PreviewMethod     *string        `json:"preview_method"`
+	// CoversRemovedPRs marks a Stacked Verify run over a PR since removed from the review.
+	CoversRemovedPRs bool `json:"covers_removed_prs"`
 }
 
 // FailedResult is a single failing criterion within a verification.
