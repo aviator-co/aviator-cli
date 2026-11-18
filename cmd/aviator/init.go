@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	"charm.land/huh/v2"
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/adapter"
 	"github.com/aviator-co/aviator-cli/internal/api"
 	"github.com/aviator-co/aviator-cli/internal/git"
 	"github.com/aviator-co/aviator-cli/internal/utils/colors"
-	"github.com/charmbracelet/huh"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
@@ -185,6 +185,9 @@ func askAgents(scope adapter.Scope) ([]adapter.Adapter, error) {
 		Title("Set up which agents?").
 		Description(desc).
 		Options(opts...).
+		// TODO: drop once huh ships charmbracelet/huh#831; unsized it hides the options.
+		Height(len(opts) + 3).
+		Filterable(false).
 		Validate(func(s []string) error {
 			if len(s) == 0 {
 				return errors.New("select at least one agent")
