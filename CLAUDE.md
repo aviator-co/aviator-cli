@@ -34,8 +34,10 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   invariants_insights_format.go # text rendering + `--json` structs for the analytics commands
   decisions.go      # `aviator decisions <list|show|apply>`
   decisions_format.go  # text rendering for the decisions commands
+  artifacts.go      # `aviator artifacts submit`
+  artifacts_format.go  # `--json` structs for the artifacts commands
   version.go        # `aviator version`
-  helpers.go        # parseRepo(s), readSpecFile, collectCriteria, collectBody
+  helpers.go        # parseRepo(s), readSpecFile, readPayloadFile, collectCriteria, collectBody
 internal/
   config/           # viper config load + version
   api/              # thin REST client (client.go) + per-resource methods
@@ -215,6 +217,23 @@ The CLI targets endpoints in the `mergeit` backend:
   it. Anyone can settle, reopen, or comment; only the raiser can change type,
   title, summary, or anchor. `aviator decisions apply` sends its file as the
   body unchanged and the server's strict models validate it.
+
+- `/api/v1/verify/<n>/artifacts` — for `aviator artifacts`. `PUT` takes
+  `{summary?, head_sha?, author: {role, model?, harness?, skills?},
+  artifacts: [{category, title, diagram?, body?, references?:
+  [{type: "file", target}], pr_numbers?}]}` and replaces the session's
+  whole set (1 to 30 artifacts, each with a diagram, a body, or both);
+  earlier sets stay with the runs that started with them. It needs a user
+  credential, and a credential that may not write gets 403 `forbidden`.
+  `GET` takes any token. Both need Verify on the account (403
+  `verify-not-enabled` otherwise) and answer `{artifact_set}` with
+  `author`, `created_at`, and an integer `id` on every artifact, null on
+  `GET` before the first submit. `summary` is optional (null when absent,
+  at most 500 characters). In `--json`, a null `summary`, `head_sha`,
+  `diagram`, `body`, or `pr_numbers` is left out. `aviator artifacts
+  submit` sends its file as the body unchanged and the server's strict
+  models validate it, so an `id` in it is rejected. A backend without the
+  route answers a bare 404/405, reported as unsupported.
 
 `POST` and `PATCH /api/v1/verify`, dismissals, and the listing are gated on
 `role="user"`: an account-scoped API token resolves to no role and gets a 403,

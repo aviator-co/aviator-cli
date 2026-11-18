@@ -232,3 +232,16 @@ func TestStatusErrorIsTyped(t *testing.T) {
 		t.Errorf("Error() = %q", got)
 	}
 }
+
+// A server message that already ends a sentence gets the hint as a sentence
+// of its own instead of a "; " clause after its period.
+func TestWithHint(t *testing.T) {
+	for msg, want := range map[string]string{
+		"needs a user":                 "needs a user; run `aviator login` to act as yourself",
+		"Verification is not enabled.": "Verification is not enabled. Run `aviator login` to act as yourself.",
+	} {
+		if got := withHint(msg, "run `aviator login` to act as yourself"); got != want {
+			t.Errorf("withHint(%q) = %q, want %q", msg, got, want)
+		}
+	}
+}

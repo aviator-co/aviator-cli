@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -172,3 +173,19 @@ func warnPreviewNotApplied(sent string, got *string) {
 }
 
 const scenarioSourceExternal = "external"
+
+// readPayloadFile reads a request body file, or stdin for -, unparsed, for
+// commands that send their file to the server as is.
+func readPayloadFile(path string) ([]byte, error) {
+	var data []byte
+	var err error
+	if path == "-" {
+		data, err = io.ReadAll(os.Stdin)
+	} else {
+		data, err = os.ReadFile(path)
+	}
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to read %s", path)
+	}
+	return data, nil
+}

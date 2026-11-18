@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
-	"os"
 	"strconv"
 	"strings"
 
@@ -160,7 +158,7 @@ var decisionsApplyCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		body, err := readDecisionBatch(decisionsApplyFlags.File)
+		body, err := readPayloadFile(decisionsApplyFlags.File)
 		if err != nil {
 			return err
 		}
@@ -190,21 +188,6 @@ func parseDecisionID(arg string) (int, error) {
 		return 0, errors.Errorf("invalid decision ID %q, expected a positive number", arg)
 	}
 	return n, nil
-}
-
-// readDecisionBatch reads apply's file, or stdin for -, unparsed.
-func readDecisionBatch(path string) ([]byte, error) {
-	var data []byte
-	var err error
-	if path == "-" {
-		data, err = io.ReadAll(os.Stdin)
-	} else {
-		data, err = os.ReadFile(path)
-	}
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to read %s", path)
-	}
-	return data, nil
 }
 
 func init() {

@@ -195,15 +195,24 @@ func (c *Client) statusError(method, path string, status int, data []byte) error
 		msg += ": " + strings.Join(ae.Issues, "; ")
 	}
 	if status == http.StatusUnauthorized {
-		msg += "; " + c.reauthHint()
+		msg = withHint(msg, c.reauthHint())
 	}
 	// Account-scoped tokens have no owner, so endpoints that act as the caller
 	// reject them. That is a configured credential, not an expired one.
 	if _, ok := c.tokens.(refresher); status == http.StatusForbidden && !ok {
-		msg += "; run `aviator login` to act as yourself"
+		msg = withHint(msg, "run `aviator login` to act as yourself")
 	}
 	path, _, _ = strings.Cut(path, "?")
 	return &Error{Status: status, Code: ae.Err, Message: msg, Method: method, Path: path}
+}
+
+// withHint adds hint to msg as a clause, or as its own sentence when msg
+// already ends one.
+func withHint(msg, hint string) string {
+	if strings.HasSuffix(msg, ".") || strings.HasSuffix(msg, "!") || strings.HasSuffix(msg, "?") {
+		return msg + " " + strings.ToUpper(hint[:1]) + hint[1:] + "."
+	}
+	return msg + "; " + hint
 }
 
 func (c *Client) reauthHint() string {
