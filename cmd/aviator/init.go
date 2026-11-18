@@ -185,6 +185,9 @@ func askAgents(scope adapter.Scope) ([]adapter.Adapter, error) {
 		Title("Set up which agents?").
 		Description(desc).
 		Options(opts...).
+		// TODO: drop once huh ships charmbracelet/huh#831; unsized it hides the options.
+		Height(len(opts) + 3).
+		Filterable(false).
 		Validate(func(s []string) error {
 			if len(s) == 0 {
 				return errors.New("select at least one agent")
