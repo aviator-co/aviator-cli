@@ -52,6 +52,7 @@ func TestVerifySubmitJSON(t *testing.T) {
 		"target_branch":       "main",
 		"criteria_count":      float64(2),
 		"preview_config_name": "docs",
+		"draft":               false,
 	})
 }
 
@@ -69,6 +70,7 @@ func TestVerifySubmitJSONKeepsEmptyFields(t *testing.T) {
 		"target_branch":       "",
 		"criteria_count":      float64(0),
 		"preview_config_name": nil,
+		"draft":               false,
 	})
 }
 

@@ -27,6 +27,7 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   dismiss.go        # `aviator dismiss` -> delete or waive task criteria, waive invariants
   scenarios.go      # `aviator scenarios` -> scenario runs + evidence of a verification run
   evidence.go       # `aviator evidence`  -> signed URL / download of one evidence file
+  evidence_submit.go  # `aviator evidence submit` -> manifest + file uploads from the user's own run
   invariants.go     # `aviator invariants <list|categories|owner-teams|create|edit|delete|approve|reject|set-status|set-owner>`
   invariants_format.go  # text rendering for the invariants commands
   invariants_insights.go        # `aviator invariants <insights|show|reviews|waivers>` and insights' `--since` parsing
@@ -47,7 +48,8 @@ Commands are **flat**: `aviator verify` and `aviator runbook` are the actions
 themselves — there is no second verb (no `submit`/`create` subcommand). The one
 resource group is `aviator invariants`, whose subcommands are the CRUD verbs
 over `/api/v1/invariants` plus read-only analytics views (`insights`, `show`,
-`reviews`, `waivers`, and `list --usage`).
+`reviews`, `waivers`, and `list --usage`). `aviator evidence submit` sits under
+`aviator evidence <id>` (the download) because both act on evidence.
 
 ## Commands
 
@@ -135,6 +137,8 @@ The CLI targets endpoints in the `mergeit` backend:
   by the prepass until the session's first scenarios are written. The backend
   treats blank as none and caps it at 4000 characters; the CLI also refuses a
   blank flag. It isn't returned or editable, and never reaches the evaluator.
+  `draft: true` (`--external-evidence`) creates the session as a draft that
+  runs nothing until evidence is submitted; the response echoes `draft`.
 - `POST /api/v1/runbook` — `{repository, intent, oneshot, target_branch?,
   spec_file?, acceptance_criteria?, ...}`. Creates a runbook from an intent
   (`prompt` is a deprecated backend alias; the CLI sends `intent`); criteria
@@ -171,7 +175,32 @@ The CLI targets endpoints in the `mergeit` backend:
   for `aviator results --run`.
 - `GET /api/v1/verify/<n>/runs/latest/scenarios` and
   `/runs/<run_id>/scenarios` — a run's scenario runs with their criteria
-  handles and evidence ids. `aviator scenarios --run` picks the run.
+  handles and evidence ids. `aviator scenarios --run` picks the run. Without
+  `--run` the CLI reads the detail first and asks for
+  `waiting_submission.run_id` when there is one, else `latest`.
+- `GET /api/v1/runbook/<n>/detail` — `?fields=` picks the field groups.
+  `waiting_submission` (`{run_id, commit_sha, submitted_at, complete}`, or
+  null) is evidence submitted since the latest run that no run has started. It
+  only comes back with the `acceptance_criteria` group, which `aviator results`
+  and `aviator scenarios` request; without it `scenarios` falls back to
+  `latest`. `latest_verification` stays the latest started run.
+- `POST /api/v1/verify/<n>/evidence` — `{commit_sha, scenarios: [{summary,
+  criteria?, steps: [{text, evidence?: [{type, label, content_type,
+  size_bytes, sha256}]}]}]}`. Replaces the session's submitted scenarios and
+  returns one upload slot per evidence file (`id`, `upload_url`,
+  `content_type`, `already_uploaded`), in manifest order. The on-disk manifest
+  has a `file` path per evidence entry instead; the CLI fills in content type,
+  size and sha256, and rejects keys it doesn't know. Each file is a plain PUT
+  to its `upload_url` with the declared content type, no bearer token and no
+  overall timeout, only a cap on the wait for storage's response.
+  `started_run_id` is set when every file was already
+  uploaded and a run started.
+- `POST /api/v1/verify/<n>/evidence/complete` — `{evidence_ids}`. Confirms
+  uploads and answers `uploaded_evidence_ids`, `missing_evidence_ids`,
+  `rejected_evidence_ids`, `unknown_evidence_ids`,
+  `completed_scenario_run_ids` and `started_run_id`. `--json` folds these into
+  one `files` entry per declared file (`path`, `evidence_id`, `status`,
+  `error?`).
 - `GET /api/v1/verify/evidence/<id>` — 302 to a short-lived signed storage URL.
   The CLI doesn't follow it with the bearer token: `EvidenceURL` stops at the
   redirect and the download is a plain unauthenticated GET.

@@ -68,6 +68,9 @@ var resultsCmd = &cobra.Command{
 		default:
 			fmt.Println("  Latest verification: none yet")
 		}
+		if run == nil {
+			fmt.Print(formatWaitingSubmission(detail.WaitingSubmission))
+		}
 		return nil
 	},
 }
@@ -83,8 +86,28 @@ type resultsJSON struct {
 	sessionRef
 	Version *int `json:"version"`
 	// TODO: drop once the verify-submit skill reads version instead.
-	RunbookVersion     *int              `json:"runbook_version"`
-	LatestVerification *verificationJSON `json:"latest_verification"`
+	RunbookVersion     *int                   `json:"runbook_version"`
+	LatestVerification *verificationJSON      `json:"latest_verification"`
+	WaitingSubmission  *waitingSubmissionJSON `json:"waiting_submission"`
+}
+
+type waitingSubmissionJSON struct {
+	RunID       int     `json:"run_id"`
+	CommitSHA   *string `json:"commit_sha"`
+	SubmittedAt string  `json:"submitted_at"`
+	Complete    bool    `json:"complete"`
+}
+
+func newWaitingSubmissionJSON(w *api.WaitingSubmission) *waitingSubmissionJSON {
+	if w == nil {
+		return nil
+	}
+	return &waitingSubmissionJSON{
+		RunID:       w.RunID,
+		CommitSHA:   w.CommitSHA,
+		SubmittedAt: w.SubmittedAt,
+		Complete:    w.Complete,
+	}
 }
 
 func newResultsJSON(d *api.RunbookDetail) resultsJSON {
@@ -93,7 +116,25 @@ func newResultsJSON(d *api.RunbookDetail) resultsJSON {
 		Version:            d.RunbookVersion,
 		RunbookVersion:     d.RunbookVersion,
 		LatestVerification: newVerificationJSON(d.LatestVerification),
+		WaitingSubmission:  newWaitingSubmissionJSON(d.WaitingSubmission),
 	}
+}
+
+// formatWaitingSubmission is the line for evidence no run has started yet,
+// or nothing when there is none.
+func formatWaitingSubmission(w *api.WaitingSubmission) string {
+	if w == nil {
+		return ""
+	}
+	commit := "no commit"
+	if sha := deref(w.CommitSHA); sha != "" {
+		commit = shortSHA(sha)
+	}
+	state := "all files uploaded, no run started yet"
+	if !w.Complete {
+		state = "uploads not finished"
+	}
+	return fmt.Sprintf("  Evidence submitted for %s, %s: aviator scenarios lists it\n", commit, state)
 }
 
 type resultsRunJSON struct {

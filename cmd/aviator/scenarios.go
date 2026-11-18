@@ -17,8 +17,9 @@ var scenariosFlags struct {
 var scenariosCmd = &cobra.Command{
 	Use:   "scenarios <id>",
 	Short: "Show what a verification run exercised and the evidence it captured (e.g. aviator scenarios r/123)",
-	Long: "List the scenarios behind a review's latest verification run, or the\n" +
-		"run --run names, with each one's status, the criteria it covers, and its\n" +
+	Long: "List the scenarios behind a review's latest verification run, the\n" +
+		"evidence submitted since it that no run has started, or the run --run\n" +
+		"names, with each one's status, the criteria it covers, and its\n" +
 		"evidence. `aviator show` lists a review's runs. Every scenario\n" +
 		"that ran captures a trace of what the agent did; download any evidence\n" +
 		"with `aviator evidence <id> -o <path>`.\n" +
@@ -34,7 +35,17 @@ var scenariosCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		scenarios, err := client.GetVerifyScenarios(cmd.Context(), runbookNumber, scenariosFlags.Run)
+		runID := scenariosFlags.Run
+		if runID == 0 {
+			detail, err := client.GetRunbookDetail(cmd.Context(), runbookNumber, []string{"acceptance_criteria"})
+			if err != nil {
+				return err
+			}
+			if detail.WaitingSubmission != nil {
+				runID = detail.WaitingSubmission.RunID
+			}
+		}
+		scenarios, err := client.GetVerifyScenarios(cmd.Context(), runbookNumber, runID)
 		if err != nil {
 			return err
 		}
@@ -72,7 +83,15 @@ func formatScenarios(s *api.VerifyScenarios) string {
 		if sr.Reused {
 			reused = ", reused from an earlier run"
 		}
-		fmt.Fprintf(&b, "  %s [%s, %d tool calls%s]\n", sr.Scenario.Summary, status, sr.ToolCallCount, reused)
+		work := fmt.Sprintf("%d tool calls", sr.ToolCallCount)
+		if sr.Source == scenarioSourceExternal {
+			work = "submitted by " + deref(sr.SubmittedBy)
+			if commit := deref(sr.CommitSHA); commit != "" {
+				work += " for " + shortSHA(commit)
+			}
+			reused = ""
+		}
+		fmt.Fprintf(&b, "  %s [%s, %s%s]\n", sr.Scenario.Summary, status, work, reused)
 		if reason := deref(sr.FailureReason); reason != "" {
 			fmt.Fprintf(&b, "    %s\n", reason)
 		}
@@ -116,6 +135,9 @@ type scenarioJSON struct {
 	TerminationReason *string            `json:"termination_reason"`
 	FailureReason     *string            `json:"failure_reason"`
 	ToolCallCount     int                `json:"tool_call_count"`
+	Source            string             `json:"source"`
+	SubmittedBy       *string            `json:"submitted_by"`
+	CommitSHA         *string            `json:"commit_sha"`
 	Reused            bool               `json:"reused"`
 	StartedAt         *string            `json:"started_at"`
 	CompletedAt       *string            `json:"completed_at"`
@@ -154,6 +176,9 @@ func newScenariosJSON(s *api.VerifyScenarios) scenariosJSON {
 			TerminationReason: sr.TerminationReason,
 			FailureReason:     sr.FailureReason,
 			ToolCallCount:     sr.ToolCallCount,
+			Source:            sr.Source,
+			SubmittedBy:       sr.SubmittedBy,
+			CommitSHA:         sr.CommitSHA,
 			Reused:            sr.Reused,
 			StartedAt:         sr.StartedAt,
 			CompletedAt:       sr.CompletedAt,
