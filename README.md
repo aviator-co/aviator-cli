@@ -256,6 +256,22 @@ file didn't make it.
 Manifest reference:
 https://docs.aviator.co/verify/how-to-guides/submitting-evidence-from-your-own-run
 
+### Describe how a change is built
+
+Artifacts are the diagrams and notes a session's review page shows beside the
+code: each one has a Mermaid diagram, a markdown body, or both, plus the files
+it's about. A PR author's coding agent usually writes them.
+
+```bash
+aviator artifacts submit r/123 --file artifacts.json   # replace the set, - reads stdin
+```
+
+A submit replaces the session's whole set, so send every artifact every time.
+Earlier sets stay attached to the verification runs that started with them.
+`aviator artifacts submit --help` has the file format. It needs a user access
+token (`aviator login` or a personal token). `--json` prints the result as a
+single JSON object.
+
 ### Manage baseline invariants
 
 Baseline invariants are standing rules every verification checks on top of a
