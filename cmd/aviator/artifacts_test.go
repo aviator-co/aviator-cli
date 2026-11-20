@@ -12,6 +12,7 @@ import (
 
 	"github.com/aviator-co/aviator-cli/internal/api"
 	"github.com/aviator-co/aviator-cli/internal/config"
+	"github.com/spf13/cobra"
 )
 
 const artifactSetReply = `{"artifact_set":{"id":3,"summary":"Signed webhooks","head_sha":"abc",` +
@@ -69,6 +70,110 @@ func TestArtifactsSubmitJSON(t *testing.T) {
 		s.Author["role"] != "coding_agent" || s.Author["model"] != "claude-fable-5-1" ||
 		s.CreatedAt != "2026-11-17T00:00:00+00:00" || s.Summary != "Signed webhooks" {
 		t.Errorf("json = %s", out)
+	}
+}
+
+func TestArtifactsList(t *testing.T) {
+	got := useTestServer(t, artifactSetReply)
+	out := runCommand(t, artifactsListCmd, "r/4")
+	if want := "GET /api/v1/verify/4/artifacts "; (*got)[0] != want {
+		t.Errorf("request = %q, want %q", (*got)[0], want)
+	}
+	for _, want := range []string{
+		"r/4 Signed webhooks\n",
+		"submitted 2026-11-17T00:00:00+00:00 · as coding_agent (claude-fable-5-1, claude-code) · at abc\n",
+		"ID   CATEGORY    DIAGRAM  BODY  REFS  TITLE\n",
+		"#31  Services    yes      no    1     Gate\n",
+		"#32  Data model  no       yes   0     Model\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("list lacks %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestArtifactsListNone(t *testing.T) {
+	useTestServer(t, `{"artifact_set":null}`)
+	if out := runCommand(t, artifactsListCmd, "r/4"); !strings.HasPrefix(out, "No artifacts on r/4 yet.") {
+		t.Errorf("output = %q", out)
+	}
+
+	artifactsFlags.JSON = true
+	t.Cleanup(func() { artifactsFlags.JSON = false })
+	if out := runCommand(t, artifactsListCmd, "r/4"); out != "{\n  \"id\": \"r/4\",\n  \"artifact_set\": null\n}\n" {
+		t.Errorf("json = %q", out)
+	}
+}
+
+func TestArtifactsShow(t *testing.T) {
+	useTestServer(t, artifactSetReply)
+	out := runCommand(t, artifactsShowCmd, "r/4", "31")
+	for _, want := range []string{
+		"#31 Gate\n  Services · PRs #12\n" +
+			"  submitted 2026-11-17T00:00:00+00:00 · as coding_agent (claude-fable-5-1, claude-code) · at abc\n",
+		"References:\n  a.py:40-48\n",
+		"Diagram:\n```mermaid\nflowchart LR\n  a --> b\n```\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("show lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Body:") {
+		t.Errorf("show has a body for a null one:\n%s", out)
+	}
+
+	artifactsFlags.JSON = true
+	t.Cleanup(func() { artifactsFlags.JSON = false })
+	var parsed struct {
+		ID        string            `json:"id"`
+		HeadSHA   string            `json:"head_sha"`
+		Author    map[string]string `json:"author"`
+		CreatedAt string            `json:"created_at"`
+		Artifact  struct {
+			ID        int    `json:"id"`
+			Body      string `json:"body"`
+			PRNumbers []int  `json:"pr_numbers"`
+		} `json:"artifact"`
+	}
+	out = runCommand(t, artifactsShowCmd, "r/4", "#32")
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("%v:\n%s", err, out)
+	}
+	if parsed.ID != "r/4" || parsed.Artifact.ID != 32 || parsed.Artifact.Body != "Adds a table." ||
+		parsed.HeadSHA != "abc" || parsed.Author["role"] != "coding_agent" ||
+		parsed.CreatedAt != "2026-11-17T00:00:00+00:00" {
+		t.Errorf("json = %s", out)
+	}
+}
+
+// TestArtifactsShowJSONNullHeadSHA checks show --json leaves out a set's null
+// head_sha, like list --json does.
+func TestArtifactsShowJSONNullHeadSHA(t *testing.T) {
+	useTestServer(t, strings.Replace(artifactSetReply, `"head_sha":"abc"`, `"head_sha":null`, 1))
+	artifactsFlags.JSON = true
+	t.Cleanup(func() { artifactsFlags.JSON = false })
+	out := runCommand(t, artifactsShowCmd, "r/4", "31")
+	if strings.Contains(out, `"head_sha"`) || !strings.Contains(out, `"created_at"`) {
+		t.Errorf("json = %s", out)
+	}
+}
+
+// TestArtifactsShowUnknownID checks an id that isn't in the set, or isn't a
+// number, fails with the ids and titles there are.
+func TestArtifactsShowUnknownID(t *testing.T) {
+	useTestServer(t, artifactSetReply)
+	cmd := artifactsShowCmd
+	cmd.SetContext(context.Background())
+	const known = ". The artifacts on r/4 are:\n  #31  Gate\n  #32  Model"
+	for arg, want := range map[string]string{
+		"99":   "no artifact #99" + known,
+		"gate": `invalid artifact ID "gate", expected a positive number` + known,
+		"0":    `invalid artifact ID "0", expected a positive number` + known,
+		"#-3":  `invalid artifact ID "#-3", expected a positive number` + known,
+	} {
+		if err := cmd.RunE(cmd, []string{"r/4", arg}); err == nil || err.Error() != want {
+			t.Errorf("show %s: err = %v, want %q", arg, err, want)
+		}
 	}
 }
 
@@ -144,5 +249,52 @@ func TestArtifactsJSONOmitsAbsentFields(t *testing.T) {
 	}
 	if refs, ok := textOnly["references"].([]any); !ok || len(refs) != 0 {
 		t.Errorf("empty references = %v, want []", textOnly["references"])
+	}
+}
+
+// TestArtifactsReadVerifyNotEnabled checks list and show fail with the
+// server's message when the account doesn't have Verify.
+func TestArtifactsReadVerifyNotEnabled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"verify-not-enabled","message":"Verification is not enabled."}`))
+	}))
+	t.Cleanup(srv.Close)
+	host, token := config.Av.Aviator.APIHost, config.Av.Aviator.APIToken
+	config.Av.Aviator.APIHost, config.Av.Aviator.APIToken = srv.URL, "test-token"
+	t.Cleanup(func() { config.Av.Aviator.APIHost, config.Av.Aviator.APIToken = host, token })
+
+	for _, tc := range []struct {
+		cmd  *cobra.Command
+		args []string
+	}{
+		{artifactsListCmd, []string{"r/4"}},
+		{artifactsShowCmd, []string{"r/4", "31"}},
+	} {
+		tc.cmd.SetContext(context.Background())
+		err := tc.cmd.RunE(tc.cmd, tc.args)
+		if err == nil || !strings.Contains(err.Error(), "(403): Verification is not enabled.") {
+			t.Errorf("%s: err = %v", tc.cmd.Name(), err)
+		}
+	}
+}
+
+func TestArtifactsListWithoutSummary(t *testing.T) {
+	useTestServer(t, strings.Replace(artifactSetReply, `"summary":"Signed webhooks"`, `"summary":null`, 1))
+	out := runCommand(t, artifactsListCmd, "r/4")
+	if want := "r/4\n  submitted 2026-11-17T00:00:00+00:00 · "; !strings.HasPrefix(out, want) {
+		t.Errorf("list without a summary:\n%s", out)
+	}
+	if !strings.Contains(out, "#31  Services    yes      no    1     Gate\n") {
+		t.Errorf("list lost its table:\n%s", out)
+	}
+}
+
+func TestArtifactsListMultilineSummary(t *testing.T) {
+	useTestServer(t, strings.Replace(artifactSetReply, `"summary":"Signed webhooks"`,
+		`"summary":"Signed webhooks.\nThe queue never sees a bad one."`, 1))
+	out := runCommand(t, artifactsListCmd, "r/4")
+	if want := "r/4 Signed webhooks.\n  The queue never sees a bad one.\n  submitted "; !strings.HasPrefix(out, want) {
+		t.Errorf("multi-line summary:\n%s", out)
 	}
 }

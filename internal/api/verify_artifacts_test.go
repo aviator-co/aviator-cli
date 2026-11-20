@@ -41,3 +41,20 @@ func TestArtifactSetNullSummary(t *testing.T) {
 		t.Errorf("set = %+v", resp.ArtifactSet)
 	}
 }
+
+func TestGetArtifacts(t *testing.T) {
+	srv, got := recordRequests(t, artifactSetJSON)
+	resp, err := newTestClient(srv).GetArtifacts(context.Background(), 123)
+	if err != nil || resp.ArtifactSet == nil || resp.ArtifactSet.ID != 3 {
+		t.Fatalf("resp = %+v, err = %v", resp, err)
+	}
+	if want := "GET /api/v1/verify/123/artifacts "; (*got)[0] != want {
+		t.Errorf("request = %q, want %q", (*got)[0], want)
+	}
+
+	srv, _ = recordRequests(t, `{"artifact_set":null}`)
+	resp, err = newTestClient(srv).GetArtifacts(context.Background(), 123)
+	if err != nil || resp.ArtifactSet != nil {
+		t.Errorf("resp = %+v, err = %v", resp, err)
+	}
+}

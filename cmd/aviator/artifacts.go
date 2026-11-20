@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
@@ -19,13 +20,107 @@ var artifactsFlags struct {
 var artifactsCmd = &cobra.Command{
 	Use:     "artifacts",
 	Aliases: []string{"artifact"},
-	Short:   "Submit the artifacts that describe how a session's change is built",
+	Short:   "Read and submit the artifacts that describe how a session's change is built",
 	Long: "Artifacts are the diagrams and notes a session's review page shows\n" +
 		"beside the code, so a reviewer can see how the change is built before\n" +
 		"reading the diff. Each one has a Mermaid diagram, a markdown body, or\n" +
 		"both, plus the files it's about.\n" +
 		"\n" +
-		"submit replaces the session's whole artifact set from a JSON file.",
+		"list and show read the current set, and show takes the id list prints.\n" +
+		"submit replaces the whole set from a JSON file. To change one artifact,\n" +
+		"read the set with list --json, edit it, put in your own author and the\n" +
+		"current head_sha (or drop it), and submit every artifact again (see\n" +
+		"submit --help).",
+}
+
+var artifactsListCmd = &cobra.Command{
+	Use:   "list <id>",
+	Short: "List a session's current artifacts",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		runbookNumber, set, err := fetchArtifacts(cmd, args[0])
+		if err != nil {
+			return err
+		}
+		if artifactsFlags.JSON {
+			return printJSON(newArtifactSetResponseJSON(runbookNumber, set))
+		}
+		if set == nil {
+			fmt.Println(noArtifactsMessage(runbookNumber))
+			return nil
+		}
+		fmt.Print(formatArtifactSet(runbookNumber, set))
+		return nil
+	},
+}
+
+var artifactsShowCmd = &cobra.Command{
+	Use:   "show <id> <artifact-id>",
+	Short: "Show one artifact in full, with its raw Mermaid source",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		runbookNumber, set, err := fetchArtifacts(cmd, args[0])
+		if err != nil {
+			return err
+		}
+		if set == nil {
+			return errors.New(noArtifactsMessage(runbookNumber))
+		}
+		a, err := findArtifact(runbookNumber, set, args[1])
+		if err != nil {
+			return err
+		}
+		if artifactsFlags.JSON {
+			return printJSON(newArtifactShowJSON(runbookNumber, set, a))
+		}
+		fmt.Print(formatArtifactDetail(set, a))
+		return nil
+	},
+}
+
+func fetchArtifacts(cmd *cobra.Command, arg string) (int, *api.ArtifactSet, error) {
+	runbookNumber, err := parseRunbookID(arg)
+	if err != nil {
+		return 0, nil, err
+	}
+	client, err := api.NewClient()
+	if err != nil {
+		return 0, nil, err
+	}
+	resp, err := client.GetArtifacts(cmd.Context(), runbookNumber)
+	if err != nil {
+		return 0, nil, artifactsError(err)
+	}
+	return runbookNumber, resp.ArtifactSet, nil
+}
+
+func noArtifactsMessage(runbookNumber int) string {
+	return fmt.Sprintf("No artifacts on %s yet. aviator artifacts submit adds them.", formatRunbookID(runbookNumber))
+}
+
+// findArtifact looks up the artifact whose id arg is, as a bare number or
+// the #<number> form list prints, and lists the ones there are when it isn't
+// one of them.
+func findArtifact(runbookNumber int, set *api.ArtifactSet, arg string) (*api.Artifact, error) {
+	id, err := parseID("artifact", arg)
+	if err == nil {
+		for i := range set.Artifacts {
+			if set.Artifacts[i].ID == id {
+				return &set.Artifacts[i], nil
+			}
+		}
+	}
+	var b strings.Builder
+	if err != nil {
+		b.WriteString(err.Error())
+	} else {
+		fmt.Fprintf(&b, "no artifact #%d", id)
+	}
+	fmt.Fprintf(&b, ". The artifacts on %s are:", formatRunbookID(runbookNumber))
+	for i := range set.Artifacts {
+		fmt.Fprintf(&b, "\n  #%d  %s", set.Artifacts[i].ID, set.Artifacts[i].Title)
+	}
+	return nil, errors.New(b.String())
 }
 
 var artifactsSubmitFlags struct {
@@ -82,7 +177,12 @@ var artifactsSubmitCmd = &cobra.Command{
 		"\n" +
 		"A submit replaces the whole set, so send every artifact every time, not\n" +
 		"just the ones that changed. Earlier sets stay attached to the\n" +
-		"verification runs that started with them. Needs a user access token\n" +
+		"verification runs that started with them. To change one artifact, take\n" +
+		"the artifact_set from aviator artifacts list <id> --json, drop its id\n" +
+		"and created_at and every artifact's id, edit it, and submit the result.\n" +
+		"Replace its author with your own and its head_sha with the commit you\n" +
+		"wrote against, or drop head_sha so links follow the run's commit.\n" +
+		"Every submit gives each artifact a new id. Needs a user access token\n" +
 		"(aviator login or a personal token).",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -135,6 +235,10 @@ func init() {
 	artifactsSubmitCmd.Flags().StringVar(&artifactsSubmitFlags.File, "file", "", "the JSON artifact set file, or - for stdin")
 	_ = artifactsSubmitCmd.MarkFlagRequired("file")
 
-	artifactsCmd.AddCommand(artifactsSubmitCmd)
+	artifactsCmd.AddCommand(
+		artifactsListCmd,
+		artifactsShowCmd,
+		artifactsSubmitCmd,
+	)
 	rootCmd.AddCommand(artifactsCmd)
 }

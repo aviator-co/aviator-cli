@@ -263,11 +263,17 @@ code: each one has a Mermaid diagram, a markdown body, or both, plus the files
 it's about. A PR author's coding agent usually writes them.
 
 ```bash
+aviator artifacts list r/123                           # the current set, one row per artifact
+aviator artifacts show r/123 31                        # one artifact by the id list prints, with its Mermaid source
 aviator artifacts submit r/123 --file artifacts.json   # replace the set, - reads stdin
 ```
 
 A submit replaces the session's whole set, so send every artifact every time.
 Earlier sets stay attached to the verification runs that started with them.
+To change one artifact, edit the `artifact_set` from `list --json` and submit
+it again without its `id` and `created_at` or the artifacts' `id`s, which the
+server rejects. Put in your own `author` and the current `head_sha`, or drop
+`head_sha` so file links follow the run's commit.
 `aviator artifacts submit --help` has the file format. It needs a user access
 token (`aviator login` or a personal token). `--json` prints the result as a
 single JSON object.

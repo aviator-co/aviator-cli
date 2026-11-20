@@ -98,3 +98,34 @@ func TestStaticTokenDescription(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestParseID(t *testing.T) {
+	good := map[string]int{
+		"7":     7,
+		"#7":    7,
+		" #42 ": 42, //nolint:gocritic // the padding is what this case asserts gets trimmed
+	}
+	for in, want := range good {
+		got, err := parseID("invariant", in)
+		if err != nil {
+			t.Errorf("parseID(%q) error: %v", in, err)
+		} else if got != want {
+			t.Errorf("parseID(%q) = %d, want %d", in, got, want)
+		}
+	}
+	for _, in := range []string{"", "#", "abc", "0", "-3", "r/7"} {
+		if _, err := parseID("invariant", in); err == nil {
+			t.Errorf("parseID(%q) expected error", in)
+		}
+	}
+	// Each command names its own kind of id.
+	for noun, want := range map[string]string{
+		"decision":  `invalid decision ID "0", expected a positive number`,
+		"invariant": `invalid invariant ID "0", expected a positive number`,
+		"artifact":  `invalid artifact ID "0", expected a positive number`,
+	} {
+		if _, err := parseID(noun, "0"); err == nil || err.Error() != want {
+			t.Errorf("parseID(%q, \"0\") = %v, want %q", noun, err, want)
+		}
+	}
+}

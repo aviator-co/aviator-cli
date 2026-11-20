@@ -2,10 +2,7 @@ package main
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 
-	"emperror.dev/errors"
 	"github.com/aviator-co/aviator-cli/internal/api"
 	"github.com/aviator-co/aviator-cli/internal/utils/colors"
 	"github.com/dustin/go-humanize/english"
@@ -97,7 +94,7 @@ var decisionsShowCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		decisionID, err := parseDecisionID(args[1])
+		decisionID, err := parseID("decision", args[1])
 		if err != nil {
 			return err
 		}
@@ -178,16 +175,6 @@ var decisionsApplyCmd = &cobra.Command{
 		fmt.Print(formatDecisionTable(resp.Decisions))
 		return nil
 	},
-}
-
-// parseDecisionID accepts a bare number or the #<number> form the CLI prints.
-func parseDecisionID(arg string) (int, error) {
-	s := strings.TrimPrefix(strings.TrimSpace(arg), "#")
-	n, err := strconv.Atoi(s)
-	if err != nil || n <= 0 {
-		return 0, errors.Errorf("invalid decision ID %q, expected a positive number", arg)
-	}
-	return n, nil
 }
 
 func init() {

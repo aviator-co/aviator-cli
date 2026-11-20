@@ -12,27 +12,6 @@ import (
 	"github.com/spf13/pflag"
 )
 
-func TestParseInvariantID(t *testing.T) {
-	good := map[string]int{
-		"7":     7,
-		"#7":    7,
-		" #42 ": 42, //nolint:gocritic // the padding is what this case asserts gets trimmed
-	}
-	for in, want := range good {
-		got, err := parseInvariantID(in)
-		if err != nil {
-			t.Errorf("parseInvariantID(%q) error: %v", in, err)
-		} else if got != want {
-			t.Errorf("parseInvariantID(%q) = %d, want %d", in, got, want)
-		}
-	}
-	for _, in := range []string{"", "#", "abc", "0", "-3", "r/7"} {
-		if _, err := parseInvariantID(in); err == nil {
-			t.Errorf("parseInvariantID(%q) expected error", in)
-		}
-	}
-}
-
 func TestParseCondition(t *testing.T) {
 	good := map[string]api.InvariantCondition{
 		"file_path_glob=src/**/*.py": {Type: "file_path_glob", Value: "src/**/*.py"},
