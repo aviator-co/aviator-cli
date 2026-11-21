@@ -114,7 +114,7 @@ func contextOf(t *testing.T, out string) (event, text string) {
 func emitPre(t *testing.T, payload string) string {
 	t.Helper()
 	var out bytes.Buffer
-	if err := emitPreToolUse(strings.NewReader(payload), &out); err != nil {
+	if err := emitPreToolUse(strings.NewReader(payload), &out, true); err != nil {
 		t.Fatal(err)
 	}
 	return out.String()

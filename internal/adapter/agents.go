@@ -21,6 +21,9 @@ type settingsAgent struct {
 	repoFile, localFile, userFile string
 	// install tells the agent how to get /verify-submit, which differs per agent.
 	install string
+	// allowReads approves read-only aviator commands, for agents whose hooks
+	// can allow a call outright.
+	allowReads bool
 }
 
 var registry = []Adapter{
@@ -32,6 +35,7 @@ var registry = []Adapter{
 		userFile:  "settings.json",
 		install: "run `/plugin marketplace add aviator-co/agent-plugins` then " +
 			"`/plugin install aviator@aviator-plugins`.",
+		allowReads: true,
 	},
 	settingsAgent{
 		id: "codex", name: "Codex",
@@ -106,5 +110,5 @@ func (a settingsAgent) EmitPostToolUse(stdin io.Reader, stdout io.Writer) error 
 }
 
 func (a settingsAgent) EmitPreToolUse(stdin io.Reader, stdout io.Writer) error {
-	return emitPreToolUse(stdin, stdout)
+	return emitPreToolUse(stdin, stdout, a.allowReads)
 }

@@ -147,12 +147,16 @@ func readPayload(stdin io.Reader) (hookInput, error) {
 	return in, nil
 }
 
-// emitPreToolUse injects the reminder when the call opens a PR. It fails open:
-// anything unparseable or unrelated produces no output, so the tool proceeds.
-func emitPreToolUse(stdin io.Reader, stdout io.Writer) error {
+// emitPreToolUse injects the reminder when the call opens a PR, and with
+// allowReads approves read-only aviator commands. It fails open: anything
+// unparseable or unrelated produces no output, so the tool proceeds.
+func emitPreToolUse(stdin io.Reader, stdout io.Writer, allowReads bool) error {
 	in, err := readPayload(stdin)
 	if err != nil {
 		return err
+	}
+	if allowReads && in.ToolName == shellToolName && isReadOnlyCommand(in.ToolInput.Command) {
+		return emitAllow(stdout)
 	}
 	shellPR := in.ToolName == shellToolName && isPRCommand(in.ToolInput.Command)
 	if !shellPR && !mcpPRTool.MatchString(in.ToolName) {
