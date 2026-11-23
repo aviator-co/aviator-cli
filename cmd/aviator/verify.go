@@ -25,6 +25,7 @@ var verifyFlags struct {
 	RegenerateScenarios string
 	Preview             string
 	ExternalEvidence    bool
+	Draft               bool
 	JSON                bool
 }
 
@@ -32,7 +33,7 @@ var verifyFlags struct {
 // session, so trigger mode rejects them by name.
 var verifySubmitOnlyFlags = []string{
 	"repo", "intent", "criteria", "criteria-file",
-	"working-branch", "target-branch", "spec", "scenario-guidance", "external-evidence",
+	"working-branch", "target-branch", "spec", "scenario-guidance", "external-evidence", "draft",
 }
 
 var verifyTriggerOnlyFlags = []string{"evaluator-only", "force", "regenerate-scenarios"}
@@ -160,13 +161,13 @@ func runVerifySubmit(cmd *cobra.Command) error {
 		SpecFile:           spec,
 		PreviewConfigName:  verifyFlags.Preview,
 		ScenarioGuidance:   guidance,
-		Draft:              verifyFlags.ExternalEvidence,
+		Draft:              verifyFlags.ExternalEvidence || verifyFlags.Draft,
 	})
 	if err != nil {
 		return err
 	}
 
-	if verifyFlags.WorkingBranch == "" {
+	if verifyFlags.WorkingBranch == "" && !verifyFlags.Draft {
 		// stderr, so --json consumers still get a clean object on stdout.
 		fmt.Fprintf(os.Stderr, "%s %s\n", colors.Warning("warning:"), noWorkingBranchWarning)
 	}
@@ -187,9 +188,15 @@ func runVerifySubmit(cmd *cobra.Command) error {
 	if name := deref(resp.PreviewConfigName); name != "" {
 		fmt.Printf("  Preview config: %s\n", name)
 	}
-	if resp.Draft {
+	// Both flags send draft: true, so the hint follows the flag, not resp.Draft.
+	if verifyFlags.ExternalEvidence {
 		fmt.Printf("  Draft: runs once evidence for the PR's head commit is submitted\n")
 		fmt.Printf("  %s\n", colors.Faint("Submit what you saw with: aviator evidence submit "+formatRunbookID(resp.RunbookNumber)+" <manifest>"))
+	}
+	if verifyFlags.Draft {
+		id := formatRunbookID(resp.RunbookNumber)
+		fmt.Printf("  %s\n", colors.Faint("Draft: add the stack's PRs with aviator verify add "+id+
+			" --pr <number>, then aviator verify ready "+id))
 	}
 	return nil
 }
@@ -228,7 +235,7 @@ func runVerifyTrigger(cmd *cobra.Command, arg string) error {
 	}
 	resp, err := client.TriggerVerifyRun(cmd.Context(), runbookNumber, req)
 	if err != nil {
-		return err
+		return stackedVerifyError(err, runbookNumber, 0)
 	}
 	warnPreviewNotApplied(verifyFlags.Preview, resp.PreviewConfigName)
 	if verifyFlags.JSON {
@@ -275,6 +282,11 @@ func init() {
 		"create a draft that waits for scenarios and evidence you submit from your own run (submit mode only)")
 	f.StringVar(&verifyFlags.RegenerateScenarios, "regenerate-scenarios", "",
 		"rewrite the scenarios before running, with feedback on what to change (trigger mode only)")
+	f.BoolVar(&verifyFlags.Draft, "draft", false,
+		"open a draft stacked review that holds PRs and criteria but doesn't run until marked ready (submit mode only)")
+	// Stacked Verify is behind a per-user allowlist.
+	_ = f.MarkHidden("draft")
+	verifyCmd.MarkFlagsMutuallyExclusive("external-evidence", "draft")
 	f.BoolVar(&verifyFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 }
 

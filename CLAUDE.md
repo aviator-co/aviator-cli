@@ -19,6 +19,7 @@ cmd/aviator/        # CLI entry point + commands (one file per command)
   login.go          # `aviator login`   -> browser OAuth flow
   logout.go         # `aviator logout`  -> drop the stored session
   verify.go         # `aviator verify`  -> POST /api/v1/verify
+  verify_stack.go   # `aviator verify <add|ready|remove>` (hidden, stacked Verify)
   runbook.go        # `aviator runbook` -> POST /api/v1/runbook
   show.go           # `aviator show`    -> runbook detail + its verification runs
   sessions.go       # `aviator sessions`-> list/lookup sessions by branch or PR
@@ -52,6 +53,9 @@ resource group is `aviator invariants`, whose subcommands are the CRUD verbs
 over `/api/v1/invariants` plus read-only analytics views (`insights`, `show`,
 `reviews`, `waivers`, and `list --usage`). `aviator evidence submit` sits under
 `aviator evidence <id>` (the download) because both act on evidence.
+`aviator verify add|ready|remove` are subcommands too: the stacked Verify
+steps act on an existing review rather than submitting one, and stay hidden
+behind the Stacked Verify allowlist.
 
 ## Commands
 
@@ -166,6 +170,23 @@ The CLI targets endpoints in the `mergeit` backend:
   feedback winning on conflicts. It needs non-blank feedback and a preview,
   doesn't combine with `evaluator_only`, and the backend caps it per session
   for non-BYOK accounts (429 `scenario-regen-limit-reached`).
+- Stacked Verify, behind a per-user allowlist, so its commands and
+  `--draft` are `Hidden: true`. `POST /api/v1/verify` takes `draft: true`;
+  a draft never runs (409 `session-draft`). `POST /api/v1/verify/<n>/prs`
+  takes `{pr_numbers, criteria, base_version, intent?}`, `criteria` being the
+  full list for every member (409 `stale-runbook-version` when `base_version` is
+  behind). `POST /<n>/ready` takes `{}`, makes the draft active, and starts no
+  run (PR events start them). `POST /<n>/prs/remove` takes `{pr_numbers,
+  criteria, base_version, intent?}`, `criteria` being the full list for the
+  PRs that stay; the session stays open (draft or ready). `POST
+  /api/v1/verify/stack` takes `{repository:{org,name}, pr_numbers, intent,
+  criteria, from_runbook_number?}` and opens a ready session holding those
+  PRs (`from_runbook_number` links the session they were removed from). All
+  of them return the session with `state` and `members` (`[{pr_number,
+  position, head_sha}]`) and refuse a broken stack with 400 `stack-invalid`
+  (503 `stack-check-unavailable` when GitHub can't say). The detail endpoint
+  carries `state`, `members`, `stack_problem`, `split_from` and `split_into`
+  for stacked sessions only.
 - `POST /api/v1/verify/<n>/dismissals` — `{criteria: [{stable_key} |
   {stable_key, action: "waive", justification} |
   {baseline_invariant_id, category, justification}]}`. Deletes or waives task

@@ -29,6 +29,16 @@ type RunbookDetail struct {
 	// PreviewConfigName is the preview config the session's runs use; the
 	// latest run's config is on LatestVerification.
 	PreviewConfigName *string `json:"preview_config_name"`
+	// State (draft, active, archived) and Members are set only for stacked
+	// sessions; older backends and unstacked sessions leave them out.
+	State   *string         `json:"state,omitempty"`
+	Members []SessionMember `json:"members,omitempty"`
+	// StackProblem says why a stacked session's PRs don't form one stack.
+	StackProblem *string `json:"stack_problem,omitempty"`
+	// SplitFrom is the session this one was split from (add --new --from), and
+	// SplitInto the sessions split from this one.
+	SplitFrom *int  `json:"split_from,omitempty"`
+	SplitInto []int `json:"split_into,omitempty"`
 	// LatestVerificationPresent distinguishes a response that carried an
 	// explicit null latest_verification (no runs yet) from one where the
 	// server omitted the key entirely.

@@ -74,6 +74,23 @@ func formatRunbookDetail(d *api.RunbookDetail, runs []api.VerificationRun, moreR
 	var b strings.Builder
 	b.WriteString(formatDetailHeader(d))
 
+	if state := deref(d.State); state != "" {
+		fmt.Fprintf(&b, "  State: %s\n", state)
+	}
+	if problem := deref(d.StackProblem); problem != "" {
+		fmt.Fprintf(&b, "  Stack problem: %s\n", problem)
+	}
+	if len(d.SplitInto) > 0 {
+		ids := make([]string, len(d.SplitInto))
+		for i, n := range d.SplitInto {
+			ids[i] = formatRunbookID(n)
+		}
+		fmt.Fprintf(&b, "  Split into: %s\n", strings.Join(ids, ", "))
+	}
+	if d.SplitFrom != nil {
+		fmt.Fprintf(&b, "  Split from: %s\n", formatRunbookID(*d.SplitFrom))
+	}
+
 	if intent := deref(d.Intent); intent != "" {
 		fmt.Fprintf(&b, "  Intent: %s\n", intent)
 	}
@@ -95,6 +112,8 @@ func formatRunbookDetail(d *api.RunbookDetail, runs []api.VerificationRun, moreR
 	if name := deref(d.PreviewConfigName); name != "" {
 		fmt.Fprintf(&b, "  Preview config: %s\n", name)
 	}
+
+	b.WriteString(formatMembers(d.Members))
 
 	if len(d.SpecFiles) > 0 {
 		names := make([]string, len(d.SpecFiles))
@@ -236,6 +255,12 @@ type showJSON struct {
 	Runs               []runJSON         `json:"runs"`
 	RunsHasMore        bool              `json:"runs_has_more"`
 	PreviewConfigName  *string           `json:"preview_config_name"`
+	// State, Members, SplitFrom and SplitInto describe a stacked session; null and [] otherwise.
+	State        *string      `json:"state"`
+	SplitFrom    *string      `json:"split_from"`
+	SplitInto    []string     `json:"split_into"`
+	Members      []memberJSON `json:"members"`
+	StackProblem *string      `json:"stack_problem"`
 }
 
 type pullRequestJSON struct {
@@ -267,9 +292,20 @@ func newShowJSON(d *api.RunbookDetail, runs []api.VerificationRun, moreRuns bool
 		PreviewConfigName:  d.PreviewConfigName,
 		Runs:               make([]runJSON, 0, len(runs)),
 		RunsHasMore:        moreRuns,
+		State:              d.State,
+		SplitInto:          make([]string, 0, len(d.SplitInto)),
+		Members:            newMembersJSON(d.Members),
+		StackProblem:       d.StackProblem,
 	}
 	for i := range runs {
 		out.Runs = append(out.Runs, newRunJSON(&runs[i]))
+	}
+	if d.SplitFrom != nil {
+		from := formatRunbookID(*d.SplitFrom)
+		out.SplitFrom = &from
+	}
+	for _, n := range d.SplitInto {
+		out.SplitInto = append(out.SplitInto, formatRunbookID(n))
 	}
 	if s := d.RunbookState; s != nil {
 		out.WorkingBranch, out.TargetBranch = deref(s.WorkingBranch), deref(s.TargetBranch)
