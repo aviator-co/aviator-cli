@@ -198,13 +198,17 @@ func formatVerification(label string, v *api.VerificationRun) string {
 	if msg := deref(v.ErrorMessage); msg != "" {
 		fmt.Fprintf(&b, "    Error: %s\n", msg)
 	}
-	for _, fr := range v.FailedResults {
-		reason := ""
-		if r := deref(fr.Reason); r != "" {
-			reason = ": " + r
+	for _, r := range v.Results {
+		handle := formatHandle(r.StableKey, r.BaselineInvariantID)
+		if r.Status == "pass" {
+			fmt.Fprintf(&b, "    %s %s%s\n", colors.Success("✓"), r.Criterion, handle)
+			continue
 		}
-		fmt.Fprintf(&b, "    %s %s%s%s\n", colors.Failure("✗"), fr.Criterion,
-			formatHandle(fr.StableKey, fr.BaselineInvariantID), reason)
+		reason := ""
+		if s := deref(r.Reason); s != "" {
+			reason = ": " + s
+		}
+		fmt.Fprintf(&b, "    %s %s%s%s\n", colors.Failure("✗"), r.Criterion, handle, reason)
 	}
 	switch v.Status {
 	case "failed":
@@ -322,14 +326,15 @@ func newShowJSON(d *api.RunbookDetail, runs []api.VerificationRun, moreRuns bool
 	return out
 }
 
-// verificationJSON is a verification run. Evidence and Location on a failure
+// verificationJSON is a verification run. Evidence and Location on a result
 // are the evaluator's free-form objects, passed through as is.
 type verificationJSON struct {
 	runJSON
-	Failures []failureJSON `json:"failures"`
+	Results  []resultJSON `json:"results"`
+	Failures []resultJSON `json:"failures"`
 }
 
-// runJSON summarizes a verification run without its failures.
+// runJSON summarizes a verification run without its verdicts.
 type runJSON struct {
 	RunID         int     `json:"run_id"`
 	Status        string  `json:"status"`
@@ -370,15 +375,16 @@ func newRunJSON(r *api.VerificationRun) runJSON {
 	}
 }
 
-type failureJSON struct {
+type resultJSON struct {
 	handleJSON
-	Criterion string          `json:"criterion"`
-	Status    string          `json:"status"`
-	Reason    *string         `json:"reason"`
-	Invariant bool            `json:"invariant"`
-	Waived    bool            `json:"waived"`
-	Evidence  json.RawMessage `json:"evidence"`
-	Location  json.RawMessage `json:"location"`
+	Criterion   string          `json:"criterion"`
+	Status      string          `json:"status"`
+	Reason      *string         `json:"reason"`
+	Invariant   bool            `json:"invariant"`
+	Waived      bool            `json:"waived"`
+	Evidence    json.RawMessage `json:"evidence"`
+	EvidenceIDs []int           `json:"evidence_ids"`
+	Location    json.RawMessage `json:"location"`
 }
 
 func newVerificationJSON(v *api.VerificationRun) *verificationJSON {
@@ -387,19 +393,25 @@ func newVerificationJSON(v *api.VerificationRun) *verificationJSON {
 	}
 	out := &verificationJSON{
 		runJSON:  newRunJSON(v),
-		Failures: make([]failureJSON, 0, len(v.FailedResults)),
+		Results:  make([]resultJSON, 0, len(v.Results)),
+		Failures: []resultJSON{},
 	}
-	for _, fr := range v.FailedResults {
-		out.Failures = append(out.Failures, failureJSON{
-			handleJSON: handleJSON{StableKey: fr.StableKey, BaselineInvariantID: fr.BaselineInvariantID},
-			Criterion:  fr.Criterion,
-			Status:     fr.Status,
-			Reason:     fr.Reason,
-			Invariant:  fr.IsInvariant,
-			Waived:     fr.IsWaived,
-			Evidence:   nullIfEmpty(fr.Evidence),
-			Location:   nullIfEmpty(fr.Location),
-		})
+	for _, r := range v.Results {
+		res := resultJSON{
+			handleJSON:  handleJSON{StableKey: r.StableKey, BaselineInvariantID: r.BaselineInvariantID},
+			Criterion:   r.Criterion,
+			Status:      r.Status,
+			Reason:      r.Reason,
+			Invariant:   r.IsInvariant,
+			Waived:      r.IsWaived,
+			Evidence:    nullIfEmpty(r.Evidence),
+			EvidenceIDs: r.EvidenceIDs,
+			Location:    nullIfEmpty(r.Location),
+		}
+		out.Results = append(out.Results, res)
+		if r.Status != "pass" {
+			out.Failures = append(out.Failures, res)
+		}
 	}
 	return out
 }

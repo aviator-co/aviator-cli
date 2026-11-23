@@ -25,7 +25,7 @@ func (c *Client) ListVerifyRuns(
 	return out.Runs, out.HasMore, nil
 }
 
-// GetVerifyRun fetches one verification run with the criteria it didn't pass.
+// GetVerifyRun fetches one verification run with every criterion's verdict.
 func (c *Client) GetVerifyRun(ctx context.Context, runbookNumber, runID int) (*VerificationRun, error) {
 	path := fmt.Sprintf("/api/v1/verify/%d/runs/%d", runbookNumber, runID)
 	var out VerificationRun

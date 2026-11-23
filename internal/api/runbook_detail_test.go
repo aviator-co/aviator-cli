@@ -34,7 +34,7 @@ func TestGetRunbookDetail(t *testing.T) {
 			"criteria_skipped": 0,
 			"criteria_waived": 0,
 			"error_message": null,
-			"failed_results": [
+			"results": [
 				{"criterion": "does the thing", "is_invariant": false, "is_waived": false,
 				 "status": "fail", "reason": "nope", "evidence": {}, "location": null}
 			]
@@ -80,9 +80,9 @@ func TestGetRunbookDetail(t *testing.T) {
 	if v.CommitSHA == nil || *v.CommitSHA != "abcdef1234567890" {
 		t.Errorf("commit_sha = %v", v.CommitSHA)
 	}
-	if len(v.FailedResults) != 1 || v.FailedResults[0].Reason == nil ||
-		*v.FailedResults[0].Reason != "nope" {
-		t.Errorf("failed_results = %+v", v.FailedResults)
+	if len(v.Results) != 1 || v.Results[0].Reason == nil ||
+		*v.Results[0].Reason != "nope" {
+		t.Errorf("results = %+v", v.Results)
 	}
 }
 

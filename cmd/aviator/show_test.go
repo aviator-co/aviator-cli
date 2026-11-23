@@ -62,8 +62,9 @@ func TestFormatRunbookDetail(t *testing.T) {
 			CriteriaTotal:  2,
 			CriteriaPassed: 1,
 			CriteriaFailed: 1,
-			FailedResults: []api.FailedResult{
-				{Criterion: "does the thing", Reason: ptr("nope")},
+			Results: []api.CriterionResult{
+				{Criterion: "does the thing", Status: "fail", Reason: ptr("nope")},
+				{Criterion: "stays fast", Status: "pass", Reason: ptr("fine")},
 			},
 			PreviewConfigName: ptr("default"),
 			PreviewMethod:     ptr("sandbox"),
@@ -78,6 +79,7 @@ func TestFormatRunbookDetail(t *testing.T) {
 		"Steps: 1/2 completed",
 		"1. does the thing",
 		"Latest verification: run 900, failed (1/2 passed, 1 failed, abcdef1)",
+		"✓ stays fast\n",
 		"does the thing: nope",
 		"  Preview config: docs",
 		"Ran on preview config: default (sandbox)",
@@ -192,7 +194,7 @@ func TestShowJSONRuns(t *testing.T) {
 		CriteriaTotal:  12,
 		CriteriaPassed: 12,
 		CreatedAt:      "2026-10-08T12:00:00Z",
-		FailedResults:  []api.FailedResult{{Criterion: "ignored"}},
+		Results:        []api.CriterionResult{{Criterion: "ignored"}},
 	}}, true))
 	if got["runs_has_more"] != true {
 		t.Errorf("runs_has_more = %v", got["runs_has_more"])
@@ -256,8 +258,9 @@ func TestResultsJSON(t *testing.T) {
 			CriteriaTotal:  2,
 			CriteriaPassed: 1,
 			CriteriaFailed: 1,
-			FailedResults: []api.FailedResult{
+			Results: []api.CriterionResult{
 				{Criterion: "no secrets", Status: "fail", Reason: ptr("nope"), IsInvariant: true, BaselineInvariantID: ptr(42)},
+				{Criterion: "stays fast", Status: "pass", Reason: ptr("fine"), StableKey: ptr("abc"), EvidenceIDs: []int{7}},
 			},
 		},
 	}))
@@ -271,16 +274,22 @@ func TestResultsJSON(t *testing.T) {
 	if v["status"] != "failed" || v["total"] != float64(2) || v["failed"] != float64(1) {
 		t.Errorf("latest_verification = %v", v)
 	}
-	f := v["failures"].([]any)[0].(map[string]any)
-	if f["criterion"] != "no secrets" || f["invariant"] != true || f["baseline_invariant_id"] != float64(42) || f["stable_key"] != nil {
-		t.Errorf("failure = %v", f)
+	failures := v["failures"].([]any)
+	f := failures[0].(map[string]any)
+	if len(failures) != 1 || f["criterion"] != "no secrets" || f["invariant"] != true || f["baseline_invariant_id"] != float64(42) || f["stable_key"] != nil {
+		t.Errorf("failures = %v", failures)
+	}
+	results := v["results"].([]any)
+	pass := results[1].(map[string]any)
+	if len(results) != 2 || pass["status"] != "pass" || pass["reason"] != "fine" || pass["evidence_ids"].([]any)[0] != float64(7) {
+		t.Errorf("results = %v", results)
 	}
 }
 
 func TestResultsJSONForRun(t *testing.T) {
 	got := decodeJSON(t, newResultsRunJSON(
 		&api.RunbookDetail{RunbookNumber: 123, LatestVerification: &api.VerificationRun{ID: 900, Status: "passed"}},
-		&api.VerificationRun{ID: 887, Status: "failed", FailedResults: []api.FailedResult{{Criterion: "no secrets"}}},
+		&api.VerificationRun{ID: 887, Status: "failed", Results: []api.CriterionResult{{Criterion: "no secrets"}}},
 	))
 	if _, ok := got["latest_verification"]; ok {
 		t.Errorf("latest_verification should be absent with --run: %v", got)
@@ -303,7 +312,7 @@ func TestFormatRunbookDetailHandles(t *testing.T) {
 		},
 		LatestVerification: &api.VerificationRun{
 			Status: "failed",
-			FailedResults: []api.FailedResult{
+			Results: []api.CriterionResult{
 				{Criterion: "no secrets", BaselineInvariantID: ptr(42), Reason: ptr("leaked")},
 			},
 		},
