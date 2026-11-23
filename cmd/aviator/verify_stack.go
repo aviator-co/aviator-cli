@@ -102,7 +102,12 @@ func runVerifyAdd(cmd *cobra.Command, arg string) error {
 	id := formatRunbookID(resp.RunbookNumber)
 	fmt.Printf("%s %s added to %s%s\n", colors.Success("✓"), formatPRList(prs), id, formatVersion(resp.Version))
 	fmt.Print(formatMembers(resp.Members))
-	fmt.Printf("  %s\n", colors.Faint("Once the user agrees to the grouping: aviator verify ready "+id))
+	// A ready review takes PRs too; it isn't marked ready again, only run.
+	if s := deref(resp.State); s == "" || s == "draft" {
+		fmt.Printf("  %s\n", colors.Faint("Once the user agrees to the grouping: aviator verify ready "+id))
+	} else {
+		fmt.Printf("  %s\n", colors.Faint("Not verified until it runs again: aviator verify "+id))
+	}
 	return nil
 }
 
