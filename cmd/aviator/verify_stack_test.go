@@ -20,9 +20,9 @@ func TestStackedVerifyError(t *testing.T) {
 	}{
 		{
 			"draft",
-			&api.Error{Status: http.StatusConflict, Code: "session-draft", Message: "draft"},
+			&api.Error{Status: http.StatusConflict, Code: "session-draft", Message: "r/42 is waiting for its evidence"},
 			0,
-			[]string{"r/42 is a draft", "aviator verify ready r/42"},
+			[]string{"r/42 is waiting for its evidence"},
 		},
 		{
 			"stale on add",

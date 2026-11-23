@@ -321,8 +321,8 @@ func stackedVerifyError(err error, runbookNumber, baseVersion int) error {
 	}
 	switch apiErr.Code {
 	case "session-draft":
-		return errors.Errorf("%s is a draft and doesn't run until marked ready; once the user agrees "+
-			"to the grouping, run `aviator verify ready %s`", id, id)
+		// The server says how this draft ends: `verify ready` or submitted evidence.
+		return errors.New(apiErr.Message)
 	case "stale-runbook-version":
 		if baseVersion > 0 {
 			return errors.Errorf("the criteria of %s changed since version %d; re-read them with "+
