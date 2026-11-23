@@ -255,8 +255,10 @@ type showJSON struct {
 	Runs               []runJSON         `json:"runs"`
 	RunsHasMore        bool              `json:"runs_has_more"`
 	PreviewConfigName  *string           `json:"preview_config_name"`
-	// State and Members describe a stacked session; null and [] otherwise.
+	// State, Members, SplitFrom and SplitInto describe a stacked session; null and [] otherwise.
 	State        *string      `json:"state"`
+	SplitFrom    *string      `json:"split_from"`
+	SplitInto    []string     `json:"split_into"`
 	Members      []memberJSON `json:"members"`
 	StackProblem *string      `json:"stack_problem"`
 }
@@ -291,11 +293,19 @@ func newShowJSON(d *api.RunbookDetail, runs []api.VerificationRun, moreRuns bool
 		Runs:               make([]runJSON, 0, len(runs)),
 		RunsHasMore:        moreRuns,
 		State:              d.State,
+		SplitInto:          make([]string, 0, len(d.SplitInto)),
 		Members:            newMembersJSON(d.Members),
 		StackProblem:       d.StackProblem,
 	}
 	for i := range runs {
 		out.Runs = append(out.Runs, newRunJSON(&runs[i]))
+	}
+	if d.SplitFrom != nil {
+		from := formatRunbookID(*d.SplitFrom)
+		out.SplitFrom = &from
+	}
+	for _, n := range d.SplitInto {
+		out.SplitInto = append(out.SplitInto, formatRunbookID(n))
 	}
 	if s := d.RunbookState; s != nil {
 		out.WorkingBranch, out.TargetBranch = deref(s.WorkingBranch), deref(s.TargetBranch)

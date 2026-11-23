@@ -90,14 +90,9 @@ func runVerifyAdd(cmd *cobra.Command, arg string) error {
 	if err != nil {
 		return err
 	}
-	req := api.AddVerifyPRRequest{Criteria: criteria, BaseVersion: f.BaseVersion, Intent: f.Intent}
-	// One PR keeps the field older servers read.
-	if len(prs) == 1 {
-		req.PRNumber = prs[0]
-	} else {
-		req.PRNumbers = prs
-	}
-	resp, err := client.AddVerifyPR(cmd.Context(), runbookNumber, req)
+	resp, err := client.AddVerifyPR(cmd.Context(), runbookNumber, api.AddVerifyPRRequest{
+		PRNumbers: prs, Criteria: criteria, BaseVersion: f.BaseVersion, Intent: f.Intent,
+	})
 	if err != nil {
 		return stackedVerifyError(err, runbookNumber, f.BaseVersion)
 	}
@@ -221,7 +216,8 @@ var verifyRemoveCmd = &cobra.Command{
 			Intent:      f.Intent,
 		})
 		if err != nil {
-			return stackedVerifyError(err, runbookNumber, f.BaseVersion)
+			// No base version: the PRs may already be out, so a retry hint would mislead.
+			return stackedVerifyError(err, runbookNumber, 0)
 		}
 		if f.JSON {
 			return printJSON(newStackedSessionJSON(resp))

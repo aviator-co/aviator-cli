@@ -188,14 +188,15 @@ func runVerifySubmit(cmd *cobra.Command) error {
 	if name := deref(resp.PreviewConfigName); name != "" {
 		fmt.Printf("  Preview config: %s\n", name)
 	}
-	if resp.Draft {
+	// Both flags send draft: true, so the hint follows the flag, not resp.Draft.
+	if verifyFlags.ExternalEvidence {
 		fmt.Printf("  Draft: runs once evidence for the PR's head commit is submitted\n")
 		fmt.Printf("  %s\n", colors.Faint("Submit what you saw with: aviator evidence submit "+formatRunbookID(resp.RunbookNumber)+" <manifest>"))
 	}
 	if verifyFlags.Draft {
 		id := formatRunbookID(resp.RunbookNumber)
-		fmt.Printf("  %s\n", colors.Faint("Draft: add each PR above with aviator verify add "+id+
-			", then aviator verify ready "+id))
+		fmt.Printf("  %s\n", colors.Faint("Draft: add the stack's PRs with aviator verify add "+id+
+			" --pr <number>, then aviator verify ready "+id))
 	}
 	return nil
 }
@@ -285,6 +286,7 @@ func init() {
 		"open a draft stacked review that holds PRs and criteria but doesn't run until marked ready (submit mode only)")
 	// Stacked Verify is behind a per-user allowlist.
 	_ = f.MarkHidden("draft")
+	verifyCmd.MarkFlagsMutuallyExclusive("external-evidence", "draft")
 	f.BoolVar(&verifyFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 }
 

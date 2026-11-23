@@ -22,11 +22,9 @@ type StackedVerifySession struct {
 
 // AddVerifyPRRequest is the body for POST /api/v1/verify/<n>/prs. Criteria is
 // the full list for every member, replacing the session's criteria; Intent,
-// when set, replaces the session's intent the same way. One PR goes in
-// PRNumber, which every server accepts; several go in PRNumbers.
+// when set, replaces the session's intent the same way.
 type AddVerifyPRRequest struct {
-	PRNumber    int      `json:"pr_number,omitempty"`
-	PRNumbers   []int    `json:"pr_numbers,omitempty"`
+	PRNumbers   []int    `json:"pr_numbers"`
 	Criteria    []string `json:"criteria"`
 	BaseVersion int      `json:"base_version"`
 	Intent      string   `json:"intent,omitempty"`

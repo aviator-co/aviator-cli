@@ -228,14 +228,13 @@ func TestAddNewSendsTheStack(t *testing.T) {
 	}
 }
 
-// One PR keeps pr_number, which servers without pr_numbers still read.
 func TestAddSendsOneOrSeveralPRs(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		prs  []string
 		want string
 	}{
-		{"one", []string{"--pr", "102"}, `"pr_number":102,`},
+		{"one", []string{"--pr", "102"}, `"pr_numbers":[102],`},
 		{"several", []string{"--pr", "103", "--pr", "102"}, `"pr_numbers":[103,102],`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

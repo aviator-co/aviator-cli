@@ -66,13 +66,13 @@ func TestSubmitVerifyOmitsDraftByDefault(t *testing.T) {
 
 func TestAddVerifyPR(t *testing.T) {
 	srv := stackServer(t, "/api/v1/verify/42/prs",
-		`{"pr_number":102,"criteria":["one","two"],"base_version":3}`, http.StatusOK,
+		`{"pr_numbers":[102],"criteria":["one","two"],"base_version":3}`, http.StatusOK,
 		`{"runbook_number":42,"url":"https://app.aviator.co/r/42","version":4,"state":"draft",`+
 			`"members":[{"pr_number":101,"position":1,"head_sha":"aaa"},{"pr_number":102,"position":2,"head_sha":null}]}`)
 	defer srv.Close()
 
 	resp, err := newTestClient(srv).AddVerifyPR(context.Background(), 42, AddVerifyPRRequest{
-		PRNumber: 102, Criteria: []string{"one", "two"}, BaseVersion: 3,
+		PRNumbers: []int{102}, Criteria: []string{"one", "two"}, BaseVersion: 3,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -87,12 +87,12 @@ func TestAddVerifyPR(t *testing.T) {
 
 func TestAddVerifyPRStaleVersion(t *testing.T) {
 	srv := stackServer(t, "/api/v1/verify/42/prs",
-		`{"pr_number":102,"criteria":["one"],"base_version":3}`, http.StatusConflict,
+		`{"pr_numbers":[102],"criteria":["one"],"base_version":3}`, http.StatusConflict,
 		`{"error":"stale-runbook-version","message":"r/42 is currently at version 5"}`)
 	defer srv.Close()
 
 	_, err := newTestClient(srv).AddVerifyPR(context.Background(), 42, AddVerifyPRRequest{
-		PRNumber: 102, Criteria: []string{"one"}, BaseVersion: 3,
+		PRNumbers: []int{102}, Criteria: []string{"one"}, BaseVersion: 3,
 	})
 	var apiErr *Error
 	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusConflict || apiErr.Code != "stale-runbook-version" {
