@@ -14,19 +14,19 @@ import (
 // help and completion while it is; they run when called by name.
 
 var verifyAddFlags struct {
-	PRs          []int
-	Criteria     []string
-	CriteriaFile string
-	BaseVersion  int
-	Intent       string
-	New          bool
-	From         string
-	Repo         string
-	JSON         bool
+	PRs             []int
+	Criteria        []string
+	CriteriaFile    string
+	ExpectedVersion int
+	Intent          string
+	New             bool
+	From            string
+	Repo            string
+	JSON            bool
 }
 
 var verifyAddCmd = &cobra.Command{
-	Use: "add <id> --pr <number> [--pr <number>] --intent <intent> --criteria-file <file> --base-version <version>\n" +
+	Use: "add <id> --pr <number> [--pr <number>] --intent <intent> --criteria-file <file> --expected-version <version>\n" +
 		"  aviator verify add --new --repo <owner/repo> --pr <number> [--pr <number>] --intent <intent> " +
 		"--criteria-file <file> [--from <id>]",
 	Short:  "Add PRs to a draft stacked review, or open a new review from PRs (e.g. aviator verify add r/42 --pr 102 ...)",
@@ -37,7 +37,7 @@ var verifyAddCmd = &cobra.Command{
 		"The intent and criteria cover EVERY PR in the review, not just the new\n" +
 		"one: read the current ones with `aviator show`, fold in the new PR, rewrite\n" +
 		"any criteria that conflict, duplicate, or got refined, and send them all.\n" +
-		"Without --intent the intent stays as it was. --base-version is\n" +
+		"Without --intent the intent stays as it was. --expected-version is\n" +
 		"the version `aviator show` printed; the add is refused if the criteria\n" +
 		"changed since.\n" +
 		"\n" +
@@ -76,8 +76,8 @@ func runVerifyAdd(cmd *cobra.Command, arg string) error {
 	if err != nil {
 		return err
 	}
-	if !cmd.Flags().Changed("base-version") {
-		return errors.New("--base-version is required, the version `aviator show` prints")
+	if !cmd.Flags().Changed("expected-version") {
+		return errors.New("--expected-version is required, the version `aviator show` prints")
 	}
 	criteria, err := collectCriteria(f.Criteria, f.CriteriaFile)
 	if err != nil {
@@ -91,10 +91,10 @@ func runVerifyAdd(cmd *cobra.Command, arg string) error {
 		return err
 	}
 	resp, err := client.AddVerifyPR(cmd.Context(), runbookNumber, api.AddVerifyPRRequest{
-		PRNumbers: prs, Criteria: criteria, BaseVersion: f.BaseVersion, Intent: f.Intent,
+		PRNumbers: prs, Criteria: criteria, BaseVersion: f.ExpectedVersion, Intent: f.Intent,
 	})
 	if err != nil {
-		return stackedVerifyError(err, runbookNumber, f.BaseVersion)
+		return stackedVerifyError(err, runbookNumber, f.ExpectedVersion)
 	}
 	if f.JSON {
 		return printJSON(newStackedSessionJSON(resp))
@@ -108,8 +108,8 @@ func runVerifyAdd(cmd *cobra.Command, arg string) error {
 
 func runVerifyAddNew(cmd *cobra.Command) error {
 	f := &verifyAddFlags
-	if cmd.Flags().Changed("base-version") {
-		return errors.New("--base-version doesn't apply with --new: the review is new")
+	if cmd.Flags().Changed("expected-version") {
+		return errors.New("--expected-version doesn't apply with --new: the review is new")
 	}
 	if f.Repo == "" {
 		return errors.New("--repo is required with --new")
@@ -160,16 +160,16 @@ func runVerifyAddNew(cmd *cobra.Command) error {
 }
 
 var verifyRemoveFlags struct {
-	PRs          []int
-	Criteria     []string
-	CriteriaFile string
-	BaseVersion  int
-	Intent       string
-	JSON         bool
+	PRs             []int
+	Criteria        []string
+	CriteriaFile    string
+	ExpectedVersion int
+	Intent          string
+	JSON            bool
 }
 
 var verifyRemoveCmd = &cobra.Command{
-	Use:    "remove <id> --pr <number> [--pr <number>] --intent <intent> --criteria-file <file> --base-version <version>",
+	Use:    "remove <id> --pr <number> [--pr <number>] --intent <intent> --criteria-file <file> --expected-version <version>",
 	Short:  "Remove PRs from a stacked review (e.g. aviator verify remove r/42 --pr 103 ...)",
 	Hidden: true,
 	Long: "Remove PRs from a stacked review, draft or ready, and replace its intent\n" +
@@ -179,11 +179,12 @@ var verifyRemoveCmd = &cobra.Command{
 		"\n" +
 		"The criteria cover the PRs that STAY: read the current ones with\n" +
 		"`aviator show`, drop what only the removed PRs did, and send the full\n" +
-		"list. Without --intent the intent stays as it was. --base-version is the\n" +
+		"list. Without --intent the intent stays as it was. --expected-version is the\n" +
 		"version `aviator show` printed.\n" +
 		"\n" +
 		"The removed PRs' checks stay pending until they're in a review again:\n" +
-		"`aviator verify add --new --pr ... --from <id>` opens one for them.",
+		"`aviator verify add --new --repo <owner/repo> --pr ... --intent ... --criteria-file ... --from <id>`\n" +
+		"opens one for them.",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		runbookNumber, err := parseRunbookID(args[0])
@@ -195,8 +196,8 @@ var verifyRemoveCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if !cmd.Flags().Changed("base-version") {
-			return errors.New("--base-version is required, the version `aviator show` prints")
+		if !cmd.Flags().Changed("expected-version") {
+			return errors.New("--expected-version is required, the version `aviator show` prints")
 		}
 		criteria, err := collectCriteria(f.Criteria, f.CriteriaFile)
 		if err != nil {
@@ -212,7 +213,7 @@ var verifyRemoveCmd = &cobra.Command{
 		resp, err := client.RemoveVerifyPRs(cmd.Context(), runbookNumber, api.RemoveVerifyPRsRequest{
 			PRNumbers:   prs,
 			Criteria:    criteria,
-			BaseVersion: f.BaseVersion,
+			BaseVersion: f.ExpectedVersion,
 			Intent:      f.Intent,
 		})
 		if err != nil {
@@ -322,7 +323,7 @@ func stackedVerifyError(err error, runbookNumber, baseVersion int) error {
 	case "stale-runbook-version":
 		if baseVersion > 0 {
 			return errors.Errorf("the criteria of %s changed since version %d; re-read them with "+
-				"`aviator show %s`, rewrite the full list, and retry with the new --base-version: %s",
+				"`aviator show %s`, rewrite the full list, and retry with the new --expected-version: %s",
 				id, baseVersion, id, apiErr.Message)
 		}
 	case "stack-invalid":
@@ -385,7 +386,7 @@ func init() {
 	registerCriteriaFlags(verifyAddCmd, &verifyAddFlags.Criteria, &verifyAddFlags.CriteriaFile)
 	af.IntSliceVar(&verifyAddFlags.PRs, "pr", nil, "number of a PR to add (repeatable)")
 	af.StringVar(&verifyAddFlags.Intent, "intent", "", "new intent covering every PR in the review, the new one included")
-	af.IntVar(&verifyAddFlags.BaseVersion, "base-version", 0,
+	af.IntVar(&verifyAddFlags.ExpectedVersion, "expected-version", 0,
 		"criteria version the new list is based on, as aviator show prints it")
 	af.BoolVar(&verifyAddFlags.New, "new", false, "open a new ready review holding the --pr PRs instead of adding to one")
 	af.StringVar(&verifyAddFlags.From, "from", "", "with --new, the review the PRs were removed from (e.g. r/42)")
@@ -396,7 +397,7 @@ func init() {
 	registerCriteriaFlags(verifyRemoveCmd, &verifyRemoveFlags.Criteria, &verifyRemoveFlags.CriteriaFile)
 	rmf.IntSliceVar(&verifyRemoveFlags.PRs, "pr", nil, "number of a PR to remove (repeatable)")
 	rmf.StringVar(&verifyRemoveFlags.Intent, "intent", "", "new intent covering the PRs that stay")
-	rmf.IntVar(&verifyRemoveFlags.BaseVersion, "base-version", 0,
+	rmf.IntVar(&verifyRemoveFlags.ExpectedVersion, "expected-version", 0,
 		"criteria version the new list is based on, as aviator show prints it")
 	rmf.BoolVar(&verifyRemoveFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 

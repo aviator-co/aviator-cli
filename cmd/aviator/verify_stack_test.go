@@ -167,18 +167,18 @@ func runRemove(t *testing.T) (*[]string, error) {
 		`"members":[{"pr_number":101,"position":1,"head_sha":null}]}`)
 	t.Cleanup(func() {
 		verifyRemoveFlags = struct {
-			PRs          []int
-			Criteria     []string
-			CriteriaFile string
-			BaseVersion  int
-			Intent       string
-			JSON         bool
+			PRs             []int
+			Criteria        []string
+			CriteriaFile    string
+			ExpectedVersion int
+			Intent          string
+			JSON            bool
 		}{}
 		verifyRemoveCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	})
 	verifyRemoveCmd.SetContext(context.Background())
 	if err := verifyRemoveCmd.ParseFlags([]string{
-		"--pr", "103", "--pr", "104", "--criteria", "one", "--base-version", "3", "--json",
+		"--pr", "103", "--pr", "104", "--criteria", "one", "--expected-version", "3", "--json",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -201,15 +201,15 @@ func resetAddFlags(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
 		verifyAddFlags = struct {
-			PRs          []int
-			Criteria     []string
-			CriteriaFile string
-			BaseVersion  int
-			Intent       string
-			New          bool
-			From         string
-			Repo         string
-			JSON         bool
+			PRs             []int
+			Criteria        []string
+			CriteriaFile    string
+			ExpectedVersion int
+			Intent          string
+			New             bool
+			From            string
+			Repo            string
+			JSON            bool
 		}{}
 		verifyAddCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 	})
@@ -242,7 +242,7 @@ func TestAddSendsOneOrSeveralPRs(t *testing.T) {
 				`"state":"draft","members":[{"pr_number":101,"position":1,"head_sha":null}]}`)
 			resetAddFlags(t)
 			args := append([]string{"r/42"}, tc.prs...)
-			runCommand(t, verifyAddCmd, append(args, "--criteria", "one", "--base-version", "3", "--json")...)
+			runCommand(t, verifyAddCmd, append(args, "--criteria", "one", "--expected-version", "3", "--json")...)
 			want := `POST /api/v1/verify/42/prs {` + tc.want + `"criteria":["one"],"base_version":3}`
 			if len(*got) != 1 || (*got)[0] != want {
 				t.Errorf("requests = %v, want %s", *got, want)
@@ -266,23 +266,23 @@ func TestAddFlagCombinationsRefused(t *testing.T) {
 		},
 		{"new with base version", []string{
 			"--new", "--repo", "a/b", "--pr", "1", "--intent", "x", "--criteria", "c",
-			"--base-version", "3",
-		}, nil, "--base-version doesn't apply with --new"},
+			"--expected-version", "3",
+		}, nil, "--expected-version doesn't apply with --new"},
 		{"new without repo", []string{"--new", "--pr", "1", "--intent", "x", "--criteria", "c"}, nil, "--repo is required"},
 		{"new without intent", []string{"--new", "--repo", "a/b", "--pr", "1", "--criteria", "c"}, nil, "--intent is required"},
 		{
 			"from without new",
-			[]string{"--pr", "1", "--criteria", "c", "--base-version", "3", "--from", "r/41"},
+			[]string{"--pr", "1", "--criteria", "c", "--expected-version", "3", "--from", "r/41"},
 			[]string{"r/42"},
 			"--from only applies with --new",
 		},
 		{
 			"repeated pr",
-			[]string{"--pr", "1", "--pr", "1", "--criteria", "c", "--base-version", "3"},
+			[]string{"--pr", "1", "--pr", "1", "--criteria", "c", "--expected-version", "3"},
 			[]string{"r/42"},
 			"--pr 1 is given twice",
 		},
-		{"no id without new", []string{"--pr", "1", "--criteria", "c", "--base-version", "3"}, nil, "needs the review id"},
+		{"no id without new", []string{"--pr", "1", "--criteria", "c", "--expected-version", "3"}, nil, "needs the review id"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := useTestServer(t, `{}`)

@@ -167,7 +167,7 @@ func runVerifySubmit(cmd *cobra.Command) error {
 		return err
 	}
 
-	if verifyFlags.WorkingBranch == "" {
+	if verifyFlags.WorkingBranch == "" && !verifyFlags.Draft {
 		// stderr, so --json consumers still get a clean object on stdout.
 		fmt.Fprintf(os.Stderr, "%s %s\n", colors.Warning("warning:"), noWorkingBranchWarning)
 	}
