@@ -30,7 +30,7 @@ type AddVerifyPRRequest struct {
 	Intent      string   `json:"intent,omitempty"`
 }
 
-// AddVerifyPR adds a PR to a draft stacked session.
+// AddVerifyPR adds PRs to a stacked session, draft or ready.
 func (c *Client) AddVerifyPR(
 	ctx context.Context, runbookNumber int, req AddVerifyPRRequest,
 ) (*StackedVerifySession, error) {
