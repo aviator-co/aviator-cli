@@ -30,7 +30,7 @@ type AddVerifyPRRequest struct {
 	Intent      string   `json:"intent,omitempty"`
 }
 
-// AddVerifyPR adds a PR to a draft stacked session.
+// AddVerifyPR adds PRs to a stacked session, draft or ready.
 func (c *Client) AddVerifyPR(
 	ctx context.Context, runbookNumber int, req AddVerifyPRRequest,
 ) (*StackedVerifySession, error) {
@@ -47,18 +47,6 @@ func (c *Client) MarkVerifyReady(
 ) (*StackedVerifySession, error) {
 	var out StackedVerifySession
 	if err := c.postJSON(ctx, verifyStackPath(runbookNumber, "ready"), struct{}{}, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-// MarkVerifyDraft moves a ready stacked session back to draft. A running
-// verification finishes.
-func (c *Client) MarkVerifyDraft(
-	ctx context.Context, runbookNumber int,
-) (*StackedVerifySession, error) {
-	var out StackedVerifySession
-	if err := c.postJSON(ctx, verifyStackPath(runbookNumber, "draft"), struct{}{}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

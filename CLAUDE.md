@@ -176,12 +176,12 @@ The CLI targets endpoints in the `mergeit` backend:
   takes `{pr_numbers, criteria, base_version, intent?}`, `criteria` being the
   full list for every member (409 `stale-runbook-version` when `base_version` is
   behind); on a ready session it starts no run, cancels running ones and holds
-  every PR's check. `POST /<n>/ready` takes `{}`, makes the draft active, and starts no
-  run (PR events start them). `POST /<n>/draft` takes `{}` and moves a ready
-  session back to draft (409 `already-draft`). `POST /<n>/prs/remove` takes `{pr_numbers,
-  criteria, base_version, intent?}`, `criteria` being the full list for the
-  PRs that stay; the session stays open (draft or ready). `POST
-  /api/v1/verify/stack` takes `{repository:{org,name}, pr_numbers, intent,
+  every PR's check. `POST /<n>/ready` takes `{}`, makes the draft active, and
+  starts no run (PR events start them). `POST /<n>/draft` takes `{}` and moves
+  a ready session back to draft (409 `already-draft`). `POST /<n>/prs/remove`
+  takes `{pr_numbers, criteria, base_version, intent?}`, `criteria` being the
+  full list for the PRs that stay; the session stays open (draft or ready).
+  `POST /api/v1/verify/stack` takes `{repository:{org,name}, pr_numbers, intent,
   criteria, from_runbook_number?}` and opens a ready session holding those
   PRs (`from_runbook_number` links the session they were removed from). All
   of them return the session with `state` and `members` (`[{pr_number,
