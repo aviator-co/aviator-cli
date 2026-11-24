@@ -52,6 +52,18 @@ func (c *Client) MarkVerifyReady(
 	return &out, nil
 }
 
+// MarkVerifyDraft moves a ready stacked session back to draft. A running
+// verification finishes.
+func (c *Client) MarkVerifyDraft(
+	ctx context.Context, runbookNumber int,
+) (*StackedVerifySession, error) {
+	var out StackedVerifySession
+	if err := c.postJSON(ctx, verifyStackPath(runbookNumber, "draft"), struct{}{}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // RemoveVerifyPRsRequest is the body for POST /api/v1/verify/<n>/prs/remove.
 // Criteria is the full list for the PRs that stay, replacing the session's
 // criteria; Intent, when set, replaces the session's intent the same way.
