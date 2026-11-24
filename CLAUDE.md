@@ -53,7 +53,7 @@ resource group is `aviator invariants`, whose subcommands are the CRUD verbs
 over `/api/v1/invariants` plus read-only analytics views (`insights`, `show`,
 `reviews`, `waivers`, and `list --usage`). `aviator evidence submit` sits under
 `aviator evidence <id>` (the download) because both act on evidence.
-`aviator verify add|ready|remove` are subcommands too: the stacked Verify
+`aviator verify add|ready|draft|remove` are subcommands too: the stacked Verify
 steps act on an existing review rather than submitting one, and stay hidden
 behind the Stacked Verify allowlist.
 
@@ -175,11 +175,13 @@ The CLI targets endpoints in the `mergeit` backend:
   a draft never runs (409 `session-draft`). `POST /api/v1/verify/<n>/prs`
   takes `{pr_numbers, criteria, base_version, intent?}`, `criteria` being the
   full list for every member (409 `stale-runbook-version` when `base_version` is
-  behind). `POST /<n>/ready` takes `{}`, makes the draft active, and starts no
-  run (PR events start them). `POST /<n>/prs/remove` takes `{pr_numbers,
-  criteria, base_version, intent?}`, `criteria` being the full list for the
-  PRs that stay; the session stays open (draft or ready). `POST
-  /api/v1/verify/stack` takes `{repository:{org,name}, pr_numbers, intent,
+  behind); on a ready session it starts no run, cancels running ones and holds
+  every PR's check. `POST /<n>/ready` takes `{}`, makes the draft active, and
+  starts no run (PR events start them). `POST /<n>/draft` takes `{}` and moves
+  a ready session back to draft (409 `already-draft`). `POST /<n>/prs/remove`
+  takes `{pr_numbers, criteria, base_version, intent?}`, `criteria` being the
+  full list for the PRs that stay; the session stays open (draft or ready).
+  `POST /api/v1/verify/stack` takes `{repository:{org,name}, pr_numbers, intent,
   criteria, from_runbook_number?}` and opens a ready session holding those
   PRs (`from_runbook_number` links the session they were removed from). All
   of them return the session with `state` and `members` (`[{pr_number,

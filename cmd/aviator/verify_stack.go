@@ -29,10 +29,12 @@ var verifyAddCmd = &cobra.Command{
 	Use: "add <id> --pr <number> [--pr <number>] --intent <intent> --criteria-file <file> --expected-version <version>\n" +
 		"  aviator verify add --new --repo <owner/repo> --pr <number> [--pr <number>] --intent <intent> " +
 		"--criteria-file <file> [--from <id>]",
-	Short:  "Add PRs to a draft stacked review, or open a new review from PRs (e.g. aviator verify add r/42 --pr 102 ...)",
+	Short:  "Add PRs to a stacked review, or open a new review from PRs (e.g. aviator verify add r/42 --pr 102 ...)",
 	Hidden: true,
-	Long: "Add PRs to a draft stacked review and replace its intent and acceptance\n" +
-		"criteria. --pr is repeatable, in any order.\n" +
+	Long: "Add PRs to a stacked review, draft or ready, and replace its intent and\n" +
+		"acceptance criteria. --pr is repeatable, in any order. Adding to a ready\n" +
+		"review starts no run: it cancels any running verification and holds every\n" +
+		"PR's check until the review runs again with `aviator verify <id>`.\n" +
 		"\n" +
 		"The intent and criteria cover EVERY PR in the review, not just the new\n" +
 		"one: read the current ones with `aviator show`, fold in the new PR, rewrite\n" +
@@ -102,7 +104,12 @@ func runVerifyAdd(cmd *cobra.Command, arg string) error {
 	id := formatRunbookID(resp.RunbookNumber)
 	fmt.Printf("%s %s added to %s%s\n", colors.Success("✓"), formatPRList(prs), id, formatVersion(resp.Version))
 	fmt.Print(formatMembers(resp.Members))
-	fmt.Printf("  %s\n", colors.Faint("Once the user agrees to the grouping: aviator verify ready "+id))
+	// A ready review takes PRs too; it isn't marked ready again, only run.
+	if s := deref(resp.State); s == "" || s == "draft" {
+		fmt.Printf("  %s\n", colors.Faint("Once the user agrees to the grouping: aviator verify ready "+id))
+	} else {
+		fmt.Printf("  %s\n", colors.Faint("Not verified until it runs again: aviator verify "+id))
+	}
 	return nil
 }
 
@@ -241,9 +248,9 @@ var verifyReadyCmd = &cobra.Command{
 	Short:  "Mark a draft stacked review ready",
 	Hidden: true,
 	Long: "Mark a draft stacked review ready after the user agrees to its grouping.\n" +
-		"The review becomes active; no PRs can be added after this. It starts\n" +
-		"no run: Verify runs on the top PR, against every PR's criteria, when a\n" +
-		"PR is marked ready for review, approved, or queued.",
+		"The review becomes active. It starts no run: Verify runs on the top PR,\n" +
+		"against every PR's criteria, when a PR is marked ready for review,\n" +
+		"approved, or queued. `aviator verify draft` moves it back to draft.",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		runbookNumber, err := parseRunbookID(args[0])
@@ -264,6 +271,42 @@ var verifyReadyCmd = &cobra.Command{
 		id := formatRunbookID(resp.RunbookNumber)
 		fmt.Printf("%s %s marked ready\n", colors.Success("✓"), id)
 		fmt.Print(formatMembers(resp.Members))
+		return nil
+	},
+}
+
+var verifyDraftFlags struct {
+	JSON bool
+}
+
+var verifyDraftCmd = &cobra.Command{
+	Use:    "draft <id>",
+	Short:  "Move a ready stacked review back to draft",
+	Hidden: true,
+	Long: "Move a ready stacked review back to draft, e.g. to regroup its PRs before\n" +
+		"it runs. A draft never runs; mark it ready again with `aviator verify ready`.\n" +
+		"A verification already running finishes, and the PRs' checks stay as they are.",
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		runbookNumber, err := parseRunbookID(args[0])
+		if err != nil {
+			return err
+		}
+		client, err := api.NewClient()
+		if err != nil {
+			return err
+		}
+		resp, err := client.MarkVerifyDraft(cmd.Context(), runbookNumber)
+		if err != nil {
+			return stackedVerifyError(err, runbookNumber, 0)
+		}
+		if verifyDraftFlags.JSON {
+			return printJSON(newStackedSessionJSON(resp))
+		}
+		id := formatRunbookID(resp.RunbookNumber)
+		fmt.Printf("%s %s is a draft again\n", colors.Success("✓"), id)
+		fmt.Print(formatMembers(resp.Members))
+		fmt.Printf("  %s\n", colors.Faint("Add PRs with aviator verify add "+id+" --pr <number>, then aviator verify ready "+id))
 		return nil
 	},
 }
@@ -404,5 +447,8 @@ func init() {
 	cf := verifyReadyCmd.Flags()
 	cf.BoolVar(&verifyReadyFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
 
-	verifyCmd.AddCommand(verifyAddCmd, verifyReadyCmd, verifyRemoveCmd)
+	df := verifyDraftCmd.Flags()
+	df.BoolVar(&verifyDraftFlags.JSON, "json", false, "print the result as a single JSON object instead of the human summary")
+
+	verifyCmd.AddCommand(verifyAddCmd, verifyReadyCmd, verifyDraftCmd, verifyRemoveCmd)
 }
