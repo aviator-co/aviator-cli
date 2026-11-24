@@ -230,7 +230,7 @@ func TestInvariantJSONUsage(t *testing.T) {
 		t.Fatalf("usage = %v", got["usage"])
 	}
 	counts, ok := usage["waives_by_category"].(map[string]any)
-	if !ok || counts["false_positive"] != float64(3) || len(counts) != 4 {
+	if !ok || counts["false_positive"] != float64(3) || len(counts) != 5 {
 		t.Errorf("waives_by_category = %v", usage["waives_by_category"])
 	}
 	delete(usage, "waives_by_category")
@@ -251,7 +251,7 @@ var insightsResponse = &api.InvariantInsightsResponse{
 	}},
 	MostWaived: []api.InvariantWaivedRow{{
 		Invariant: api.InvariantSummary{ID: 42, Title: "HTTP handlers authenticate"}, TotalWaives: 18,
-		WaivesByCategory: api.WaiveCounts{FalsePositive: 11, DoesntApply: 4, AcceptedRisk: 2, FixInFollowup: 1},
+		WaivesByCategory: api.WaiveCounts{FalsePositive: 8, DoesntApply: 4, Flaky: 3, AcceptedRisk: 2, FixInFollowup: 1},
 	}},
 	NeverApplied: api.InvariantNeverApplied{
 		Count: 7,
@@ -262,7 +262,7 @@ var insightsResponse = &api.InvariantInsightsResponse{
 	},
 	Reasons: api.InvariantWaiveReasons{
 		TotalWaives:      61,
-		WaivesByCategory: api.WaiveCounts{FalsePositive: 34, DoesntApply: 12, AcceptedRisk: 10, FixInFollowup: 5},
+		WaivesByCategory: api.WaiveCounts{FalsePositive: 27, DoesntApply: 12, Flaky: 7, AcceptedRisk: 10, FixInFollowup: 5},
 	},
 }
 
@@ -272,12 +272,12 @@ func TestFormatInvariantInsights(t *testing.T) {
 		"Invariant insights · active invariants · last 30 days · all repos\n",
 		"\nMost applied\nID   APPLIED  TITLE\n#42  143      HTTP handlers authenticate\n",
 		"\nHighest failure rate\nID   APPLIED  FAILED  RATE  TITLE\n#58  12       5       42%   Background jobs are idempotent\n",
-		"\nMost waived, by reason\nID   TOTAL  FALSE+  N/A  RISK  FOLLOWUP  TITLE\n#42  18     11      4    2     1         HTTP handlers authenticate\n",
+		"\nMost waived, by reason\nID   TOTAL  FALSE+  N/A  FLAKY  RISK  FOLLOWUP  TITLE\n#42  18     8       4    3      2     1         HTTP handlers authenticate\n",
 		// An empty table says so rather than printing a bare header.
 		"\nHighest waive rate\nnone\n",
 		"\nNever applied (7)\nID   CREATED     TITLE\n#71  2026-09-02  Feature flags have a removal ticket\n" +
 			"See all: aviator invariants list --usage --never-applied\n",
-		"\nWaiver reasons: 61 · false positive 34 · doesn't apply 12 · accepted risk 10 · fix in follow-up 5\n",
+		"\nWaiver reasons: 61 · false positive 27 · doesn't apply 12 · flaky 7 · accepted risk 10 · fix in follow-up 5\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q\n---\n%s", want, out)
@@ -314,7 +314,7 @@ var showDetail = &api.InvariantDetail{
 		OwnerTeams: &[]api.OwnerTeam{{Org: "acme", Slug: "platform"}},
 		Usage: &api.InvariantUsage{
 			TimesApplied: 143, TimesFailed: 31, FailureRate: rate(0.217), TotalWaives: 18, WaivedFailures: 18, WaiveRate: rate(0.581),
-			WaivesByCategory: api.WaiveCounts{FalsePositive: 11, DoesntApply: 4, AcceptedRisk: 2, FixInFollowup: 1},
+			WaivesByCategory: api.WaiveCounts{FalsePositive: 8, DoesntApply: 4, Flaky: 3, AcceptedRisk: 2, FixInFollowup: 1},
 		},
 	},
 	ByVersion: []api.InvariantVersionUsage{
@@ -347,7 +347,7 @@ func TestFormatInvariantShow(t *testing.T) {
 		"#42 HTTP handlers authenticate\n  Category: security\n",
 		"  Owner: @acme/platform\n  Version: 3\n  Body: Call the auth middleware first.\n",
 		"\nUsage · all time\n  Applied 143 · Failed 31 (22%) · Waived 18 of 31 failures (58%)\n" +
-			"  Waived as: false positive 11 · doesn't apply 4 · accepted risk 2 · fix in follow-up 1\n",
+			"  Waived as: false positive 8 · doesn't apply 4 · flaky 3 · accepted risk 2 · fix in follow-up 1\n",
 		"\nBy version\n  VERSION  SINCE       APPLIED  FAILED  RATE  WAIVED\n" +
 			"  3        2026-10-02  40       4       10%   1\n" +
 			"  -        before      25       6       24%   3\n",
@@ -533,7 +533,7 @@ func TestInsightsJSON(t *testing.T) {
 		t.Errorf("most_waived = %v", waived)
 	}
 	assertJSONFields(t, waived["waives_by_category"].(map[string]any), map[string]any{
-		"false_positive": float64(11), "doesnt_apply": float64(4), "accepted_risk": float64(2), "fix_in_followup": float64(1),
+		"false_positive": float64(8), "doesnt_apply": float64(4), "flaky": float64(3), "accepted_risk": float64(2), "fix_in_followup": float64(1),
 	})
 	// An empty ranking is [] so callers can range over it.
 	if rows, ok := got["waive_rate"].([]any); !ok || len(rows) != 0 {

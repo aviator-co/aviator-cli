@@ -20,7 +20,7 @@ const invariantReviewJSON = `{"runbook_number":1288,"url":"https://app.aviator.c
 func usageJSON(applied, failed int, failureRate string, waives, waivedFailures int, waiveRate string, falsePositive int) string {
 	return fmt.Sprintf(`{"times_applied":%d,"times_failed":%d,"failure_rate":%s,"total_waives":%d,`+
 		`"waived_failures":%d,"waive_rate":%s,"waives_by_category":{"false_positive":%d,"doesnt_apply":0,`+
-		`"accepted_risk":0,"fix_in_followup":0}}`,
+		`"flaky":0,"accepted_risk":0,"fix_in_followup":0}}`,
 		applied, failed, failureRate, waives, waivedFailures, waiveRate, falsePositive)
 }
 
@@ -49,11 +49,11 @@ func TestGetInvariantInsights(t *testing.T) {
 		`"most_applied":[{"invariant":`+invariantSummaryJSON+`,"times_applied":143}],`+
 		`"failure_ratio":[{"invariant":`+invariantSummaryJSON+`,"times_applied":12,"times_failed":5,"failure_rate":0.417}],`+
 		`"most_waived":[{"invariant":`+invariantSummaryJSON+`,"total_waives":18,`+
-		`"waives_by_category":{"false_positive":11,"doesnt_apply":4,"accepted_risk":2,"fix_in_followup":1}}],`+
+		`"waives_by_category":{"false_positive":8,"doesnt_apply":4,"flaky":3,"accepted_risk":2,"fix_in_followup":1}}],`+
 		`"waive_rate":[{"invariant":`+invariantSummaryJSON+`,"times_failed":31,"waived_failures":18,"waive_rate":0.581}],`+
 		`"never_applied":{"count":7,"invariants":[{"id":71,"title":"Flags","category":"code_style","status":"active",`+
 		`"created_at":"2026-09-02T00:00:00Z"}]},`+
-		`"reasons":{"total_waives":61,"waives_by_category":{"false_positive":34,"doesnt_apply":12,"accepted_risk":10,"fix_in_followup":5}}}`)
+		`"reasons":{"total_waives":61,"waives_by_category":{"false_positive":27,"doesnt_apply":12,"flaky":7,"accepted_risk":10,"fix_in_followup":5}}}`)
 
 	resp, err := newTestClient(srv).GetInvariantInsights(context.Background(), InvariantInsightsQuery{
 		Since:  "2026-09-27T00:00:00Z",
@@ -79,7 +79,7 @@ func TestGetInvariantInsights(t *testing.T) {
 	if r := resp.FailureRatio[0]; r.FailureRate == nil || *r.FailureRate != 0.417 {
 		t.Errorf("failure_ratio = %+v", r)
 	}
-	if r := resp.MostWaived[0]; r.TotalWaives != 18 || r.WaivesByCategory.FalsePositive != 11 || r.WaivesByCategory.FixInFollowup != 1 {
+	if r := resp.MostWaived[0]; r.TotalWaives != 18 || r.WaivesByCategory.FalsePositive != 8 || r.WaivesByCategory.Flaky != 3 || r.WaivesByCategory.FixInFollowup != 1 {
 		t.Errorf("most_waived = %+v", r)
 	}
 	if r := resp.WaiveRate[0]; r.WaivedFailures != 18 || r.WaiveRate == nil || *r.WaiveRate != 0.581 {
@@ -98,7 +98,7 @@ func TestGetInvariantInsights(t *testing.T) {
 func TestGetInvariantInsightsDefaultQuery(t *testing.T) {
 	srv, got := newInvariantAnalyticsServer(t, `{"since":null,"status":"active","most_applied":[],`+
 		`"failure_ratio":[],"most_waived":[],"waive_rate":[],"never_applied":{"count":0,"invariants":[]},`+
-		`"reasons":{"total_waives":0,"waives_by_category":{"false_positive":0,"doesnt_apply":0,"accepted_risk":0,"fix_in_followup":0}}}`)
+		`"reasons":{"total_waives":0,"waives_by_category":{"false_positive":0,"doesnt_apply":0,"flaky":0,"accepted_risk":0,"fix_in_followup":0}}}`)
 
 	resp, err := newTestClient(srv).GetInvariantInsights(context.Background(), InvariantInsightsQuery{})
 	if err != nil {

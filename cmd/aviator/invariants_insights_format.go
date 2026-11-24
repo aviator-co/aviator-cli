@@ -47,11 +47,12 @@ func formatInvariantInsights(resp *api.InvariantInsightsResponse, window, repo, 
 		rows = append(rows, []string{
 			"#" + strconv.Itoa(r.Invariant.ID), strconv.Itoa(r.TotalWaives),
 			strconv.Itoa(r.WaivesByCategory.FalsePositive), strconv.Itoa(r.WaivesByCategory.DoesntApply),
+			strconv.Itoa(r.WaivesByCategory.Flaky),
 			strconv.Itoa(r.WaivesByCategory.AcceptedRisk), strconv.Itoa(r.WaivesByCategory.FixInFollowup),
 			r.Invariant.Title,
 		})
 	}
-	writeTable(&b, "", []string{"ID", "TOTAL", "FALSE+", "N/A", "RISK", "FOLLOWUP", "TITLE"}, rows)
+	writeTable(&b, "", []string{"ID", "TOTAL", "FALSE+", "N/A", "FLAKY", "RISK", "FOLLOWUP", "TITLE"}, rows)
 
 	b.WriteString("\nHighest waive rate\n")
 	rows = rows[:0]
@@ -283,8 +284,8 @@ func waiveCategoryLabel(category string) string {
 }
 
 func formatWaiveCounts(c api.WaiveCounts) string {
-	return fmt.Sprintf("false positive %d · doesn't apply %d · accepted risk %d · fix in follow-up %d",
-		c.FalsePositive, c.DoesntApply, c.AcceptedRisk, c.FixInFollowup)
+	return fmt.Sprintf("false positive %d · doesn't apply %d · flaky %d · accepted risk %d · fix in follow-up %d",
+		c.FalsePositive, c.DoesntApply, c.Flaky, c.AcceptedRisk, c.FixInFollowup)
 }
 
 // formatWaivedBy names the user, by email when they have no name; nil means
@@ -340,6 +341,7 @@ type invariantSummaryJSON struct {
 type waiveCountsJSON struct {
 	FalsePositive int `json:"false_positive"`
 	DoesntApply   int `json:"doesnt_apply"`
+	Flaky         int `json:"flaky"`
 	AcceptedRisk  int `json:"accepted_risk"`
 	FixInFollowup int `json:"fix_in_followup"`
 }
@@ -483,6 +485,7 @@ func newWaiveCountsJSON(c api.WaiveCounts) waiveCountsJSON {
 	return waiveCountsJSON{
 		FalsePositive: c.FalsePositive,
 		DoesntApply:   c.DoesntApply,
+		Flaky:         c.Flaky,
 		AcceptedRisk:  c.AcceptedRisk,
 		FixInFollowup: c.FixInFollowup,
 	}

@@ -12,6 +12,7 @@ import (
 type WaiveCounts struct {
 	FalsePositive int `json:"false_positive"`
 	DoesntApply   int `json:"doesnt_apply"`
+	Flaky         int `json:"flaky"`
 	AcceptedRisk  int `json:"accepted_risk"`
 	FixInFollowup int `json:"fix_in_followup"`
 }
