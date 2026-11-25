@@ -23,7 +23,7 @@ const reviewOutcomes = "pass, fail, warn, error, waived, fixed, not_run"
 
 // waiveCategories names the waiver reasons --category takes; the server
 // validates these too.
-const waiveCategories = "false_positive, doesnt_apply, accepted_risk, fix_in_followup"
+const waiveCategories = "false_positive, doesnt_apply, flaky, accepted_risk, fix_in_followup"
 
 // analyticsHelp is the paragraph every analytics command's help ends with.
 const analyticsHelp = "Counts are per review session; a review counts once as failed when any\n" +
