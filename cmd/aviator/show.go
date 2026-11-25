@@ -199,16 +199,26 @@ func formatVerification(label string, v *api.VerificationRun) string {
 		fmt.Fprintf(&b, "    Error: %s\n", msg)
 	}
 	for _, r := range v.Results {
-		handle := formatHandle(r.StableKey, r.BaselineInvariantID)
 		if r.Status == "pass" {
-			fmt.Fprintf(&b, "    %s %s%s\n", colors.Success("✓"), r.Criterion, handle)
 			continue
+		}
+		mark, waived := colors.Failure("✗"), ""
+		if r.Status == "warn" {
+			mark = colors.Warning("!")
+		}
+		if r.IsWaived {
+			waived = colors.Faint(" (waived)")
+		}
+		text, _, more := strings.Cut(r.Criterion, "\n")
+		if more {
+			text += " …"
 		}
 		reason := ""
 		if s := deref(r.Reason); s != "" {
 			reason = ": " + s
 		}
-		fmt.Fprintf(&b, "    %s %s%s%s\n", colors.Failure("✗"), r.Criterion, handle, reason)
+		fmt.Fprintf(&b, "    %s %s%s%s%s\n",
+			mark, text, formatHandle(r.StableKey, r.BaselineInvariantID), waived, reason)
 	}
 	switch v.Status {
 	case "failed":

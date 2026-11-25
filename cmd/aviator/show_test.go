@@ -59,12 +59,15 @@ func TestFormatRunbookDetail(t *testing.T) {
 			ID:             900,
 			Status:         "failed",
 			CommitSHA:      ptr("abcdef1234567890"),
-			CriteriaTotal:  2,
+			CriteriaTotal:  5,
 			CriteriaPassed: 1,
-			CriteriaFailed: 1,
+			CriteriaFailed: 2,
 			Results: []api.CriterionResult{
 				{Criterion: "does the thing", Status: "fail", Reason: ptr("nope")},
 				{Criterion: "stays fast", Status: "pass", Reason: ptr("fine")},
+				{Criterion: "logs clearly", Status: "warn", Reason: ptr("terse")},
+				{Criterion: "old rule", Status: "fail", Reason: ptr("broke"), IsWaived: true},
+				{Criterion: "no secrets\nin logs or traces", Status: "fail", BaselineInvariantID: ptr(42)},
 			},
 			PreviewConfigName: ptr("default"),
 			PreviewMethod:     ptr("sandbox"),
@@ -78,14 +81,21 @@ func TestFormatRunbookDetail(t *testing.T) {
 		"Branch: feature -> main",
 		"Steps: 1/2 completed",
 		"1. does the thing",
-		"Latest verification: run 900, failed (1/2 passed, 1 failed, abcdef1)",
-		"✓ stays fast\n",
-		"does the thing: nope",
+		"Latest verification: run 900, failed (1/5 passed, 2 failed, abcdef1)",
+		"✗ does the thing: nope",
+		"! logs clearly: terse",
+		"✗ old rule (waived): broke",
+		"✗ no secrets … [invariant 42]\n",
 		"  Preview config: docs",
 		"Ran on preview config: default (sandbox)",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q\n---\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"stays fast", "in logs or traces"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("output has %q\n---\n%s", unwanted, out)
 		}
 	}
 }
