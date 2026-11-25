@@ -88,30 +88,30 @@ type DetailCriterion struct {
 }
 
 // VerificationRun is one verification run. The run listing leaves out
-// FailedResults.
+// Results.
 type VerificationRun struct {
-	ID                int            `json:"id"`
-	Status            string         `json:"status"`
-	TriggerSource     string         `json:"trigger_source"`
-	EvaluatorOnly     bool           `json:"evaluator_only"`
-	RunbookVersion    *int           `json:"runbook_version"`
-	CommitSHA         *string        `json:"commit_sha"`
-	CriteriaTotal     int            `json:"criteria_total"`
-	CriteriaPassed    int            `json:"criteria_passed"`
-	CriteriaFailed    int            `json:"criteria_failed"`
-	CriteriaSkipped   int            `json:"criteria_skipped"`
-	CriteriaWaived    int            `json:"criteria_waived"`
-	ErrorMessage      *string        `json:"error_message"`
-	CreatedAt         string         `json:"created_at"`
-	StartedAt         *string        `json:"started_at"`
-	CompletedAt       *string        `json:"completed_at"`
-	FailedResults     []FailedResult `json:"failed_results"`
-	PreviewConfigName *string        `json:"preview_config_name"`
-	PreviewMethod     *string        `json:"preview_method"`
+	ID                int               `json:"id"`
+	Status            string            `json:"status"`
+	TriggerSource     string            `json:"trigger_source"`
+	EvaluatorOnly     bool              `json:"evaluator_only"`
+	RunbookVersion    *int              `json:"runbook_version"`
+	CommitSHA         *string           `json:"commit_sha"`
+	CriteriaTotal     int               `json:"criteria_total"`
+	CriteriaPassed    int               `json:"criteria_passed"`
+	CriteriaFailed    int               `json:"criteria_failed"`
+	CriteriaSkipped   int               `json:"criteria_skipped"`
+	CriteriaWaived    int               `json:"criteria_waived"`
+	ErrorMessage      *string           `json:"error_message"`
+	CreatedAt         string            `json:"created_at"`
+	StartedAt         *string           `json:"started_at"`
+	CompletedAt       *string           `json:"completed_at"`
+	Results           []CriterionResult `json:"results"`
+	PreviewConfigName *string           `json:"preview_config_name"`
+	PreviewMethod     *string           `json:"preview_method"`
 }
 
-// FailedResult is a single failing criterion within a verification.
-type FailedResult struct {
+// CriterionResult is one criterion's verdict within a verification.
+type CriterionResult struct {
 	Criterion           string          `json:"criterion"`
 	StableKey           *string         `json:"stable_key"`
 	BaselineInvariantID *int            `json:"baseline_invariant_id"`
@@ -120,6 +120,7 @@ type FailedResult struct {
 	Status              string          `json:"status"`
 	Reason              *string         `json:"reason"`
 	Evidence            json.RawMessage `json:"evidence"`
+	EvidenceIDs         []int           `json:"evidence_ids"`
 	Location            json.RawMessage `json:"location"`
 }
 

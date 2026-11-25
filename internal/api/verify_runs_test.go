@@ -38,7 +38,7 @@ func TestGetVerifyRun(t *testing.T) {
 			t.Errorf("path = %q", r.URL.Path)
 		}
 		_, _ = w.Write([]byte(`{"id":887,"status":"failed","criteria_total":2,"criteria_failed":1,` +
-			`"failed_results":[{"criterion":"no secrets","status":"fail","is_invariant":true,"baseline_invariant_id":42}]}`))
+			`"results":[{"criterion":"no secrets","status":"fail","is_invariant":true,"baseline_invariant_id":42}]}`))
 	}))
 	defer srv.Close()
 
@@ -46,7 +46,7 @@ func TestGetVerifyRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if run.ID != 887 || len(run.FailedResults) != 1 || *run.FailedResults[0].BaselineInvariantID != 42 {
+	if run.ID != 887 || len(run.Results) != 1 || *run.Results[0].BaselineInvariantID != 42 {
 		t.Errorf("run = %+v", run)
 	}
 }
